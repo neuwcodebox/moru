@@ -15,8 +15,8 @@ const settings: Settings = {
   seed: null,
 };
 const promptSettings: PromptSettings = {
-  context_size: 2048,
-  max_tokens: 1024,
+  context_size: 4096,
+  max_tokens: 2048,
   thinking: true,
   history_turns: 4,
   reasoning_level: "medium",
@@ -742,18 +742,18 @@ describe("conversation", () => {
     const context = screen.getByLabelText("컨텍스트 크기");
     const output = screen.getByLabelText("출력 토큰 한도");
     const thinking = screen.getByLabelText("Thinking 사용") as HTMLInputElement;
-    expect((context as HTMLInputElement).value).toBe("2048");
-    expect((output as HTMLInputElement).value).toBe("1024");
+    expect((context as HTMLInputElement).value).toBe("4096");
+    expect((output as HTMLInputElement).value).toBe("2048");
     expect(thinking.checked).toBe(true);
     await user.clear(context);
-    await user.type(context, "4096");
+    await user.type(context, "8192");
     await user.clear(output);
-    await user.type(output, "2048");
+    await user.type(output, "4096");
     await user.click(thinking);
     await user.click(screen.getByText("저장"));
     expect(api.update_settings).toHaveBeenCalledWith(settings, {
-      context_size: 4096,
-      max_tokens: 2048,
+      context_size: 8192,
+      max_tokens: 4096,
       thinking: false,
       history_turns: 4,
       reasoning_level: "medium",
@@ -762,7 +762,7 @@ describe("conversation", () => {
     await user.click(screen.getByText("고급 · 프롬프트 LLM"));
     expect(
       (screen.getByLabelText("컨텍스트 크기") as HTMLInputElement).value,
-    ).toBe("4096");
+    ).toBe("8192");
     expect(
       (screen.getByLabelText("Thinking 사용") as HTMLInputElement).checked,
     ).toBe(false);

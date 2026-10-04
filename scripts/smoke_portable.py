@@ -59,8 +59,8 @@ def main():
         assert report["defaults"]["cfg"] == 1.0
         assert report["defaults"]["seed"] is None
         assert report["prompt_defaults"] == {
-            "context_size": 2048,
-            "max_tokens": 1024,
+            "context_size": 4096,
+            "max_tokens": 2048,
             "thinking": True,
             "history_turns": 4,
             "reasoning_level": "medium",
@@ -68,8 +68,8 @@ def main():
         if options.ui_only:
             assert report["clipboard_copied"]
             assert report["saved_prompt_settings"] == {
-                "context_size": 4096,
-                "max_tokens": 2048,
+                "context_size": 8192,
+                "max_tokens": 4096,
                 "thinking": True,
                 "history_turns": 4,
                 "reasoning_level": "high",

@@ -20,8 +20,8 @@ RequestStatus = Literal["pending", "completed", "failed", "cancelled"]
 
 @dataclass(frozen=True)
 class PromptSettings:
-    context_size: int = 2048
-    max_tokens: int = 1024
+    context_size: int = 4096
+    max_tokens: int = 2048
     thinking: bool = True
     history_turns: int = 4
     reasoning_level: Literal["low", "medium", "high"] = "medium"

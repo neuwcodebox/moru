@@ -53,7 +53,7 @@ def test_model_load_is_lazy_cuda_and_reload_follows_unload(tmp_path):
     load.assert_not_called()
     assert prompts.create("girl", PromptSettings(thinking=True)) == "night, girl"
     assert prompts.refine("girl", "night", PromptSettings(thinking=True)) == "night, girl"
-    load.assert_called_once_with(model_path=str(model), n_gpu_layers=-1, n_ctx=2048, verbose=False)
+    load.assert_called_once_with(model_path=str(model), n_gpu_layers=-1, n_ctx=4096, verbose=False)
     prompts.unload()
     llm.close.assert_called_once()
     prompts.create("girl", PromptSettings(thinking=True))
@@ -114,10 +114,10 @@ def test_context_change_reloads_the_model_but_output_limit_change_reuses_it(tmp_
     prompts.create("girl", PromptSettings(max_tokens=1536, thinking=True))
     assert load.call_count == 1
     assert llm.create_chat_completion.call_args.kwargs["max_tokens"] == 1536
-    prompts.create("girl", PromptSettings(context_size=4096, max_tokens=2048, thinking=True))
+    prompts.create("girl", PromptSettings(context_size=8192, max_tokens=4096, thinking=True))
     llm.close.assert_called_once()
     assert load.call_count == 2
-    assert load.call_args.kwargs["n_ctx"] == 4096
+    assert load.call_args.kwargs["n_ctx"] == 8192
 
 
 def test_thinking_toggle_uses_the_model_template_and_can_be_enabled_again(tmp_path, monkeypatch):

@@ -96,14 +96,14 @@ def test_invalid_bridge_settings_have_stable_korean_error(app):
 def test_bootstrap_exposes_prompt_defaults_and_restores_saved_values(app):
     api = Api(app)
     assert api.bootstrap()["value"]["prompt_settings"] == {
-        "context_size": 2048,
-        "max_tokens": 1024,
+        "context_size": 4096,
+        "max_tokens": 2048,
         "thinking": True,
         "history_turns": 4,
         "reasoning_level": "medium",
     }
     values = {
-        "context_size": 4096, "max_tokens": 2048, "thinking": False,
+        "context_size": 8192, "max_tokens": 4096, "thinking": False,
         "history_turns": 2, "reasoning_level": "high",
     }
     assert api.update_settings({"steps": 12}, values)["ok"]

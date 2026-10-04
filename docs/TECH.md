@@ -279,7 +279,7 @@ from llama_cpp import Llama
 llm = Llama(
     model_path=model_path,
     n_gpu_layers=-1,
-    n_ctx=2048,
+    n_ctx=4096,
 )
 ```
 
@@ -922,7 +922,7 @@ GPU 및 실제 WebView2 검증은 `scripts/smoke_*.py`에 분리되어 있으며
 완성된 최종 프롬프트만 Anima에 전달한다. `prompting` 상태는 대화의 생성 placeholder에
 표시하며, 토큰 제한 때문에 잘린 응답은 오류로 처리한다.
 기본 프롬프트 모델은 HauhauCS Qwen3.5-4B Uncensored Aggressive Q4_K_M이다.
-기본 context는 2048, 출력 한도는 1024 tokens로 설정한다.
+기본 context는 4096, 출력 한도는 2048 tokens로 설정한다.
 프롬프트 작성 지침은 CUDA 추론 코드와 분리한 `prompt_instructions.py`에서 관리한다.
 공통 출력·해석·구성·태그·검토 규칙에 생성용 예시 또는 수정용 예시를 붙인다.
 `prompt_messages`는 이 지침을 system으로 전달하고 실제 user/assistant 이력만
@@ -956,6 +956,7 @@ Job은 요청에 고정된 width/height를 bridge에 전달한다. 이미지 목
 
 추론 수준의 기본값은 medium이다. 최종 프롬프트용 512토큰과 여유 128토큰을 예약하고
 `max(0, max_tokens - 640)`의 50%/75%/100%를 low/medium/high 예산으로 사용한다.
+기본 출력 한도에서 예산은 각각 704/1056/1408토큰이다.
 소수점은 버린다. Thinking을 끄면 예산은 0이며 해당 processor도 사용하지 않는다.
 512는 최종 프롬프트 예약 정책의 기준값이다. 현재 ComfyUI Anima tokenizer는
 512에서 입력을 자르지 않고 adapter는 짧은 입력만 512까지 padding한다.

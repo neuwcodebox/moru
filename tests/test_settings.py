@@ -49,13 +49,13 @@ def test_resolving_seed_preserves_explicit_seed():
     assert GenerationSettings(seed=9).resolve_seed(42).seed == 9
 
 
-def test_prompt_defaults_enable_medium_reasoning_with_compact_context_and_output():
+def test_prompt_defaults_reserve_1056_tokens_for_medium_reasoning():
     settings = PromptSettings()
-    assert settings.context_size == 2048
-    assert settings.max_tokens == 1024
+    assert settings.context_size == 4096
+    assert settings.max_tokens == 2048
     assert settings.thinking is True
     assert settings.reasoning_level == "medium"
-    assert settings.thinking_budget == 288
+    assert settings.thinking_budget == 1056
 
 
 def test_aesthetic_defaults_use_full_sampling_and_preserve_explicit_settings():
@@ -67,7 +67,7 @@ def test_aesthetic_defaults_use_full_sampling_and_preserve_explicit_settings():
     assert explicit.cfg == 4
 
 
-@pytest.mark.parametrize("level,budget", [("low", 192), ("medium", 288), ("high", 384)])
+@pytest.mark.parametrize("level,budget", [("low", 704), ("medium", 1056), ("high", 1408)])
 def test_reasoning_levels_share_the_budget_left_after_reserving_the_final_prompt(level, budget):
     assert PromptSettings(reasoning_level=level).thinking_budget == budget
 
@@ -115,7 +115,7 @@ def test_prompt_settings_apply_to_next_job_without_changing_an_accepted_request(
     project = app.create_project()
     original = PromptSettings()
     changed = PromptSettings(
-        context_size=4096, max_tokens=2048, thinking=False, reasoning_level="high"
+        context_size=8192, max_tokens=4096, thinking=False, reasoning_level="high"
     )
     app.submit_request(project.id, "girl")
     app.update_settings(app.get_settings(), changed)
@@ -170,6 +170,10 @@ def test_prompt_settings_are_restored_after_application_restart(app, tmp_path):
 @pytest.mark.parametrize(
     "stored,expected",
     [
+        (
+            {"context_size": 2048, "max_tokens": 1024, "reasoning_level": "medium"},
+            PromptSettings(context_size=2048, max_tokens=1024, reasoning_level="medium"),
+        ),
         (
             {"context_size": 8192, "max_tokens": 4096, "thinking": True},
             PromptSettings(context_size=8192, max_tokens=4096, thinking=True),
