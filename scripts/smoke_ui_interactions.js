@@ -18,6 +18,25 @@
     await waitFor(() => turns().length === 3 && document.querySelectorAll('.image-button img').length === 3);
     await Promise.all([...document.querySelectorAll('.image-button img')].map(image => image.decode()));
     await call('mark_stage', 'images decoded');
+    const assertConversationScroll = () => {
+        const page = document.scrollingElement;
+        const conversation = document.querySelector('.conversation');
+        if (page.scrollHeight > page.clientHeight || page.scrollWidth > page.clientWidth)
+            throw new Error(`The outer page overflows the desktop viewport: ${JSON.stringify({
+                page: [page.scrollWidth, page.scrollHeight, page.clientWidth, page.clientHeight],
+                viewport: [innerWidth, innerHeight],
+            })}`);
+        if (conversation.scrollHeight <= conversation.clientHeight)
+            throw new Error('Long conversation has no scrollable area');
+        conversation.scrollTop = 0;
+        conversation.scrollTop = conversation.scrollHeight;
+        if (conversation.scrollTop <= 0) throw new Error('Conversation cannot scroll');
+        const footer = document.querySelector('footer').getBoundingClientRect();
+        if (footer.bottom > innerHeight + 1 || footer.top < 0)
+            throw new Error('Composer is outside the desktop viewport');
+        return true;
+    };
+    const singleConversationScroll = assertConversationScroll();
     const third = turns()[2];
     third.scrollIntoView({block: 'center'});
     third.querySelector('.image-button').dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
@@ -75,8 +94,9 @@
     await call('capture_view', 'fork');
     const forked = await call('bootstrap');
     const original = await call('get_project', 'ui-project');
+    assertConversationScroll();
     return {ok: true, imageClipboard, textClipboardMatches: textClipboard.text === expectedPrompt,
-        stableCopyLayout, hoverPrompt: true, keyboardConversation: true, keyboardViewer: true,
+        stableCopyLayout, singleConversationScroll, hoverPrompt: true, keyboardConversation: true, keyboardViewer: true,
         forkFeedback: !!document.querySelector('.action-toast'), forkedRows: forked.project.images.length,
         originalRows: original.images.length, newSession: forked.project.id !== original.id,
         logo: !!document.querySelector('.brand-icon').naturalWidth};

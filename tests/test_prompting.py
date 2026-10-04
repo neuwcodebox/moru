@@ -416,8 +416,10 @@ def test_reasoning_level_changes_the_completion_budget_without_reloading_the_mod
     llm.create_chat_completion.side_effect = lambda **kwargs: completion("girl")
     load = Mock(return_value=llm)
     prompts = LlamaPrompts(paths, load_llama=load)
-    for level, budget in (("low", 128), ("high", 512)):
-        prompts.create("girl", PromptSettings(reasoning_level=level))
+    for level, budget in (("low", 1728), ("high", 3456)):
+        prompts.create(
+            "girl", PromptSettings(context_size=8192, max_tokens=4096, reasoning_level=level)
+        )
         processor = llm.create_chat_completion.call_args.kwargs["logits_processor"][0]
         processor([9], Scores([1.0] * 5))
         assert processor([9] + [1] * (budget - 2), Scores([1.0] * 5))[3] == 0.0

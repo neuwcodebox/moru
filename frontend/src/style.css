@@ -11,6 +11,7 @@
 }
 body {
   margin: 0;
+  overflow: hidden;
 }
 button,
 input,
@@ -135,6 +136,7 @@ header select {
 }
 .conversation {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
   padding: 34px max(24px, calc((100vw - 820px) / 2)) 12px;
@@ -251,6 +253,9 @@ header select {
   color: #c0cee0;
   font-size: 12px;
   line-height: 1.7;
+}
+.copy-button {
+  position: relative;
 }
 .copy-symbol {
   display: inline-flex;
@@ -494,19 +499,12 @@ footer {
   width: 100%;
   padding: 14px 18px;
 }
-.stream-section + .stream-section {
-  margin-top: 14px;
-}
-.stream-section summary,
 .stream-label {
   display: flex;
   align-items: center;
   gap: 7px;
   color: #b5c3d6;
   font-size: 12px;
-}
-.stream-section summary {
-  cursor: pointer;
 }
 .stream-section pre {
   margin: 10px 0 0;

@@ -125,10 +125,10 @@ describe("conversation", () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByAltText("생성 이미지");
-    await user.click(screen.getByRole("button", { name: "이미지 복사" }));
+    await user.click(screen.getByRole("button", { name: "복사" }));
     expect(api.copy_image).toHaveBeenCalledWith("i1");
     expect(api.copy_prompt).not.toHaveBeenCalled();
-    expect(await screen.findByRole("button", { name: "이미지 복사 완료" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "복사 완료" })).toBeTruthy();
   });
 
   it("reveals a completed image's prompt on hover without fetching all prompts on startup", async () => {
@@ -524,12 +524,14 @@ describe("conversation", () => {
     const editor = screen.getByLabelText("실제 생성 프롬프트");
     await user.clear(editor);
     await user.type(editor, "edited image prompt");
-    await user.click(screen.getByText("복사"));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "복사" }),
+    );
     expect(api.copy_prompt).toHaveBeenCalledWith("edited image prompt");
     expect(await screen.findByText("복사했습니다.")).toBeTruthy();
   });
 
-  it("shows thinking in the generation placeholder and cancels with the composer stop button", async () => {
+  it("shows only thinking status and cancels with the composer stop button", async () => {
     const user = userEvent.setup();
     api.get_job.mockResolvedValue({
       ok: true,
@@ -551,7 +553,8 @@ describe("conversation", () => {
     const thinking = await within(conversation).findByText("생각 중…");
     const status = thinking.closest('[aria-label="생성 진행"]') as HTMLElement;
     expect(screen.queryByText("프롬프트 준비")).toBeNull();
-    expect(within(status).getByText("Choosing the scene")).toBeTruthy();
+    expect(within(status).queryByText("Choosing the scene")).toBeNull();
+    expect(screen.queryByText("생각 과정")).toBeNull();
     expect(screen.queryByText("취소")).toBeNull();
     expect(screen.queryByRole("button", { name: "전송" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "중지" }));
@@ -734,6 +737,7 @@ describe("conversation", () => {
     await user.click(screen.getByLabelText("생성 설정"));
     await user.click(screen.getByText("고급 · 프롬프트 LLM"));
     expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).value).toBe("low");
+    expect(screen.getByRole("option", { name: "높음 · 추론 예산의 100%" })).toBeTruthy();
     await user.selectOptions(screen.getByLabelText("추론 수준"), "high");
     await user.click(screen.getByLabelText("Thinking 사용"));
     expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).disabled).toBe(true);

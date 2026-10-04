@@ -55,7 +55,7 @@ def test_prompt_defaults_enable_low_reasoning_with_compact_context_and_output():
     assert settings.max_tokens == 1024
     assert settings.thinking is True
     assert settings.reasoning_level == "low"
-    assert settings.thinking_budget == 128
+    assert settings.thinking_budget == 192
 
 
 def test_aesthetic_defaults_use_full_sampling_and_preserve_explicit_settings():
@@ -67,10 +67,24 @@ def test_aesthetic_defaults_use_full_sampling_and_preserve_explicit_settings():
     assert explicit.cfg == 4
 
 
-@pytest.mark.parametrize("level,budget", [("low", 128), ("medium", 256), ("high", 512)])
-def test_reasoning_levels_leave_room_for_the_final_prompt(level, budget):
+@pytest.mark.parametrize("level,budget", [("low", 192), ("medium", 288), ("high", 384)])
+def test_reasoning_levels_share_the_budget_left_after_reserving_the_final_prompt(level, budget):
     assert PromptSettings(reasoning_level=level).thinking_budget == budget
-    assert PromptSettings(reasoning_level=level, max_tokens=100).thinking_budget == 50
+
+
+@pytest.mark.parametrize("level,budget", [("low", 1728), ("medium", 2592), ("high", 3456)])
+def test_increasing_output_allows_longer_reasoning_at_every_level(level, budget):
+    settings = PromptSettings(context_size=8192, max_tokens=4096, reasoning_level=level)
+    assert settings.thinking_budget == budget
+
+
+@pytest.mark.parametrize("max_tokens", [1, 100, 640])
+def test_small_output_limits_reserve_all_available_space_for_the_final_prompt(max_tokens):
+    assert PromptSettings(max_tokens=max_tokens, reasoning_level="high").thinking_budget == 0
+
+
+def test_disabling_thinking_allocates_no_reasoning_tokens():
+    assert PromptSettings(thinking=False).thinking_budget == 0
 
 
 @pytest.mark.parametrize(

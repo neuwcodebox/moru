@@ -3,7 +3,7 @@ import { expect, it } from "vitest";
 import GenerationProgress from "./GenerationProgress";
 import type { Job } from "./api";
 
-const job: Job = {
+const job: Job & { thinking_text: string } = {
   id: "j1",
   project_id: "p1",
   request_id: "r1",
@@ -17,30 +17,31 @@ const job: Job = {
   prompt_text: "",
 };
 
-it("updates live thinking and prompt inside the same placeholder as generation advances", () => {
+it("shows only thinking status and streams the final prompt in the same placeholder", () => {
   const { rerender } = render(<GenerationProgress job={job} />);
   const placeholder = screen.getByRole("region", { name: "생성 진행" });
-  expect(within(placeholder).getByText("Choosing a scene")).toBeTruthy();
+  expect(within(placeholder).getByText("생각 중…")).toBeTruthy();
+  expect(within(placeholder).queryByText("Choosing a scene")).toBeNull();
+  expect(within(placeholder).queryByText("생각 과정")).toBeNull();
   rerender(
     <GenerationProgress
       job={{
         ...job,
-        thinking_text: "Choosing a scene with rain",
         prompt_text: "girl, night",
       }}
     />,
   );
   expect(screen.getByRole("region", { name: "생성 진행" })).toBe(placeholder);
   expect(
-    within(placeholder).getByText("Choosing a scene with rain"),
-  ).toBeTruthy();
+    within(placeholder).queryByText("Choosing a scene"),
+  ).toBeNull();
+  expect(within(placeholder).getByText("프롬프트 작성 중…")).toBeTruthy();
   expect(within(placeholder).getByText("girl, night")).toBeTruthy();
   rerender(
     <GenerationProgress
       job={{
         ...job,
         state: "generating",
-        thinking_text: "Choosing a scene with rain",
         prompt_text: "girl, night, rain",
         step: 4,
         total: 10,
@@ -65,7 +66,6 @@ it("writes the prompt directly when thinking is disabled", () => {
       job={{
         ...job,
         thinking_enabled: false,
-        thinking_text: "",
         prompt_text: "night, girl",
       }}
     />,

@@ -22,7 +22,6 @@ CREATE_SYSTEM = (
     "Include only requested subjects; never add people to an animal-only scene. "
     "Output only one paragraph of prompt text, without explanations, markdown, quotes, "
     "command flags or negative prompts. "
-    "Keep thinking brief: identify visual subjects and changes, without restating instructions. "
     "The existing prompt is the current visual state. The latest request takes priority; "
     "use history only to resolve references. Preserve requested details and each subject's "
     "appearance, actions and position. Do not invent unrelated subjects or styles. "

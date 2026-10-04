@@ -19,7 +19,7 @@ def test_main_conversation_view_hides_prompt_and_generation_metadata(app):
     assert details["settings"]["seed"] == "42"
 
 
-def test_live_prompt_is_available_during_generation_but_thinking_is_never_saved(app):
+def test_live_prompt_is_available_but_reasoning_never_crosses_the_ui_bridge(app):
     api = Api(app)
     snapshots = []
     project = app.create_project()
@@ -35,12 +35,14 @@ def test_live_prompt_is_available_during_generation_but_thinking_is_never_saved(
     app.prompts.create = create
     job = app.submit_request(project.id, "girl")
     app.scheduler.run_next()
-    assert snapshots[0]["thinking_text"] == "choosing a scene"
+    assert "thinking_text" not in snapshots[0]
     assert snapshots[0]["prompt_text"] == ""
     assert snapshots[0]["thinking_enabled"] is True
     assert snapshots[1]["prompt_text"] == "night, girl"
+    assert "thinking_text" not in snapshots[1]
     completed = api.get_job(job.id)["value"]
-    assert completed["thinking_text"] == completed["prompt_text"] == ""
+    assert "thinking_text" not in completed
+    assert completed["prompt_text"] == ""
     assert api.get_image_details(completed["image_id"])["value"]["prompt"] == "night, girl"
 
 

@@ -267,14 +267,15 @@ export default function SettingsDialog({
                 })
               }
             >
-              <option value="low">낮음 · 최대 128 토큰</option>
-              <option value="medium">보통 · 최대 256 토큰</option>
-              <option value="high">높음 · 최대 512 토큰</option>
+              <option value="low">낮음 · 추론 예산의 50%</option>
+              <option value="medium">보통 · 추론 예산의 75%</option>
+              <option value="high">높음 · 추론 예산의 100%</option>
             </select>
           </label>
           <p className="hint">
-            생각에 쓸 토큰을 조절합니다. 최종 프롬프트 작성 공간을 남기기 위해
-            출력 한도의 절반까지만 사용합니다.
+            출력 한도에서 최종 프롬프트용 512토큰과 여유 128토큰을 남긴 나머지가
+            추론 예산입니다. 출력 한도를 늘리면 더 오래 생각할 수 있습니다.
+            640토큰 이하에서는 추론 없이 프롬프트 작성을 시작합니다.
           </p>
           <p className="hint">
             컨텍스트는 입력과 출력을 합친 크기입니다. 출력 한도에는 thinking

@@ -2,12 +2,10 @@ import { useEffect, useState } from "react";
 import { Check, Copy, LoaderCircle } from "lucide-react";
 
 export default function CopyButton({
-  label = "복사",
   onCopy,
   onError,
   disabled = false,
 }: {
-  label?: string;
   onCopy: () => Promise<void>;
   onError: (message: string) => void;
   disabled?: boolean;
@@ -22,8 +20,8 @@ export default function CopyButton({
     <button
       type="button"
       className={`copy-button ${state}`}
-      aria-label={state === "copied" ? `${label} 완료` : label}
-      title={state === "copied" ? "복사했습니다." : label}
+      aria-label={state === "copied" ? "복사 완료" : "복사"}
+      title={state === "copied" ? "복사했습니다." : "복사"}
       disabled={disabled || state === "pending"}
       onClick={async () => {
         setState("pending");
@@ -40,7 +38,7 @@ export default function CopyButton({
         {state === "copied" ? <Check size={15} /> : state === "pending"
           ? <LoaderCircle size={15} className="spinner" /> : <Copy size={15} />}
       </span>
-      {label}
+      복사
       <span className="sr-only" role="status">
         {state === "copied" ? "복사했습니다." : ""}
       </span>

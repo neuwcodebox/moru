@@ -933,16 +933,25 @@ GPU 및 실제 WebView2 검증은 `scripts/smoke_*.py`에 분리되어 있으며
 
 LLM 응답은 내부에서 스트리밍으로 소비하며 토큰마다 취소 여부를 확인한다.
 취소 시 completion generator를 닫고 이미지 생성으로 넘어가지 않는다.
-프로젝트 소유 `PromptProgress` callback은 thinking과 프롬프트를 분리해 전달한다.
-Job에 임시 텍스트를 저장하고 기존 polling bridge로 placeholder를 갱신한다.
+프로젝트 소유 `PromptProgress` callback은 엔진 경계에서 thinking과 프롬프트를 분리한다.
+Application은 사고 내용을 버리고 최종 프롬프트 스트림만 Job에 임시 저장한다.
+기존 polling bridge는 `thinking_enabled`와 `prompt_text`로 placeholder를 갱신한다.
+사고 내용은 bridge로 전달하지 않는다. 최종 프롬프트가 나오기 전에는 `생각 중…`,
+이후에는 `프롬프트 작성 중…` 상태를 표시한다.
 제어 태그가 토큰 경계에서 나뉘어도 표시하지 않으며, 정상 종료된 전체 응답에서만
 이미지 생성용 최종 프롬프트를 추출한다. 임시 텍스트는 DB·로그에 저장하지 않고
-성공·실패·취소 후 Job에서도 지운다. 표시용 문자열은 각각 최대 65536자로 제한한다.
+성공·실패·취소 후 Job에서도 지운다. 표시용 프롬프트는 최대 65536자로 제한한다.
 이미지 생성 중에는 같은 placeholder에 step/전체 steps와 진행률을 표시한다.
 
-추론 수준의 기본값은 low이며 low/medium/high는 최대 128/256/512 thinking 토큰을 허용한다.
+추론 수준의 기본값은 low이다. 최종 프롬프트용 512토큰과 여유 128토큰을 예약하고
+`max(0, max_tokens - 640)`의 50%/75%/100%를 low/medium/high 예산으로 사용한다.
+소수점은 버린다. Thinking을 끄면 예산은 0이며 해당 processor도 사용하지 않는다.
+512는 최종 프롬프트 예약 정책의 기준값이다. 현재 ComfyUI Anima tokenizer는
+512에서 입력을 자르지 않고 adapter는 짧은 입력만 512까지 padding한다.
+LLM과 이미지 엔진의 tokenizer도 다르므로 이 예산을 Anima의 최대 입력 길이로 해석하지 않는다.
 이는 모델의 네이티브 reasoning_effort 옵션이 아니라 앱이 적용하는 토큰 예산이다.
-전체 출력 한도의 절반을 넘지 않으며 종료 태그와 최종 답변 구분자도 예산에 포함한다.
+종료 태그와 최종 답변 구분자도 예산에 포함한다. 예산보다 제어 토큰이 많으면
+자유 추론 없이 즉시 제어 토큰부터 생성하며 이때도 전체 출력 한도는 유지한다.
 완료용 logits processor가 예산에 도달하면 </think>와 최종 답변 구분자를 생성하게 하여
 중단된 사고 문장을 계속 쓰지 않고 최종 프롬프트 작성을 이어 간다. 구분자는 반환/표시 전에 제거한다.
 모델이 먼저 thinking을 마치면 개입하지 않으며 thinking을 끄면 processor를 사용하지 않는다.
@@ -984,7 +993,11 @@ Modal의 선택적인 초점 복귀 callback으로 뷰어 종료 후 탐색한 �
 수정·검증 이력은 docs/reviews/YYYY-MM-DD-description.md에 보관한다.
 현재 요구사항과 기술 설계는 docs/SPEC.md와 docs/TECH.md로 유지하고 이력 문서와 구분한다.
 
-대화 스크롤은 맨 아래를 따라가는 상태에서만 자동 이동한다. ResizeObserver로 이미지와 텍스트의 크기 변화를 추적하며, 위로 스크롤하면 입력창 중앙 상단의 플로팅 버튼으로 맨 아래로 이동한다. 실시간 프롬프트와 thinking은 placeholder의 이미지 canvas 안에 표시한다.
+앱은 viewport 높이에 고정하고 대화 flex 영역에 `min-height: 0`을 적용한다.
+body의 overflow는 숨겨 페이지 전체 스크롤을 막고, 긴 대화는 대화 영역 안에서 스크롤한다.
+복사 버튼의 접근성용 숨김 문구는 버튼을 containing block으로 삼도록 배치해
+대화 밖의 페이지 scroll height를 늘리지 않게 한다.
+대화 스크롤은 맨 아래를 따라가는 상태에서만 자동 이동한다. ResizeObserver로 이미지와 텍스트의 크기 변화를 추적하며, 위로 스크롤하면 입력창 중앙 상단의 플로팅 버튼으로 맨 아래로 이동한다. 실시간 프롬프트는 placeholder의 이미지 canvas 안에 표시하며 사고 내용은 표시하지 않는다.
 
 
 ## 개발 및 검증

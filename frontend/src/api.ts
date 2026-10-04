@@ -52,7 +52,6 @@ export type Job = {
   error_code: string | null;
   message?: string | null;
   thinking_enabled?: boolean;
-  thinking_text?: string;
   prompt_text?: string;
   turn_id?: string | null;
 };

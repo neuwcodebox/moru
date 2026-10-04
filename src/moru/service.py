@@ -32,7 +32,6 @@ class Job:
     image_id: str | None = None
     error_code: str | None = None
     thinking_enabled: bool = False
-    thinking_text: str = ""
     prompt_text: str = ""
     turn_id: str | None = None
 
@@ -251,7 +250,6 @@ class Application:
                     self._jobs[job_id],
                     state="completed",
                     image_id=image.id,
-                    thinking_text="",
                     prompt_text="",
                 )
             output_path = None
@@ -270,7 +268,6 @@ class Application:
                     self._jobs[job_id],
                     state=state,
                     error_code=code,
-                    thinking_text="",
                     prompt_text="",
                 )
         finally:
@@ -284,12 +281,12 @@ class Application:
 
     def _prepare_prompt(self, job_id, request, settings, cancelled) -> str:
         if request.kind == "manual":
-            self._prompt_progress(job_id, "", request.text)
+            self._prompt_progress(job_id, request.text)
             return request.text
         self._progress(job_id, "prompting")
 
-        def progress(thinking, prompt):
-            self._prompt_progress(job_id, thinking, prompt)
+        def progress(_thinking, prompt):
+            self._prompt_progress(job_id, prompt)
 
         history = []
         if settings.history_turns and request.base_image_id:
@@ -323,14 +320,13 @@ class Application:
             )
         if not isinstance(prompt, str) or not prompt.strip():
             raise MoruError("PROMPT_LLM_FAILED")
-        with self._lock:
-            self._prompt_progress(job_id, self._jobs[job_id].thinking_text, prompt)
+        self._prompt_progress(job_id, prompt)
         return prompt
 
-    def _prompt_progress(self, job_id, thinking, prompt):
+    def _prompt_progress(self, job_id, prompt):
         with self._lock:
             self._jobs[job_id] = replace(
-                self._jobs[job_id], thinking_text=thinking[-65536:], prompt_text=prompt[-65536:]
+                self._jobs[job_id], prompt_text=prompt[-65536:]
             )
 
     def _write_image(self, prompt, settings, output_path, progress, cancelled):

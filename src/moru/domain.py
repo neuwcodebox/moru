@@ -11,7 +11,9 @@ MODEL_DEFAULTS = {
     "anima-aesthetic-v1.1": {"steps": 40, "cfg": 4.5},
 }
 MODEL_IDS = tuple(MODEL_DEFAULTS)
-REASONING_BUDGETS = {"low": 128, "medium": 256, "high": 512}
+# This is an LLM output reserve, not a hard input limit of the image model.
+FINAL_PROMPT_TOKEN_RESERVE = 512 + 128
+REASONING_SHARES = {"low": 0.5, "medium": 0.75, "high": 1.0}
 RequestKind = Literal["create", "refine", "manual"]
 RequestStatus = Literal["pending", "completed", "failed", "cancelled"]
 
@@ -35,14 +37,16 @@ class PromptSettings:
             raise MoruError("INVALID_SETTINGS")
         if (
             not isinstance(self.reasoning_level, str)
-            or self.reasoning_level not in REASONING_BUDGETS
+            or self.reasoning_level not in REASONING_SHARES
         ):
             raise MoruError("INVALID_SETTINGS")
 
     @property
     def thinking_budget(self) -> int:
-        # Reserve at least half the output allowance for the actual image prompt.
-        return min(REASONING_BUDGETS[self.reasoning_level], self.max_tokens // 2)
+        if not self.thinking:
+            return 0
+        available = max(0, self.max_tokens - FINAL_PROMPT_TOKEN_RESERVE)
+        return int(available * REASONING_SHARES[self.reasoning_level])
 
 
 @dataclass(frozen=True)

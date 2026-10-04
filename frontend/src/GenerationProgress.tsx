@@ -1,4 +1,4 @@
-import { Brain, Image, LoaderCircle, WandSparkles } from "lucide-react";
+import { Image, LoaderCircle, WandSparkles } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { Job } from "./api";
 
@@ -29,7 +29,7 @@ export default function GenerationProgress({ job }: { job: Job }) {
     job.state === "queued"
       ? "생성 대기 중…"
       : writing
-        ? job.thinking_enabled
+        ? job.thinking_enabled && !job.prompt_text
           ? "생각 중…"
           : "프롬프트 작성 중…"
         : job.state === "loading_model"
@@ -47,7 +47,7 @@ export default function GenerationProgress({ job }: { job: Job }) {
         )}
       </div>
       <div className="generation-canvas">
-        {!job.thinking_text && !job.prompt_text && (
+        {!job.prompt_text && (
           <>
             {writing ? (
               <WandSparkles size={32} aria-hidden="true" />
@@ -61,27 +61,14 @@ export default function GenerationProgress({ job }: { job: Job }) {
             </span>
           </>
         )}
-        {(job.thinking_text || job.prompt_text) && (
+        {job.prompt_text && (
           <div className="generation-text">
-            {job.thinking_text && (
-              <details
-                className="stream-section"
-                open={writing && !job.prompt_text}
-              >
-                <summary>
-                  <Brain size={14} aria-hidden="true" /> 생각 과정
-                </summary>
-                <LiveText text={job.thinking_text} />
-              </details>
-            )}
-            {job.prompt_text && (
-              <div className="stream-section">
-                <div className="stream-label">
-                  <WandSparkles size={14} aria-hidden="true" /> 생성 프롬프트
-                </div>
-                <LiveText text={job.prompt_text} />
+            <div className="stream-section">
+              <div className="stream-label">
+                <WandSparkles size={14} aria-hidden="true" /> 생성 프롬프트
               </div>
-            )}
+              <LiveText text={job.prompt_text} />
+            </div>
           </div>
         )}
       </div>

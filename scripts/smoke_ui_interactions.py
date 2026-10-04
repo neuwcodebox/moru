@@ -213,6 +213,7 @@ def main():
                 for field in (
                     "textClipboardMatches",
                     "stableCopyLayout",
+                    "singleConversationScroll",
                     "hoverPrompt",
                     "keyboardConversation",
                     "keyboardViewer",

@@ -207,7 +207,6 @@ export default function Conversation({
                   <Pencil size={15} aria-hidden="true" /> 수정
                 </button>
                 <CopyButton
-                  label="이미지 복사"
                   disabled={!sources[image.id] || (!!job && generatingTurn === image.turn_id)}
                   onCopy={async () => { await call("copy_image", image.id); }}
                   onError={onError}
