@@ -2,6 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import Modal from "./Modal";
 import { Expand, LoaderCircle, ZoomIn, ZoomOut } from "lucide-react";
 
+type ViewerTransform = { zoom: number; x: number; y: number };
+
+function zoomAt(view: ViewerTransform, factor: number, anchor = { x: 0, y: 0 }): ViewerTransform {
+  const zoom = Math.max(0.25, Math.min(8, view.zoom * factor));
+  if (zoom === view.zoom) return view;
+  const ratio = zoom / view.zoom;
+  // Keep the same image point beneath the anchor, measured from the viewport center.
+  return {
+    zoom,
+    x: anchor.x + (view.x - anchor.x) * ratio,
+    y: anchor.y + (view.y - anchor.y) * ratio,
+  };
+}
+
 export default function Lightbox({
   source,
   onClose,
@@ -15,40 +29,40 @@ export default function Lightbox({
   onClose: () => void;
   onReturnFocus?: () => void;
 }) {
-  const [zoom, setZoom] = useState(1);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [view, setView] = useState<ViewerTransform>({ zoom: 1, x: 0, y: 0 });
   const drag = useRef<{
     x: number;
     y: number;
-    startX: number;
-    startY: number;
   } | null>(null);
   const viewer = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const element = viewer.current;
     if (!element) return;
-    function wheel(event: WheelEvent) {
+    const wheel = (event: WheelEvent) => {
       event.preventDefault();
       event.stopPropagation();
-      setZoom((value) =>
-        Math.max(0.25, Math.min(8, value * (event.deltaY < 0 ? 1.1 : 1 / 1.1))),
-      );
-    }
+      if (event.deltaY === 0) return;
+      const bounds = element.getBoundingClientRect();
+      const anchor = {
+        x: event.clientX - bounds.left - bounds.width / 2,
+        y: event.clientY - bounds.top - bounds.height / 2,
+      };
+      setView((current) => zoomAt(current, event.deltaY < 0 ? 1.1 : 1 / 1.1, anchor));
+    };
     // React wheel listeners are passive; zoom must also cancel native scrolling.
     element.addEventListener("wheel", wheel, { passive: false });
     return () => element.removeEventListener("wheel", wheel);
   }, []);
   useEffect(() => {
-    setZoom(1);
-    setPosition({ x: 0, y: 0 });
+    setView({ zoom: 1, x: 0, y: 0 });
     drag.current = null;
   }, [imageId ?? source]);
-  function changeZoom(value: number) {
-    setZoom(Math.max(0.25, Math.min(8, value)));
+  function changeZoom(factor: number) {
+    setView((current) => zoomAt(current, factor));
   }
   function fit() {
-    setZoom(1);
-    setPosition({ x: 0, y: 0 });
+    setView({ zoom: 1, x: 0, y: 0 });
+    drag.current = null;
   }
   return (
     <Modal
@@ -67,11 +81,11 @@ export default function Lightbox({
           >
             <Expand size={18} aria-hidden="true" />
           </button>
-          <button aria-label="축소" onClick={() => changeZoom(zoom / 1.25)}>
+          <button aria-label="축소" onClick={() => changeZoom(1 / 1.25)}>
             <ZoomOut size={18} aria-hidden="true" />
           </button>
-          <span>{Math.round(zoom * 100)}%</span>
-          <button aria-label="확대" onClick={() => changeZoom(zoom * 1.25)}>
+          <span>{Math.round(view.zoom * 100)}%</span>
+          <button aria-label="확대" onClick={() => changeZoom(1.25)}>
             <ZoomIn size={18} aria-hidden="true" />
           </button>
         </div>
@@ -84,17 +98,15 @@ export default function Lightbox({
           drag.current = {
             x: event.clientX,
             y: event.clientY,
-            startX: position.x,
-            startY: position.y,
           };
           event.currentTarget.setPointerCapture?.(event.pointerId);
         }}
         onPointerMove={(event) => {
-          if (drag.current)
-            setPosition({
-              x: drag.current.startX + event.clientX - drag.current.x,
-              y: drag.current.startY + event.clientY - drag.current.y,
-            });
+          if (!drag.current) return;
+          const dx = event.clientX - drag.current.x;
+          const dy = event.clientY - drag.current.y;
+          drag.current = { x: event.clientX, y: event.clientY };
+          setView((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
         }}
         onPointerUp={() => {
           drag.current = null;
@@ -108,7 +120,7 @@ export default function Lightbox({
           src={source}
           draggable={false}
           style={{
-            transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
+            transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`,
           }}
         /> : <LoaderCircle className="spinner" size={24} aria-label="이미지를 불러오는 중" />}
       </div>

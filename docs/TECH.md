@@ -1009,6 +1009,11 @@ App은 모든 팝업에 대해 공통 modalOpen 상태를 계산해 헤더·대�
 팝업과 프롬프트 내부 scroll container는 overscroll-behavior로 스크롤 체인을 막는다.
 뷰어는 passive가 아닌 native wheel listener에서 기본 스크롤과 이벤트 전파를 막고
 확대·축소를 처리한다. 드래그에는 touch-action: none을 적용한다.
+Lightbox는 배율과 이동량을 하나의 상태로 갱신한다. 휠은 뷰어 중앙에서 커서까지의
+좌표를, 도구 모음은 뷰어 중앙을 기준으로 이미지 지점을 고정한다.
+새 이동량은 `anchor + (position - anchor) * (newZoom / oldZoom)`으로 계산하며
+배율 한도를 적용한 실제 비율을 사용한다. 드래그는 직전 포인터 위치의 차이만
+더하므로 드래그 중 확대해도 보정한 위치를 이전 시작 위치로 되돌리지 않는다.
 Modal의 선택적인 초점 복귀 callback으로 뷰어 종료 후 탐색한 이미지에 초점을 돌린다.
 
 화면 로고의 원본은 docs/ICON.png다. Vite에서 인라인하여 서버 없이 표시한다.

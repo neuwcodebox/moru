@@ -127,9 +127,35 @@
     await waitFor(() => document.querySelector('.viewer img'));
     const conversation = document.querySelector('.conversation');
     const backgroundScroll = conversation.scrollTop;
+    await waitFor(() => document.querySelector('.viewer img').naturalWidth > 0);
     const viewerFrame = document.querySelector('.viewer').getBoundingClientRect();
-    await call('wheel_at', viewerFrame.x + viewerFrame.width / 2, viewerFrame.y + viewerFrame.height / 2, -120);
+    const imagePointAt = (x, y) => {
+        const bounds = document.querySelector('.viewer img').getBoundingClientRect();
+        return [(x - bounds.left) / bounds.width, (y - bounds.top) / bounds.height];
+    };
+    const assertSamePoint = (before, after, name) => {
+        if (before.some((value, index) => Math.abs(value - after[index]) > 0.001))
+            throw new Error(`${name} moved the image point: ${before} -> ${after}`);
+    };
+    const originalBounds = document.querySelector('.viewer img').getBoundingClientRect();
+    const cursorX = originalBounds.left + originalBounds.width * 0.7;
+    const cursorY = originalBounds.top + originalBounds.height * 0.35;
+    const cursorPoint = imagePointAt(cursorX, cursorY);
+    await call('wheel_at', cursorX, cursorY, -120);
     await waitFor(() => document.querySelector('.viewer-toolbar').textContent.includes('110%'));
+    assertSamePoint(cursorPoint, imagePointAt(cursorX, cursorY), 'Cursor zoom');
+    const centerX = viewerFrame.left + viewerFrame.width / 2;
+    const centerY = viewerFrame.top + viewerFrame.height / 2;
+    const centerPoint = imagePointAt(centerX, centerY);
+    document.querySelector('button[aria-label="확대"]').click();
+    await waitFor(() => document.querySelector('.viewer-toolbar').textContent.includes('138%'));
+    assertSamePoint(centerPoint, imagePointAt(centerX, centerY), 'Toolbar zoom');
+    document.querySelector('button[aria-label="축소"]').click();
+    await waitFor(() => document.querySelector('.viewer-toolbar').textContent.includes('110%'));
+    assertSamePoint(centerPoint, imagePointAt(centerX, centerY), 'Toolbar zoom out');
+    await call('wheel_at', cursorX, cursorY, 120);
+    await waitFor(() => document.querySelector('.viewer-toolbar').textContent.includes('100%'));
+    assertSamePoint(cursorPoint, imagePointAt(cursorX, cursorY), 'Cursor zoom out');
     if (conversation.scrollTop !== backgroundScroll) throw new Error('Viewer wheel scrolled the background');
     document.querySelector('button[aria-label="화면 맞춤"]').click();
     await waitFor(() => document.querySelector('.viewer-toolbar').textContent.includes('100%'));
@@ -201,6 +227,7 @@
     return {ok: true, viewport: [innerWidth, innerHeight], imageClipboard, textClipboardMatches: textClipboard.text === expectedPrompt,
         stableCopyLayout, singleConversationScroll, centeredHoverPrompt, centeredGenerationPrompt,
         boundedPromptScroll: true, requestedPlaceholderRatio: true, viewerScrollIsolated: true,
+        cursorZoomAnchored: true, viewportZoomAnchored: true,
         settingsScrollIsolated, modelsScrollIsolated, promptDialogScrollIsolated,
         hoverResetAfterViewer: true, hoverPrompt: true, keyboardConversation: true, keyboardViewer: true,
         forkFeedback, forkedRows: forked.project.images.length,

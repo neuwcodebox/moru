@@ -268,6 +268,8 @@ def main():
                     "boundedPromptScroll",
                     "requestedPlaceholderRatio",
                     "viewerScrollIsolated",
+                    "cursorZoomAnchored",
+                    "viewportZoomAnchored",
                     "hoverResetAfterViewer",
                     "settingsScrollIsolated",
                     "modelsScrollIsolated",
