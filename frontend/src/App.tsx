@@ -56,6 +56,7 @@ export default function App() {
   const followLatest = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
   const busy = acting || job !== null;
+  const modalOpen = viewer || settingsOpen || modelsOpen || details !== null;
   const activeImage =
     project?.images.find((image) => image.turn_id === activeTurn) ?? project?.images.at(-1);
   const actingNow = useRef(false);
@@ -258,7 +259,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <header>
+      <header inert={modalOpen}>
         <span className="brand">
           <img className="brand-icon" src={appIcon} alt="" />
           moru
@@ -292,6 +293,7 @@ export default function App() {
         project={project}
         sources={sources}
         busy={busy}
+        inactive={modalOpen}
         job={job}
         scrollRef={conversation}
         followLatest={followLatest}
@@ -344,7 +346,7 @@ export default function App() {
           </button>
         </div>
       )}
-      <footer>
+      <footer inert={modalOpen}>
         {!atBottom && (
           <button
             className="scroll-bottom"
@@ -479,7 +481,7 @@ export default function App() {
             const selected = conversation.current?.querySelector<HTMLButtonElement>(
               ".turn.is-selected .image-button",
             );
-            (selected ?? input.current)?.focus();
+            (selected ?? input.current)?.focus({ preventScroll: true });
           }}
         />
       )}

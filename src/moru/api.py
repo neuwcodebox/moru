@@ -163,6 +163,8 @@ class Api:
             images.append(
                 {
                     "id": image.id,
+                    "width": image.settings.width,
+                    "height": image.settings.height,
                     "turn_id": request.id,
                     "request_text": request.text if request.kind != "manual" else None,
                     "created_at": image.created_at,

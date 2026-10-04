@@ -22,6 +22,8 @@ export type ProjectInfo = {
 };
 export type ImageItem = {
   id: string;
+  width: number;
+  height: number;
   request_text: string | null;
   created_at: string;
   parent_image_id: string | null;
@@ -43,6 +45,8 @@ export type Project = ProjectInfo & {
 export type ImageDetails = { id: string; prompt: string; settings: Settings };
 export type Job = {
   id: string;
+  width: number;
+  height: number;
   project_id: string;
   request_id: string;
   state: string;

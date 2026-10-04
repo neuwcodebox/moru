@@ -1,10 +1,11 @@
 """Opt-in WebView2/clipboard checks with synthetic history, no models or network."""
 
+import argparse
 import hashlib
 import json
 import shutil
 import uuid
-from dataclasses import replace
+from dataclasses import asdict, replace
 from importlib.resources import files
 from pathlib import Path
 from threading import Event
@@ -67,7 +68,8 @@ def synthetic_history(repository, data_dir, root):
                     parent,
                     "1girl, silver hair, blue eyes, red scarf, snowy street at night, "
                     f"scene {number}, "
-                    f"version {version}, warm street lighting, anime illustration",
+                    f"version {version}, warm street lighting, anime illustration"
+                    + (", detailed snowy scenery" * 300 if number == 3 else ""),
                     "images/fixture.png",
                     settings,
                     timestamp,
@@ -81,6 +83,10 @@ def synthetic_history(repository, data_dir, root):
 def main():
     import webview
 
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--width", type=int, default=1080)
+    parser.add_argument("--height", type=int, default=900)
+    args = parser.parse_args()
     root = application_root()
     review = root / "build" / f"ui-review-{uuid.uuid4().hex[:8]}"
     review.mkdir(parents=True)
@@ -95,9 +101,52 @@ def main():
         SimpleNamespace(create=forbidden, refine=forbidden, unload=lambda: None),
         SimpleNamespace(generate=forbidden, close=lambda: None),
         review / "data",
+        executor=SimpleNamespace(submit=lambda *args: None, shutdown=lambda **kwargs: None),
     )
 
     class TestApi(Api):
+        preview_prompt = "snowy street at night"
+
+        @endpoint
+        def get_model_status(self):
+            return [
+                {"id": model_id, "available": True, "filename": f"{model_id}.safetensors"}
+                for model_id in (
+                    "prompt", "anima-turbo-v1.1", "anima-aesthetic-v1.1", "text_encoder", "vae"
+                )
+            ]
+
+        @endpoint
+        def set_preview_prompt(self, text):
+            self.preview_prompt = text
+
+        @endpoint
+        def get_job(self, job_id):
+            return {
+                **asdict(application.get_job(job_id)),
+                "state": "cancelled" if self.preview_prompt is None else "prompting",
+                "prompt_text": self.preview_prompt or "",
+            }
+
+        @endpoint
+        def wheel_at(self, x, y, delta_y):
+            from System import Func, Object
+
+            task = window.native.Invoke(
+                Func[Object](
+                    lambda: window.native.browser.webview.CoreWebView2
+                    .CallDevToolsProtocolMethodAsync(
+                        "Input.dispatchMouseEvent",
+                        json.dumps({
+                            "type": "mouseWheel", "x": x, "y": y,
+                            "deltaX": 0, "deltaY": delta_y,
+                        }),
+                    )
+                )
+            )
+            if not task.Wait(15000):
+                raise RuntimeError("wheel input did not finish")
+
         @endpoint
         def mark_stage(self, name):
             with (review / "stages.txt").open("a", encoding="utf-8") as progress:
@@ -139,7 +188,7 @@ def main():
             from System import Func, Object
             from System.IO import FileMode, FileStream
 
-            if name not in ("hover", "copy", "viewer", "fork"):
+            if name not in ("hover", "copy", "viewer", "fork", "generation", "settings", "models"):
                 raise ValueError("unexpected capture name")
             stream = FileStream(str(review / f"{name}.png"), FileMode.Create)
             try:
@@ -164,8 +213,8 @@ def main():
             copy_to_clipboard=lambda text: copy_text(window, text),
             copy_image_to_clipboard=lambda content: copy_image(window, content),
         ),
-        width=1080,
-        height=900,
+        width=args.width,
+        height=args.height,
         hidden=True,
     )
     results, errors, original_clipboard = [], [], []
@@ -214,6 +263,15 @@ def main():
                     "textClipboardMatches",
                     "stableCopyLayout",
                     "singleConversationScroll",
+                    "centeredHoverPrompt",
+                    "centeredGenerationPrompt",
+                    "boundedPromptScroll",
+                    "requestedPlaceholderRatio",
+                    "viewerScrollIsolated",
+                    "hoverResetAfterViewer",
+                    "settingsScrollIsolated",
+                    "modelsScrollIsolated",
+                    "promptDialogScrollIsolated",
                     "hoverPrompt",
                     "keyboardConversation",
                     "keyboardViewer",

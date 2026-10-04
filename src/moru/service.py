@@ -26,6 +26,8 @@ class Job:
     id: str
     request_id: str
     project_id: str
+    width: int
+    height: int
     state: str = "queued"
     step: int | None = None
     total: int | None = None
@@ -168,7 +170,14 @@ class Application:
             return self._enqueue(replace(request, status="pending", error_code=None))
 
     def _enqueue(self, request: Request) -> Job:
-        job = Job(self._new_id(), request.id, request.project_id, turn_id=request.turn_id)
+        job = Job(
+            self._new_id(),
+            request.id,
+            request.project_id,
+            width=request.settings.width,
+            height=request.settings.height,
+            turn_id=request.turn_id,
+        )
         self._jobs[job.id] = job
         self._active_job = job.id
         self._cancelled = Event()

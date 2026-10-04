@@ -1,17 +1,25 @@
-import { useEffect, useState } from "react";
-import { LoaderCircle, WandSparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { LoaderCircle } from "lucide-react";
 import { call } from "./api";
 import type { ImageDetails } from "./api";
+import PromptText from "./PromptText";
+import { imageFrameStyle } from "./imageFrame";
 
 export default function ImagePreview({
   id,
   source,
+  width,
+  height,
+  inactive,
   onOpen,
   onFocus,
   onLoad,
 }: {
   id: string;
   source: string;
+  width: number;
+  height: number;
+  inactive: boolean;
   onOpen: () => void;
   onFocus: () => void;
   onLoad: () => void;
@@ -19,6 +27,19 @@ export default function ImagePreview({
   const [revealed, setRevealed] = useState(false);
   const [prompt, setPrompt] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const suppressReveal = useRef(false);
+  useEffect(() => {
+    if (inactive) {
+      suppressReveal.current = true;
+      setRevealed(false);
+    }
+    function keyboardFocus(event: KeyboardEvent) {
+      if (!inactive && event.key === "Tab") suppressReveal.current = false;
+    }
+    // Tab may start outside this image; restored modal focus must stay suppressed.
+    document.addEventListener("keydown", keyboardFocus, true);
+    return () => document.removeEventListener("keydown", keyboardFocus, true);
+  }, [inactive]);
   useEffect(() => {
     if (!revealed || prompt !== null) return;
     let current = true;
@@ -35,22 +56,33 @@ export default function ImagePreview({
   return (
     <button
       className="image-button"
+      style={imageFrameStyle(width, height)}
       aria-label="이미지 전체 화면 보기"
-      onClick={onOpen}
-      onMouseEnter={() => setRevealed(true)}
+      onClick={() => {
+        suppressReveal.current = true;
+        setRevealed(false);
+        onOpen();
+      }}
+      onMouseEnter={() => {
+        if (!inactive && !suppressReveal.current) setRevealed(true);
+      }}
+      onMouseMove={() => {
+        if (inactive) return;
+        suppressReveal.current = false;
+        setRevealed(true);
+      }}
       onMouseLeave={() => setRevealed(false)}
       onFocus={() => {
         onFocus();
-        setRevealed(true);
+        if (!inactive && !suppressReveal.current) setRevealed(true);
       }}
       onBlur={() => setRevealed(false)}
     >
       <img src={source} alt="생성 이미지" onLoad={onLoad} />
       <span className={`image-prompt-overlay ${revealed ? "revealed" : ""}`} aria-hidden={!revealed}>
-        <span className="stream-label"><WandSparkles size={14} /> 생성 프롬프트</span>
-        <span className="prompt-content">
+        <PromptText>
           {error || prompt || <LoaderCircle className="spinner" size={18} />}
-        </span>
+        </PromptText>
       </span>
     </button>
   );

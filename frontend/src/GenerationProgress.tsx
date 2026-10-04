@@ -1,27 +1,7 @@
 import { Image, LoaderCircle, WandSparkles } from "lucide-react";
-import { useEffect, useRef } from "react";
 import type { Job } from "./api";
-
-function LiveText({ text }: { text: string }) {
-  const panel = useRef<HTMLPreElement>(null);
-  const following = useRef(true);
-  useEffect(() => {
-    if (panel.current && following.current)
-      panel.current.scrollTop = panel.current.scrollHeight;
-  }, [text]);
-  return (
-    <pre
-      ref={panel}
-      onScroll={(event) => {
-        const element = event.currentTarget;
-        following.current =
-          element.scrollHeight - element.scrollTop - element.clientHeight < 24;
-      }}
-    >
-      {text}
-    </pre>
-  );
-}
+import PromptText from "./PromptText";
+import { imageFrameStyle } from "./imageFrame";
 
 export default function GenerationProgress({ job }: { job: Job }) {
   const writing = job.state === "prompting";
@@ -36,7 +16,11 @@ export default function GenerationProgress({ job }: { job: Job }) {
           ? "이미지 모델을 불러오는 중…"
           : "이미지 생성 중…";
   return (
-    <section className="generation-placeholder" aria-label="생성 진행">
+    <section
+      className="generation-placeholder"
+      aria-label="생성 진행"
+      style={imageFrameStyle(job.width, job.height)}
+    >
       <div className="generation-stage" role="status" aria-live="polite">
         <LoaderCircle className="spinner" size={18} aria-hidden="true" />
         <span>{label}</span>
@@ -62,14 +46,7 @@ export default function GenerationProgress({ job }: { job: Job }) {
           </>
         )}
         {job.prompt_text && (
-          <div className="generation-text">
-            <div className="stream-section">
-              <div className="stream-label">
-                <WandSparkles size={14} aria-hidden="true" /> 생성 프롬프트
-              </div>
-              <LiveText text={job.prompt_text} />
-            </div>
-          </div>
+          <PromptText follow>{job.prompt_text}</PromptText>
         )}
       </div>
       {job.step != null && job.total != null && (

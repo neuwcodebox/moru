@@ -13,6 +13,7 @@ import type { Job, Project, UnfinishedRequest } from "./api";
 import GenerationProgress from "./GenerationProgress";
 import CopyButton from "./CopyButton";
 import ImagePreview from "./ImagePreview";
+import { imageFrameStyle } from "./imageFrame";
 import { call } from "./api";
 import appIcon from "../../docs/ICON.png?inline";
 
@@ -78,6 +79,7 @@ export default function Conversation({
   project,
   sources,
   busy,
+  inactive,
   job,
   scrollRef,
   followLatest,
@@ -95,6 +97,7 @@ export default function Conversation({
   project: Project | null;
   sources: Record<string, string>;
   busy: boolean;
+  inactive: boolean;
   job: Job | null;
   scrollRef: RefObject<HTMLElement | null>;
   followLatest: RefObject<boolean>;
@@ -111,7 +114,9 @@ export default function Conversation({
 }) {
   const content = useRef<HTMLDivElement>(null);
   const previousProject = useRef<string | undefined>(undefined);
+  const scrolledTurn = useRef<string | null>(null);
   function follow() {
+    if (inactive) return;
     const element = scrollRef.current;
     if (element && followLatest.current)
       element.scrollTop = element.scrollHeight;
@@ -130,12 +135,14 @@ export default function Conversation({
     observer.observe(content.current);
     if (scrollRef.current) observer.observe(scrollRef.current);
     return () => observer.disconnect();
-  }, []);
+  }, [inactive]);
   useLayoutEffect(() => {
+    if (inactive || scrolledTurn.current === activeTurnId) return;
+    scrolledTurn.current = activeTurnId;
     content.current?.querySelector<HTMLElement>(".turn.is-selected")?.scrollIntoView?.({
       block: "nearest", behavior: "instant",
     });
-  }, [activeTurnId]);
+  }, [activeTurnId, inactive]);
   const pending = project?.unfinished_requests.find(
     (request) => request.id === job?.request_id,
   );
@@ -146,6 +153,7 @@ export default function Conversation({
     <main
       ref={scrollRef}
       className="conversation"
+      inert={inactive}
       aria-label="대화"
       onScroll={(event) => {
         const element = event.currentTarget;
@@ -185,12 +193,19 @@ export default function Conversation({
                   key={image.id}
                   id={image.id}
                   source={sources[image.id]}
+                  width={image.width}
+                  height={image.height}
+                  inactive={inactive}
                   onOpen={() => onViewImage(image.turn_id)}
                   onFocus={() => onFocusImage(image.turn_id)}
                   onLoad={follow}
                 />
               ) : (
-                <div className="image-placeholder" role="status">
+                <div
+                  className="image-placeholder"
+                  role="status"
+                  style={imageFrameStyle(image.width, image.height)}
+                >
                   <LoaderCircle
                     className="spinner"
                     size={20}

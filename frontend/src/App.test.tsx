@@ -31,6 +31,8 @@ const empty: Project = {
 };
 const image = {
   id: "i1",
+  width: 1024,
+  height: 1024,
   request_text: "소녀를 그려줘",
   created_at: empty.created_at,
   parent_image_id: null,
@@ -57,6 +59,7 @@ beforeEach(() => {
       }),
     ),
     get_project: vi.fn(() => success(current)),
+    get_model_status: vi.fn(() => success([])),
     list_projects: vi.fn(() => success([empty])),
     get_image_source: vi.fn(() => success("data:image/png;base64,abc")),
     submit_request: vi.fn(() => {
@@ -64,12 +67,12 @@ beforeEach(() => {
       return success({
         id: "j1",
         project_id: "p1",
-        state: "queued",
+        width: 1024, height: 1024, state: "queued",
         request_id: "r1",
       });
     }),
     get_job: vi.fn(() =>
-      success({ id: "j1", project_id: "p1", state: "completed" }),
+      success({ id: "j1", project_id: "p1", width: 1024, height: 1024, state: "completed" }),
     ),
     cancel_job: vi.fn(() => success(undefined)),
     copy_prompt: vi.fn(() => success(undefined)),
@@ -86,7 +89,7 @@ beforeEach(() => {
       }),
     ),
     generate_from_prompt: vi.fn(() =>
-      success({ id: "j1", project_id: "p1", state: "queued" }),
+      success({ id: "j1", project_id: "p1", width: 1024, height: 1024, state: "queued" }),
     ),
     update_settings: vi.fn((values) => success(values)),
     retry_request: vi.fn(() => {
@@ -99,7 +102,7 @@ beforeEach(() => {
           message: null,
         })),
       };
-      return success({ id: "j1", project_id: "p1", state: "queued" });
+      return success({ id: "j1", project_id: "p1", width: 1024, height: 1024, state: "queued" });
     }),
     create_project: vi.fn(() => {
       current = { ...empty, id: "p2" };
@@ -112,7 +115,7 @@ beforeEach(() => {
         project_id: "p1",
         request_id: "r2",
         turn_id: "r1",
-        state: "queued",
+        width: 1024, height: 1024, state: "queued",
       }),
     ),
   };
@@ -157,6 +160,62 @@ describe("conversation", () => {
     await screen.findByAltText("생성 이미지");
     await user.hover(screen.getByRole("button", { name: "이미지 전체 화면 보기" }));
     expect(await screen.findByText("프롬프트 오류")).toBeTruthy();
+  });
+
+  it.each([
+    ["생성 설정", "생성 설정"],
+    ["모델 설정", "모델 설정"],
+    ["수정", "프롬프트"],
+    ["이미지 전체 화면 보기", "이미지 보기"],
+  ])("isolates all background controls while the %s dialog is open", async (button, title) => {
+    current = withImage;
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByAltText("생성 이미지");
+    await user.click(screen.getByRole("button", { name: button }));
+    await screen.findByRole("dialog", { name: title });
+    const background = [
+      document.querySelector("header")!,
+      document.querySelector("main")!,
+      document.querySelector("footer")!,
+    ];
+    expect(background.every((element) => element.hasAttribute("inert"))).toBe(true);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(background.every((element) => !element.hasAttribute("inert"))).toBe(true);
+  });
+
+  it("hides the prompt on opening the viewer and keeps it hidden after focus returns", async () => {
+    current = withImage;
+    const user = userEvent.setup();
+    render(<App />);
+    const image = await screen.findByRole("button", { name: "이미지 전체 화면 보기" });
+    await user.hover(image);
+    await within(image).findByText("private actual prompt");
+    await user.click(image);
+    expect(image.querySelector(".image-prompt-overlay")?.getAttribute("aria-hidden")).toBe("true");
+    expect(screen.getByRole("main", { hidden: true }).hasAttribute("inert")).toBe(true);
+    await user.keyboard("{Escape}");
+    expect(document.activeElement).toBe(image);
+    expect(image.querySelector(".image-prompt-overlay")?.getAttribute("aria-hidden")).toBe("true");
+    expect(screen.getByRole("main").hasAttribute("inert")).toBe(false);
+    fireEvent.mouseEnter(image);
+    expect(image.querySelector(".image-prompt-overlay")?.getAttribute("aria-hidden")).toBe("true");
+    fireEvent.mouseMove(image);
+    expect(image.querySelector(".image-prompt-overlay")?.getAttribute("aria-hidden")).toBe("false");
+  });
+
+  it("reveals prompts again on intentional keyboard focus after closing settings", async () => {
+    current = withImage;
+    const user = userEvent.setup();
+    render(<App />);
+    const image = await screen.findByRole("button", { name: "이미지 전체 화면 보기" });
+    await user.click(screen.getByLabelText("생성 설정"));
+    await user.keyboard("{Escape}");
+    for (let count = 0; count < 10 && document.activeElement !== image; count++)
+      await user.tab({ shift: true });
+    expect(document.activeElement).toBe(image);
+    expect(image.querySelector(".image-prompt-overlay")?.getAttribute("aria-hidden")).toBe("false");
   });
 
   it("confirms successful branching into a new session and reports failures without success feedback", async () => {
@@ -262,7 +321,7 @@ describe("conversation", () => {
   it("does not change image versions while generation is running", async () => {
     current = {...withImage, images: [{...image, versions: ["i1", "i1b"]}]};
     api.get_job.mockResolvedValue({ok: true, value: {
-      id: "j1", project_id: "p1", request_id: "r2", turn_id: "r1", state: "generating",
+      id: "j1", project_id: "p1", request_id: "r2", turn_id: "r1", width: 1024, height: 1024, state: "generating",
     }});
     const user = userEvent.setup();
     render(<App />);
@@ -282,7 +341,7 @@ describe("conversation", () => {
         project_id: "p1",
         request_id: "r2",
         turn_id: "r1",
-        state: "generating",
+        width: 1024, height: 1024, state: "generating",
         prompt_text: "moonlit forest",
         step: 2,
         total: 10,
@@ -313,7 +372,7 @@ describe("conversation", () => {
         project_id: "p1",
         request_id: "r2",
         turn_id: "r1",
-        state: "generating",
+        width: 1024, height: 1024, state: "generating",
         step: 1,
         total: 10,
         prompt_text: "forest, moonlight",
@@ -404,7 +463,7 @@ describe("conversation", () => {
           value: {
             id: "j1",
             project_id: "p1",
-            state: "generating",
+            width: 1024, height: 1024, state: "generating",
             step: 3,
             total: 10,
           },
@@ -454,7 +513,7 @@ describe("conversation", () => {
     const user = userEvent.setup();
     api.get_job.mockResolvedValue({
       ok: true,
-      value: { id: "j1", project_id: "p1", state: "loading_model" },
+      value: { id: "j1", project_id: "p1", width: 1024, height: 1024, state: "loading_model" },
     });
     api.cancel_job.mockRejectedValue(new Error("중지 요청 실패"));
     render(<App />);
@@ -475,7 +534,7 @@ describe("conversation", () => {
     api.get_project.mockRejectedValue(new Error("대화를 불러올 수 없습니다."));
     api.get_job.mockResolvedValue({
       ok: true,
-      value: { id: "j1", project_id: "p1", state: "prompting" },
+      value: { id: "j1", project_id: "p1", width: 1024, height: 1024, state: "prompting" },
     });
     const user = userEvent.setup();
     render(<App />);
@@ -505,7 +564,7 @@ describe("conversation", () => {
     };
     api.get_job.mockResolvedValue({
       ok: true,
-      value: { id: "j1", project_id: "p1", state: "prompting" },
+      value: { id: "j1", project_id: "p1", width: 1024, height: 1024, state: "prompting" },
     });
     const user = userEvent.setup();
     render(<App />);
@@ -538,7 +597,7 @@ describe("conversation", () => {
       value: {
         id: "j1",
         project_id: "p1",
-        state: "prompting",
+        width: 1024, height: 1024, state: "prompting",
         thinking_enabled: true,
         thinking_text: "Choosing the scene",
       },
@@ -810,6 +869,21 @@ it("pans the fullscreen image while dragging and resets its position when fitted
   expect(image.style.transform).toBe("translate(30px, 40px) scale(1)");
   await user.click(screen.getByLabelText("화면 맞춤"));
   expect(image.style.transform).toBe("translate(0px, 0px) scale(1)");
+});
+
+it("consumes viewer wheel gestures so they cannot scroll the background", () => {
+  render(<Lightbox source="data:image/png;base64,abc" onClose={vi.fn()} />);
+  const wheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -100 });
+  const background = vi.fn();
+  document.addEventListener("wheel", background);
+  try {
+    fireEvent(screen.getByAltText("생성 이미지 전체 화면"), wheel);
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(background).not.toHaveBeenCalled();
+    expect(screen.getByText("110%")).toBeTruthy();
+  } finally {
+    document.removeEventListener("wheel", background);
+  }
 });
 
 it("waits for the pywebview ready event before loading state", async () => {

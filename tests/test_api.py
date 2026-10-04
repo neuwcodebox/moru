@@ -11,6 +11,7 @@ def test_main_conversation_view_hides_prompt_and_generation_metadata(app):
     image = generate(app, project.id)
     view = api.get_project(project.id)["value"]["images"][0]
     assert view["request_text"] == "소녀를 그려줘"
+    assert (view["width"], view["height"]) == (image.settings.width, image.settings.height)
     assert "prompt" not in view
     assert "settings" not in view
     assert "image_path" not in view
@@ -44,6 +45,18 @@ def test_live_prompt_is_available_but_reasoning_never_crosses_the_ui_bridge(app)
     assert "thinking_text" not in completed
     assert completed["prompt_text"] == ""
     assert api.get_image_details(completed["image_id"])["value"]["prompt"] == "night, girl"
+
+
+def test_generation_job_keeps_the_requested_image_size_when_settings_change(app):
+    api = Api(app)
+    project = app.create_project()
+    app.update_settings(GenerationSettings(width=832, height=1216))
+    job = api.submit_request(project.id, "portrait")["value"]
+    assert (job["width"], job["height"]) == (832, 1216)
+    app.update_settings(GenerationSettings(width=1216, height=832))
+    app.scheduler.run_next()
+    completed = api.get_job(job["id"])["value"]
+    assert (completed["width"], completed["height"]) == (832, 1216)
 
 
 def test_manual_prompt_stays_in_details_instead_of_appearing_as_user_chat(app):

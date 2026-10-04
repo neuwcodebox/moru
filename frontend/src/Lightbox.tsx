@@ -23,6 +23,21 @@ export default function Lightbox({
     startX: number;
     startY: number;
   } | null>(null);
+  const viewer = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = viewer.current;
+    if (!element) return;
+    function wheel(event: WheelEvent) {
+      event.preventDefault();
+      event.stopPropagation();
+      setZoom((value) =>
+        Math.max(0.25, Math.min(8, value * (event.deltaY < 0 ? 1.1 : 1 / 1.1))),
+      );
+    }
+    // React wheel listeners are passive; zoom must also cancel native scrolling.
+    element.addEventListener("wheel", wheel, { passive: false });
+    return () => element.removeEventListener("wheel", wheel);
+  }, []);
   useEffect(() => {
     setZoom(1);
     setPosition({ x: 0, y: 0 });
@@ -64,9 +79,7 @@ export default function Lightbox({
     >
       <div
         className="viewer"
-        onWheel={(event) =>
-          changeZoom(zoom * (event.deltaY < 0 ? 1.1 : 1 / 1.1))
-        }
+        ref={viewer}
         onPointerDown={(event) => {
           drag.current = {
             x: event.clientX,

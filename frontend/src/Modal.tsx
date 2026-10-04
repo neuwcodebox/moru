@@ -61,7 +61,7 @@ export default function Modal({
     return () => {
       document.removeEventListener("keydown", keydown);
       if (returnFocus.current) returnFocus.current();
-      else previous?.focus();
+      else previous?.focus({ preventScroll: true });
     };
   }, []);
   return (

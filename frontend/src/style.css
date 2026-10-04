@@ -139,7 +139,11 @@ header select {
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
+  scrollbar-gutter: stable;
   padding: 34px max(24px, calc((100vw - 820px) / 2)) 12px;
+}
+.conversation[inert] {
+  overflow: hidden;
 }
 .conversation > div {
   min-height: 100%;
@@ -231,7 +235,8 @@ header select {
   inset: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  justify-content: center;
+  overflow: hidden;
   padding: 22px;
   background: #172231c7;
   backdrop-filter: blur(9px);
@@ -246,13 +251,23 @@ header select {
 }
 .prompt-content {
   display: block;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: #c0cee0;
   font-size: 12px;
   line-height: 1.7;
+}
+.prompt-text {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  max-height: 100%;
+  gap: 14px;
 }
 .copy-button {
   position: relative;
@@ -322,8 +337,8 @@ header select {
 .image-button img {
   display: block;
   max-width: 100%;
-  max-height: 520px;
-  height: auto;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
 .image-actions {
@@ -350,7 +365,6 @@ header select {
   padding: 6px;
 }
 .image-placeholder {
-  height: 200px;
   background: #1f242c;
   display: grid;
   place-items: center;
@@ -446,6 +460,7 @@ footer {
   flex-shrink: 0;
 }
 .generation-placeholder {
+  position: relative;
   width: min(550px, 100%);
   margin: 0 0 30px;
   border: 1px solid #394451;
@@ -457,6 +472,10 @@ footer {
   margin-bottom: 0;
 }
 .generation-stage {
+  position: absolute;
+  top: 0;
+  width: 100%;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -469,7 +488,10 @@ footer {
   font-variant-numeric: tabular-nums;
 }
 .generation-canvas {
-  min-height: 240px;
+  position: absolute;
+  inset: 0;
+  padding: 54px 18px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -480,6 +502,9 @@ footer {
   font-size: 12px;
 }
 .generation-placeholder > progress {
+  position: absolute;
+  bottom: 0;
+  margin: 0;
   display: block;
   width: 100%;
   height: 4px;
@@ -495,27 +520,13 @@ footer {
 .generation-placeholder > progress::-moz-progress-bar {
   background: #acc0dc;
 }
-.generation-text {
-  width: 100%;
-  padding: 14px 18px;
-}
 .stream-label {
   display: flex;
   align-items: center;
   gap: 7px;
   color: #b5c3d6;
   font-size: 12px;
-}
-.stream-section pre {
-  margin: 10px 0 0;
-  max-height: 280px;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.7;
-  color: #99a8bc;
+  flex-shrink: 0;
 }
 .spinner {
   animation: spin 1s linear infinite;
@@ -564,6 +575,7 @@ footer {
   padding: 24px;
 }
 .modal {
+  overscroll-behavior: contain;
   width: 520px;
   max-width: 100%;
   max-height: 90dvh;
@@ -675,6 +687,7 @@ footer {
   .viewer-toolbar .viewer-position { display: none; }
 }
 .viewer {
+  overscroll-behavior: contain;
   flex: 1;
   min-height: 0;
   overflow: hidden;
