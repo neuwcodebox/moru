@@ -74,6 +74,7 @@ def main():
             return
         assert report["image_size"] == [1024, 1024]
         assert report["prompt_written"]
+        assert report["conversation_image_visible"]
         with sqlite3.connect(smoke_root / "data/anima.db") as database:
             prompt = database.execute(
                 "SELECT prompt FROM images WHERE id=?", (report["image_id"],)

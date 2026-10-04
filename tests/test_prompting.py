@@ -190,3 +190,15 @@ def test_a_cancelled_prompt_does_not_load_the_model(tmp_path):
         LlamaPrompts(ModelPaths(tmp_path), load_llama=load).create("girl", cancelled=cancelled)
     assert error.value.code == "GENERATION_CANCELLED"
     load.assert_not_called()
+
+
+def test_a_stream_without_a_normal_end_is_not_used_as_a_finished_prompt(tmp_path):
+    paths = ModelPaths(tmp_path)
+    model = paths.get("prompt")
+    model.parent.mkdir(parents=True)
+    model.write_bytes(b"fake gguf")
+    llm = Mock(metadata={})
+    llm.create_chat_completion.side_effect = lambda **kwargs: completion("girl", None)
+    with pytest.raises(MoruError) as error:
+        LlamaPrompts(paths, load_llama=Mock(return_value=llm)).create("girl")
+    assert error.value.code == "PROMPT_LLM_FAILED"

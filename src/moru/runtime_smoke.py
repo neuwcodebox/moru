@@ -44,29 +44,30 @@ def verify_window(window, report_path: Path, ui_only=False):
                 });
                 const settings = await call('get_settings');
                 const promptSettings = await call('get_prompt_settings');
-                if (__UI_ONLY__) {
-                    const waitFor = async (predicate) => {
-                        if (predicate()) return;
-                        await new Promise(resolve => {
-                            const observer = new MutationObserver(() => {
-                                if (predicate()) { observer.disconnect(); resolve(); }
-                            });
-                            observer.observe(document.body,
-                                {childList: true, subtree: true, attributes: true});
+                const waitFor = async (predicate) => {
+                    if (predicate()) return;
+                    await new Promise(resolve => {
+                        const observer = new MutationObserver(() => {
+                            if (predicate()) { observer.disconnect(); resolve(); }
                         });
-                    };
+                        observer.observe(document.body,
+                            {childList: true, subtree: true, attributes: true});
+                    });
+                };
+                const setValue = async (input, value) => {
+                    const prototype = input instanceof HTMLTextAreaElement
+                        ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                    Object.getOwnPropertyDescriptor(prototype, 'value').set.call(input, value);
+                    input.dispatchEvent(new Event('input', {bubbles: true}));
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                };
+                if (__UI_ONLY__) {
                     document.querySelector('.settings-button').click();
                     await waitFor(() => document.querySelector('.advanced-settings'));
                     document.querySelector('.advanced-settings summary').click();
                     const controls = document.querySelectorAll('.advanced-settings input');
                     if (controls[0].value !== '8192' || controls[1].value !== '4096'
                         || !controls[2].checked) throw new Error('Incorrect prompt defaults');
-                    const setValue = async (input, value) => {
-                        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
-                            .set.call(input, value);
-                        input.dispatchEvent(new Event('input', {bubbles: true}));
-                        await new Promise(resolve => setTimeout(resolve, 0));
-                    };
                     await setValue(controls[0], '4096');
                     await setValue(controls[1], '2048');
                     controls[2].click();
@@ -82,9 +83,26 @@ def verify_window(window, report_path: Path, ui_only=False):
                         prompt_defaults: promptSettings, saved_prompt_settings: saved,
                         ui_only: true};
                 }
-                const project = await call('create_project');
-                const job = await call('submit_request', project.id,
-                    '은발 소녀가 편의점 앞에서 컵라면을 먹는 장면');
+                const originalSubmit = api.submit_request;
+                let accepted;
+                const submission = new Promise((resolve, reject) => {
+                    accepted = async (...args) => {
+                        try {
+                            const response = await originalSubmit(...args);
+                            if (response.ok) resolve(response.value);
+                            else reject(new Error(response.error.code));
+                            return response;
+                        } catch (error) { reject(error); throw error; }
+                    };
+                });
+                let job;
+                try {
+                    api.submit_request = accepted;
+                    await setValue(document.querySelector('.composer textarea'),
+                        '은발 소녀가 편의점 앞에서 컵라면을 먹는 장면');
+                    document.querySelector('.composer').requestSubmit();
+                    job = await submission;
+                } finally { api.submit_request = originalSubmit; }
                 let result;
                 do {
                     result = await call('get_job', job.id);
@@ -93,16 +111,17 @@ def verify_window(window, report_path: Path, ui_only=False):
                     if (result.state !== 'completed')
                         await new Promise(resolve => setTimeout(resolve, 250));
                 } while (result.state !== 'completed');
-                const updated = await call('open_project', project.id);
+                await waitFor(() => document.querySelector('.image-button img')
+                    && !document.querySelector('.composer textarea').disabled);
+                const updated = await call('get_project', job.project_id);
                 const image = updated.images[0];
                 const details = await call('get_image_details', image.id);
-                const source = await call('get_image_source', image.id);
-                const decoded = new Image();
-                decoded.src = source;
+                const decoded = document.querySelector('.image-button img');
                 await decoded.decode();
                 return {ok: true, title: document.title,
                     defaults: settings, prompt_defaults: promptSettings, image_id: image.id,
                     prompt_written: details.prompt.length > 0,
+                    conversation_image_visible: true,
                     actual_seed: details.settings.seed,
                     image_size: [decoded.naturalWidth, decoded.naturalHeight]};
             })().catch(error => ({ok: false, error: String(error.message)}))
