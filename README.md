@@ -25,16 +25,34 @@ Anima Turbo는 빠르게 시도하기에, Anima Aesthetic은 충분한 단계를
 
 ## 시작하기
 
-1. Windows용 `Moru.zip`의 압축을 풀고 `Moru.exe`를 실행합니다.
-2. **모델 설정**에서 필요한 모델을 다운로드하거나 이미 받은 파일을 선택합니다.
-3. 입력창에 원하는 장면을 설명합니다.
+Windows에서 NVIDIA GPU와 드라이버, Windows WebView2 Runtime이 필요합니다.
+Git, Python 3.12, uv, Node.js 22.12 이상을 준비한 뒤 PowerShell에서 다음 명령을 실행하세요.
+처음 준비할 때는 의존성과 ComfyUI를 다운로드하므로 인터넷 연결이 필요합니다.
 
-NVIDIA GPU 드라이버와 Windows WebView2 Runtime이 필요합니다.
-배포 패키지에는 Python과 앱 실행에 필요한 라이브러리가 들어 있습니다. 모델은 별도로 준비합니다.
-모델의 사용 조건은 각 배포자의 라이선스를 따릅니다.
+```powershell
+git clone https://github.com/neuwcodebox/moru.git
+cd moru
+uv sync --frozen --extra inference
+uv run --extra inference python scripts/setup_comfyui.py
+cd frontend
+npm.cmd ci
+npm.cmd run build
+cd ..
+uv run --extra inference python -m moru
+```
 
-모델과 작업 기록은 앱 폴더의 `models/`, `data/`에 보관합니다.
-앱 폴더를 통째로 옮기면 작업 기록과 폴더 안에 저장한 모델도 함께 옮길 수 있습니다.
+앱이 열리면 **모델 설정**에서 필요한 모델을 다운로드하거나 이미 받은 파일을 선택하고,
+입력창에 원하는 장면을 설명하세요. 모델은 저장소에 포함되어 있지 않으며,
+사용 조건은 각 배포자의 라이선스를 따릅니다.
+
+다음부터는 저장소 폴더에서 아래 명령으로 실행하면 됩니다.
+
+```powershell
+uv run --extra inference python -m moru
+```
+
+모델과 작업 기록은 저장소 폴더의 `models/`, `data/`에 보관합니다.
+저장소 폴더를 통째로 옮기면 작업 기록과 폴더 안에 저장한 모델도 함께 옮길 수 있습니다.
 
 ## 개발
 
