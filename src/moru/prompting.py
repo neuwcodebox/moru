@@ -19,13 +19,16 @@ from moru.ports import PromptProgress
 log = logging.getLogger(__name__)
 CREATE_SYSTEM = (
     "Convert the user's visual request into one complete English positive image prompt. "
+    "Include only requested subjects; never add people to an animal-only scene. "
     "Output only the prompt, without explanations, markdown, quotes or negative prompts. "
+    "Keep thinking brief: identify visual subjects and changes, without restating instructions. "
     "The existing prompt is the current visual state. The latest request takes priority; "
     "use history only to resolve references. Preserve requested details and each subject's "
     "appearance, actions and position. Do not invent unrelated subjects or styles. "
     "Combine short visual sentences with relevant comma-separated booru tags. "
     "Use lowercase tags with spaces, except score_* tags. "
     "Order tags: optional quality, subject count, requested character/series/artist, general. "
+    "Human-count tags apply only to requested people. "
     "Prefix requested artist tags with @. Add rating tags only when requested. "
     "Never repeat tags or stack quality tags."
 )
@@ -285,7 +288,7 @@ class LlamaPrompts:
                     top_p=0.95 if settings.thinking else 0.8,
                     top_k=20,
                     min_p=0.0,
-                    presence_penalty=1.5,
+                    repeat_penalty=1.1,
                     max_tokens=settings.max_tokens,
                     stream=True,
                     logits_processor=processors,

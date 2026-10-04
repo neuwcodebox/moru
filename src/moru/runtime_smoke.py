@@ -60,7 +60,8 @@ def verify_window(window, report_path: Path, ui_only=False):
                         : input instanceof HTMLSelectElement
                             ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
                     Object.getOwnPropertyDescriptor(prototype, 'value').set.call(input, value);
-                    input.dispatchEvent(new Event('input', {bubbles: true}));
+                    input.dispatchEvent(new Event(
+                        input instanceof HTMLSelectElement ? 'change' : 'input', {bubbles: true}));
                     await new Promise(resolve => setTimeout(resolve, 0));
                 };
                 if (__UI_ONLY__) {

@@ -945,6 +945,8 @@ Job에 임시 텍스트를 저장하고 기존 polling bridge로 placeholder를 
 중단된 사고 문장을 계속 쓰지 않고 최종 프롬프트 작성을 이어 간다. 구분자는 반환/표시 전에 제거한다.
 모델이 먼저 thinking을 마치면 개입하지 않으며 thinking을 끄면 processor를 사용하지 않는다.
 사용자가 저장한 설정의 자동 전환 코드는 두지 않는다.
+프롬프트 샘플링은 thinking 시 temperature 0.6/top_p 0.95, 비활성 시 0.7/0.8을
+사용한다. 품질 태그의 반복을 줄이기 위해 repeat_penalty 1.1을 적용한다.
 
 추론 설정 근거: [이미지 모델 권장값](https://huggingface.co/circlestone-labs/Anima),
 [프롬프트 LLM 샘플링 권장값](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive).
