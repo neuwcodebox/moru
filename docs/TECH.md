@@ -596,8 +596,10 @@ Job.turn_id와 unfinished_requests.turn_id를 bridge로 전달하여 placeholder
 - zoom
 - pan
 - Esc close
+- 상하 방향키로 대화 이미지 탐색, 좌우 방향키로 재생성 버전 선택
 
-Python backend 호출은 필요하지 않다.
+뷰어 표시·확대·이동과 대화 행 탐색은 Python backend를 호출하지 않는다.
+버전 선택은 대화 화면과 같은 `select_version` API로 저장한다.
 
 ---
 

@@ -121,6 +121,8 @@ For substantial architecture changes, explain the tradeoff before replacing an e
 Keep change/review/verification history in `docs/reviews/YYYY-MM-DD-description.md`.
 Use an additional ordered suffix for separate records with the same date and topic.
 Keep the current requirements and architecture in `docs/SPEC.md` and `docs/TECH.md`.
+Keep `README.md` at the level of product introduction, main workflows, and getting started.
+Put detailed UI operations and individual change notes in the specification or review records.
 
 A change is done only when:
 
