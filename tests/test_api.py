@@ -25,7 +25,7 @@ def test_live_prompt_is_available_during_generation_but_thinking_is_never_saved(
     project = app.create_project()
     app.update_settings(app.get_settings(), PromptSettings(thinking=True))
 
-    def create(text, settings, cancelled, progress):
+    def create(text, settings, cancelled, progress, **context):
         progress("choosing a scene", "")
         snapshots.append(api.get_job(job.id)["value"])
         progress("choosing a scene", "night, girl")
@@ -51,7 +51,10 @@ def test_manual_prompt_stays_in_details_instead_of_appearing_as_user_chat(app):
     app.generate_from_prompt(image.id, "private manual prompt")
     app.scheduler.run_next()
     view = api.get_project(project.id)["value"]
-    assert view["images"][-1]["request_text"] is None
+    assert len(view["images"]) == 1
+    assert view["images"][0]["request_text"] == "소녀를 그려줘"
+    assert len(view["images"][0]["versions"]) == 2
+    assert "private manual prompt" not in str(view)
 
 
 def test_bridge_preserves_large_seeds_without_javascript_precision_loss(app):
@@ -81,8 +84,9 @@ def test_bootstrap_exposes_prompt_defaults_and_restores_saved_values(app):
         "context_size": 2048,
         "max_tokens": 1024,
         "thinking": False,
+        "history_turns": 4,
     }
-    values = {"context_size": 4096, "max_tokens": 2048, "thinking": False}
+    values = {"context_size": 4096, "max_tokens": 2048, "thinking": False, "history_turns": 2}
     assert api.update_settings({"steps": 12}, values)["ok"]
     assert api.get_prompt_settings()["value"] == values
     assert api.bootstrap()["value"]["prompt_settings"] == values

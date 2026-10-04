@@ -5,7 +5,7 @@ from pathlib import Path
 from threading import Event
 from typing import Protocol
 
-from moru.domain import GenerationSettings, PromptSettings
+from moru.domain import GenerationSettings, PromptSettings, PromptTurn
 
 Progress = Callable[[str, int | None, int | None], None]
 PromptProgress = Callable[[str, str], None]
@@ -13,7 +13,14 @@ PromptProgress = Callable[[str, str], None]
 
 class PromptGenerator(Protocol):
     def create(
-        self, text: str, settings: PromptSettings, cancelled: Event, progress: PromptProgress
+        self,
+        text: str,
+        settings: PromptSettings,
+        cancelled: Event,
+        progress: PromptProgress,
+        *,
+        history: tuple[PromptTurn, ...] = (),
+        model_id: str = "anima-turbo-v1.1",
     ) -> str: ...
     def refine(
         self,
@@ -22,6 +29,9 @@ class PromptGenerator(Protocol):
         settings: PromptSettings,
         cancelled: Event,
         progress: PromptProgress,
+        *,
+        history: tuple[PromptTurn, ...] = (),
+        model_id: str = "anima-turbo-v1.1",
     ) -> str: ...
     def unload(self) -> None: ...
 

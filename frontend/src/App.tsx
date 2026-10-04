@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
+  ArrowDown,
   Box,
-  GitBranch,
   Plus,
   Settings2,
   Sparkles,
@@ -45,6 +45,9 @@ export default function App() {
   const [viewer, setViewer] = useState<string | null>(null);
   const [sources, setSources] = useState<Record<string, string>>({});
   const input = useRef<HTMLTextAreaElement>(null);
+  const conversation = useRef<HTMLElement>(null);
+  const followLatest = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
   const busy = acting || job !== null;
 
   useEffect(() => {
@@ -225,6 +228,9 @@ export default function App() {
         sources={sources}
         busy={busy}
         job={job}
+        scrollRef={conversation}
+        followLatest={followLatest}
+        onBottomChange={setAtBottom}
         onViewImage={setViewer}
         onShowPrompt={(id) =>
           void act(async () => {
@@ -235,13 +241,20 @@ export default function App() {
           void act(async () => {
             if (!project) return;
             setProject(await call<Project>("fork", project.id, id));
+            setProjects(await call<ProjectInfo[]>("list_projects"));
+            setText("");
             input.current?.focus();
           })
         }
-        onSelectBranch={(id) =>
+        onSelectVersion={(id) =>
           void act(async () => {
             if (project)
-              setProject(await call<Project>("select_branch", project.id, id));
+              setProject(await call<Project>("select_version", project.id, id));
+          })
+        }
+        onRegenerate={(id) =>
+          void act(async () => {
+            await startGeneration("regenerate", id);
           })
         }
         onRetry={(id) =>
@@ -251,6 +264,23 @@ export default function App() {
         }
       />
       <footer>
+        {!atBottom && (
+          <button
+            className="scroll-bottom"
+            aria-label="맨 아래로"
+            title="맨 아래로"
+            onClick={() => {
+              followLatest.current = true;
+              conversation.current?.scrollTo({
+                top: conversation.current.scrollHeight,
+                behavior: "instant",
+              });
+              setAtBottom(true);
+            }}
+          >
+            <ArrowDown size={18} aria-hidden="true" />
+          </button>
+        )}
         {error && (
           <div className="error-banner" role="alert">
             <span>{error}</span>
@@ -260,23 +290,6 @@ export default function App() {
           </div>
         )}
         <div className="composer-tools">
-          {project?.fork_image_id && (
-            <span className="fork-chip">
-              <GitBranch size={14} aria-hidden="true" /> 분기: #
-              {project.fork_image_id.slice(0, 8)}
-              <button
-                aria-label="분기 취소"
-                disabled={busy}
-                onClick={() =>
-                  void act(async () =>
-                    setProject(await call<Project>("fork", project.id, null)),
-                  )
-                }
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
-            </span>
-          )}
           <button
             className="new-project"
             disabled={busy || !project}

@@ -3,7 +3,7 @@
 import json
 import sqlite3
 from contextlib import contextmanager
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from threading import RLock
 
@@ -31,6 +31,11 @@ CREATE TABLE IF NOT EXISTS images (
 CREATE INDEX IF NOT EXISTS images_parent ON images(project_id, parent_image_id);
 CREATE INDEX IF NOT EXISTS requests_project ON requests(project_id);
 CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS turns (
+    id TEXT PRIMARY KEY REFERENCES requests(id),
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    selected_image_id TEXT NOT NULL REFERENCES images(id)
+);
 CREATE TRIGGER IF NOT EXISTS immutable_images BEFORE UPDATE ON images
 BEGIN SELECT RAISE(ABORT, 'image history is immutable'); END;
 """
@@ -49,12 +54,52 @@ class Repository:
             self._db.execute("PRAGMA synchronous=FULL")
             self._db.executescript(SCHEMA)
             with self._db:
+                # sqlite3 does not implicitly begin a transaction for ALTER TABLE.
+                self._db.execute("BEGIN")
+                columns = {row[1] for row in self._db.execute("PRAGMA table_info(requests)")}
+                if "turn_id" not in columns:
+                    self._db.execute("ALTER TABLE requests ADD COLUMN turn_id TEXT")
+                    self._migrate_turns()
                 self._db.execute(
                     "UPDATE requests SET status='failed', error_code='GENERATION_INTERRUPTED' "
                     "WHERE status='pending'"
                 )
         except (OSError, sqlite3.Error) as exc:
             raise MoruError("DATABASE_FAILED") from exc
+
+    def _migrate_turns(self):
+        # Existing image records stay immutable. Manual generations become versions.
+        image_turns = {}
+        rows = self._db.execute(
+            "SELECT images.*, requests.kind FROM images "
+            "JOIN requests ON requests.id=images.request_id ORDER BY images.rowid"
+        ).fetchall()
+        for row in rows:
+            turn_id = row["request_id"]
+            if row["kind"] == "manual":
+                turn_id = image_turns.get(row["parent_image_id"], turn_id)
+            image_turns[row["id"]] = turn_id
+            self._db.execute(
+                "UPDATE requests SET turn_id=? WHERE id=?", (turn_id, row["request_id"])
+            )
+            self._db.execute(
+                "INSERT INTO turns VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE "
+                "SET selected_image_id=excluded.selected_image_id",
+                (turn_id, row["project_id"], row["id"]),
+            )
+        for project in self._db.execute("SELECT * FROM projects").fetchall():
+            if turn_id := image_turns.get(project["active_leaf_id"]):
+                self._db.execute(
+                    "UPDATE turns SET selected_image_id=? WHERE id=?",
+                    (project["active_leaf_id"], turn_id),
+                )
+        for request in self._db.execute(
+            "SELECT * FROM requests WHERE kind='manual' AND turn_id IS NULL"
+        ).fetchall():
+            if turn_id := image_turns.get(request["base_image_id"]):
+                self._db.execute(
+                    "UPDATE requests SET turn_id=? WHERE id=?", (turn_id, request["id"])
+                )
 
     @contextmanager
     def _transaction(self):
@@ -103,31 +148,13 @@ class Repository:
         self.get_project(project_id)
         self.set_preference("current_project", project_id)
 
-    def set_fork(self, project_id: str, image_id: str | None):
-        with self._transaction() as db:
-            self.get_project(project_id)
-            if image_id is not None:
-                self.require_image(project_id, image_id)
-            db.execute("UPDATE projects SET fork_image_id=? WHERE id=?", (image_id, project_id))
-
-    def select_branch(self, project_id: str, image_id: str):
-        with self._transaction() as db:
-            self.require_image(project_id, image_id)
-            leaf = image_id
-            while children := self.children(project_id, leaf):
-                leaf = children[-1].id
-            db.execute(
-                "UPDATE projects SET active_leaf_id=?, fork_image_id=NULL WHERE id=?",
-                (leaf, project_id),
-            )
-
     def add_request(self, request: Request):
         with self._transaction() as db:
             self.get_project(request.project_id)
             if request.base_image_id is not None:
                 self.require_image(request.project_id, request.base_image_id)
             db.execute(
-                "INSERT INTO requests VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO requests VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     request.id,
                     request.project_id,
@@ -138,6 +165,7 @@ class Repository:
                     json.dumps(asdict(request.settings)),
                     request.status,
                     request.error_code,
+                    request.turn_id,
                 ),
             )
 
@@ -201,6 +229,115 @@ class Repository:
             db.execute(
                 "UPDATE projects SET active_leaf_id=?, fork_image_id=NULL WHERE id=?",
                 (image.id, image.project_id),
+            )
+            db.execute(
+                "INSERT INTO turns VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE "
+                "SET selected_image_id=excluded.selected_image_id",
+                (request.turn_id or request.id, image.project_id, image.id),
+            )
+
+    def image_turn(self, image_id: str) -> str:
+        request = self.get_request(self.get_image(image_id).request_id)
+        return request.turn_id or request.id
+
+    def conversation(self, project_id: str) -> list[tuple[Request, Image, list[Image]]]:
+        with self._transaction() as db:
+            self.get_project(project_id)
+            rows = db.execute(
+                "SELECT * FROM turns WHERE project_id=? ORDER BY rowid", (project_id,)
+            ).fetchall()
+            conversation = []
+            for row in rows:
+                versions = [
+                    self._image(image)
+                    for image in db.execute(
+                        "SELECT images.* FROM images "
+                        "JOIN requests ON requests.id=images.request_id "
+                        "WHERE images.project_id=? AND COALESCE(requests.turn_id, requests.id)=? "
+                        "ORDER BY images.rowid",
+                        (project_id, row["id"]),
+                    )
+                ]
+                conversation.append(
+                    (
+                        self.get_request(row["id"]),
+                        self.get_image(row["selected_image_id"]),
+                        versions,
+                    )
+                )
+            return conversation
+
+    def select_version(self, project_id: str, image_id: str):
+        with self._transaction() as db:
+            self.require_image(project_id, image_id)
+            db.execute(
+                "UPDATE turns SET selected_image_id=? WHERE id=? AND project_id=?",
+                (image_id, self.image_turn(image_id), project_id),
+            )
+            db.execute(
+                "UPDATE projects SET active_leaf_id=?, fork_image_id=NULL WHERE id=?",
+                (image_id, project_id),
+            )
+
+    def copy_session(self, project: Project, source_id: str, image_id: str, new_id):
+        with self._transaction() as db:
+            self.require_image(source_id, image_id)
+            stop_turn = self.image_turn(image_id)
+            rows = self.conversation(source_id)
+            self.create_project(project)
+            image_ids = {}
+            for original, selected, versions in rows:
+                turn_id = new_id()
+                if original.id == stop_turn:
+                    versions = [self.get_image(image_id)]
+                    selected = versions[0]
+                if not any(version.request_id == original.id for version in versions):
+                    self.add_request(
+                        replace(
+                            original,
+                            id=turn_id,
+                            project_id=project.id,
+                            base_image_id=image_ids.get(original.base_image_id),
+                            turn_id=turn_id,
+                            status="completed",
+                            error_code=None,
+                        )
+                    )
+                for version in versions:
+                    request = self.get_request(version.request_id)
+                    request_id = turn_id if version.request_id == original.id else new_id()
+                    copied_id = new_id()
+                    parent_id = image_ids.get(version.parent_image_id)
+                    # A copied session shares immutable PNG files, never mutable records.
+                    self.add_request(
+                        replace(
+                            request,
+                            id=request_id,
+                            project_id=project.id,
+                            base_image_id=parent_id,
+                            turn_id=turn_id,
+                            status="pending",
+                            error_code=None,
+                        )
+                    )
+                    self.complete_generation(
+                        replace(
+                            version,
+                            id=copied_id,
+                            project_id=project.id,
+                            request_id=request_id,
+                            parent_image_id=parent_id,
+                        )
+                    )
+                    image_ids[version.id] = copied_id
+                db.execute(
+                    "UPDATE turns SET selected_image_id=? WHERE id=?",
+                    (image_ids[selected.id], turn_id),
+                )
+                if original.id == stop_turn:
+                    break
+            db.execute(
+                "UPDATE projects SET active_leaf_id=? WHERE id=?", (image_ids[image_id], project.id)
             )
 
     def get_image(self, image_id: str) -> Image:

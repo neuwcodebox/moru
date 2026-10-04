@@ -1,4 +1,4 @@
-"""Local CUDA prompt writing with only the canonical image prompt as context."""
+"""Local CUDA prompt writing with canonical state and bounded conversational context."""
 
 import ctypes
 import gc
@@ -6,22 +6,32 @@ import importlib.util
 import logging
 import os
 import sys
+import unicodedata
 from contextlib import closing
 from pathlib import Path
 from threading import Event, RLock
 
 from moru.config import ModelPaths
-from moru.domain import PromptSettings
+from moru.domain import PromptSettings, PromptTurn
 from moru.errors import MoruError
 from moru.ports import PromptProgress
 
 log = logging.getLogger(__name__)
 CREATE_SYSTEM = (
-    "You write prompts for Anima, an anime text-to-image model. Convert the user's request "
-    "into one complete English image prompt. Describe subjects, appearance, clothing, pose, "
-    "expression, setting, lighting and composition as requested. Preserve specific details. "
-    "Use clear visual descriptions and helpful comma-separated tags. Return only the finished "
-    "prompt, without explanations, markdown, quotes, reasoning or tool calls."
+    "Write one complete English positive prompt for an image generation model. "
+    "Translate the latest request; use prior conversation only to resolve references. "
+    "The existing image prompt is the current visual state; a new request overrides older wishes. "
+    "Describe requested subjects, appearance, clothing, pose, expression, setting, lighting and "
+    "composition. Preserve specifics; do not invent unrelated characters, styles or objects. "
+    "Combine concise visual sentences for spatial relations and interactions with relevant "
+    "comma-separated booru tags. Use lowercase tags and spaces; only score tags use underscores. "
+    "Examples of tags, only when appropriate: 1girl, 1boy, solo, long hair, looking at viewer, "
+    "full body, upper body, outdoors, backlighting. Put quality tags before subject-count tags, "
+    "then requested character/series/artist and general tags. Prefix requested artist tags with @. "
+    "For multiple subjects, connect each subject to their appearance, actions and position. "
+    "Do not indiscriminately stack quality tags or introduce safety/rating tags without a request. "
+    "Return only the entire English prompt, without explanations, markdown, wrapper quotes, "
+    "reasoning, negative-prompt lists or tool calls."
 )
 REFINE_SYSTEM = (
     CREATE_SYSTEM + " Revise the provided existing image prompt according to the user's "
@@ -30,22 +40,44 @@ REFINE_SYSTEM = (
 )
 
 
-def prompt_messages(text: str, base_prompt: str | None = None) -> list[dict[str, str]]:
-    if base_prompt is None:
-        return [{"role": "system", "content": CREATE_SYSTEM}, {"role": "user", "content": text}]
-    return [
-        {"role": "system", "content": REFINE_SYSTEM},
-        {
-            "role": "user",
-            "content": f"Existing image prompt:\n{base_prompt}\n\nChange request:\n{text}",
-        },
-    ]
+def prompt_messages(
+    text: str,
+    base_prompt: str | None = None,
+    history: tuple[PromptTurn, ...] = (),
+    model_id: str = "anima-turbo-v1.1",
+) -> list[dict[str, str]]:
+    system = CREATE_SYSTEM if base_prompt is None else REFINE_SYSTEM
+    if "aesthetic" in model_id:
+        system += " Omit score_* tags. Quality tags are optional."
+    messages = [{"role": "system", "content": system}]
+    for turn in history:
+        messages.extend(
+            [{"role": "user", "content": turn.text}, {"role": "assistant", "content": turn.prompt}]
+        )
+    content = (
+        text
+        if base_prompt is None
+        else (f"Existing image prompt:\n{base_prompt}\n\nChange request:\n{text}")
+    )
+    messages.append({"role": "user", "content": content})
+    return messages
+
+
+def fit_messages(messages, count_tokens, input_limit):
+    messages = list(messages)
+    while count_tokens(messages) > input_limit:
+        if len(messages) <= 2:
+            raise MoruError("PROMPT_CONTEXT_TOO_LONG")
+        del messages[1:3]  # Drop complete oldest turns; never truncate canonical state.
+    return messages
 
 
 def final_prompt(content: str) -> str:
     # Templates may prefill the opening tag outside the generated content.
     prompt = content.rsplit("</think>", 1)[-1].strip()
     if not prompt or "<think>" in prompt or prompt.startswith("Thinking Process:"):
+        raise MoruError("PROMPT_LLM_FAILED")
+    if any(char.isalpha() and "LATIN" not in unicodedata.name(char, "") for char in prompt):
         raise MoruError("PROMPT_LLM_FAILED")
     return prompt
 
@@ -99,6 +131,7 @@ class LlamaPrompts:
         self._loaded_path = None
         self._context_size = None
         self._thinking_handlers = {}
+        self._formatters = {}
         self._lock = RLock()
         self._dll_directories = []
         self._cuda_libraries = []
@@ -169,6 +202,7 @@ class LlamaPrompts:
                 stop_token_ids=[eos] if eos != -1 else None,
             )
             self._thinking_handlers[enabled] = formatter.to_chat_handler()
+            self._formatters[enabled] = formatter
         llm.chat_handler = self._thinking_handlers[enabled]
 
     def _complete(
@@ -180,6 +214,24 @@ class LlamaPrompts:
             try:
                 check_cancelled(cancelled)
                 self._configure_thinking(llm, settings.thinking)
+                formatter = self._formatters.get(settings.thinking)
+
+                def count_tokens(items):
+                    if formatter is not None:
+                        rendered = formatter(messages=items)
+                        return len(
+                            llm.tokenize(
+                                rendered.prompt.encode(),
+                                add_bos=not rendered.added_special,
+                                special=True,
+                            )
+                        )
+                    # Unsupported templates with thinking enabled use llama.cpp's handler.
+                    return sum(len(llm.tokenize(item["content"].encode())) + 16 for item in items)
+
+                messages = fit_messages(
+                    messages, count_tokens, settings.context_size - settings.max_tokens
+                )
                 response = llm.create_chat_completion(
                     messages=messages,
                     temperature=0.6,
@@ -201,9 +253,15 @@ class LlamaPrompts:
         settings: PromptSettings | None = None,
         cancelled: Event | None = None,
         progress: PromptProgress | None = None,
+        *,
+        history: tuple[PromptTurn, ...] = (),
+        model_id: str = "anima-turbo-v1.1",
     ) -> str:
         return self._complete(
-            prompt_messages(text), settings or PromptSettings(), cancelled or Event(), progress
+            prompt_messages(text, history=history, model_id=model_id),
+            settings or PromptSettings(),
+            cancelled or Event(),
+            progress,
         )
 
     def refine(
@@ -213,9 +271,12 @@ class LlamaPrompts:
         settings: PromptSettings | None = None,
         cancelled: Event | None = None,
         progress: PromptProgress | None = None,
+        *,
+        history: tuple[PromptTurn, ...] = (),
+        model_id: str = "anima-turbo-v1.1",
     ) -> str:
         return self._complete(
-            prompt_messages(text, prompt),
+            prompt_messages(text, prompt, history, model_id),
             settings or PromptSettings(),
             cancelled or Event(),
             progress,
@@ -230,5 +291,6 @@ class LlamaPrompts:
             self._loaded_path = None
             self._context_size = None
             self._thinking_handlers.clear()
+            self._formatters.clear()
             gc.collect()
             log.info("prompt model unloaded")

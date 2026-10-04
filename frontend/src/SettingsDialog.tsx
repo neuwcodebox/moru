@@ -208,6 +208,33 @@ export default function SettingsDialog({
               />
             </label>
           </div>
+          <label>
+            최근 요청 수
+            <input
+              type="number"
+              min={0}
+              max={20}
+              required
+              value={
+                Number.isNaN(promptDraft.history_turns)
+                  ? ""
+                  : promptDraft.history_turns
+              }
+              onChange={(event) =>
+                setPromptDraft({
+                  ...promptDraft,
+                  history_turns:
+                    event.target.value === ""
+                      ? Number.NaN
+                      : Number(event.target.value),
+                })
+              }
+            />
+          </label>
+          <p className="hint">
+            최근 요청과 선택된 이미지의 프롬프트를 함께 참고합니다. 0이면 이력을
+            보내지 않으며, 공간이 부족하면 오래된 요청부터 제외합니다.
+          </p>
           <label className="checkbox-field">
             <input
               type="checkbox"

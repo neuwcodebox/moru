@@ -46,11 +46,44 @@ export default function GenerationProgress({ job }: { job: Job }) {
           </span>
         )}
       </div>
-      <div className="generation-canvas" aria-hidden="true">
-        {writing ? <WandSparkles size={32} /> : <Image size={32} />}
-        <span>
-          {writing ? "장면을 준비하고 있어요" : "곧 이미지가 여기에 나타나요"}
-        </span>
+      <div className="generation-canvas">
+        {!job.thinking_text && !job.prompt_text && (
+          <>
+            {writing ? (
+              <WandSparkles size={32} aria-hidden="true" />
+            ) : (
+              <Image size={32} aria-hidden="true" />
+            )}
+            <span>
+              {writing
+                ? "장면을 준비하고 있어요"
+                : "곧 이미지가 여기에 나타나요"}
+            </span>
+          </>
+        )}
+        {(job.thinking_text || job.prompt_text) && (
+          <div className="generation-text">
+            {job.thinking_text && (
+              <details
+                className="stream-section"
+                open={writing && !job.prompt_text}
+              >
+                <summary>
+                  <Brain size={14} aria-hidden="true" /> 생각 과정
+                </summary>
+                <LiveText text={job.thinking_text} />
+              </details>
+            )}
+            {job.prompt_text && (
+              <div className="stream-section">
+                <div className="stream-label">
+                  <WandSparkles size={14} aria-hidden="true" /> 생성 프롬프트
+                </div>
+                <LiveText text={job.prompt_text} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
       {job.step != null && job.total != null && (
         <progress
@@ -58,29 +91,6 @@ export default function GenerationProgress({ job }: { job: Job }) {
           max={job.total}
           aria-label="이미지 생성 단계"
         />
-      )}
-      {(job.thinking_text || job.prompt_text) && (
-        <div className="generation-text">
-          {job.thinking_text && (
-            <details
-              className="stream-section"
-              open={writing && !job.prompt_text}
-            >
-              <summary>
-                <Brain size={14} aria-hidden="true" /> 생각 과정
-              </summary>
-              <LiveText text={job.thinking_text} />
-            </details>
-          )}
-          {job.prompt_text && (
-            <div className="stream-section">
-              <div className="stream-label">
-                <WandSparkles size={14} aria-hidden="true" /> 생성 프롬프트
-              </div>
-              <LiveText text={job.prompt_text} />
-            </div>
-          )}
-        </div>
       )}
     </section>
   );

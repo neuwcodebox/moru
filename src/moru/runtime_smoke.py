@@ -67,10 +67,11 @@ def verify_window(window, report_path: Path, ui_only=False):
                     document.querySelector('.advanced-settings summary').click();
                     const controls = document.querySelectorAll('.advanced-settings input');
                     if (controls[0].value !== '2048' || controls[1].value !== '1024'
-                        || controls[2].checked) throw new Error('Incorrect prompt defaults');
+                        || controls[2].value !== '4' || controls[3].checked)
+                        throw new Error('Incorrect prompt defaults');
                     await setValue(controls[0], '4096');
                     await setValue(controls[1], '2048');
-                    controls[2].click();
+                    controls[3].click();
                     await new Promise(resolve => setTimeout(resolve, 0));
                     document.querySelector('.advanced-settings').closest('form').requestSubmit();
                     await waitFor(() => !document.querySelector('.advanced-settings'));

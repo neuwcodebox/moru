@@ -144,45 +144,46 @@ class Api:
     def _project_view(self, project_id):
         repository = self._app.repository
         project = repository.get_project(project_id)
-        path = repository.active_path(project_id)
         images = []
-        for image in path:
-            request = repository.get_request(image.request_id)
+        for request, image, versions in repository.conversation(project_id):
             images.append(
                 {
                     "id": image.id,
+                    "turn_id": request.id,
                     "request_text": request.text if request.kind != "manual" else None,
                     "created_at": image.created_at,
                     "parent_image_id": image.parent_image_id,
-                    "siblings": [
-                        sibling.id
-                        for sibling in repository.children(project_id, image.parent_image_id)
-                    ],
+                    "versions": [version.id for version in versions],
                 }
             )
-        current_base = project.fork_image_id or project.active_leaf_id
         unfinished = [
             {
                 "id": request.id,
+                "turn_id": request.turn_id,
                 "text": request.text if request.kind != "manual" else None,
                 "status": request.status,
                 "error_code": request.error_code,
                 "message": MESSAGES.get(request.error_code),
             }
             for request in repository.unfinished_requests(project_id)
-            if request.base_image_id == current_base or request.status == "pending"
+            if request.turn_id
+            or request.base_image_id == project.active_leaf_id
+            or request.status == "pending"
         ]
         return {**asdict(project), "images": images, "unfinished_requests": unfinished}
 
     @endpoint
-    def fork(self, project_id, image_id=None):
-        self._app.fork(project_id, image_id)
+    def fork(self, project_id, image_id):
+        return self._project_view(self._app.fork(project_id, image_id).id)
+
+    @endpoint
+    def select_version(self, project_id, image_id):
+        self._app.select_version(project_id, image_id)
         return self._project_view(project_id)
 
     @endpoint
-    def select_branch(self, project_id, image_id):
-        self._app.select_branch(project_id, image_id)
-        return self._project_view(project_id)
+    def regenerate(self, image_id):
+        return asdict(self._app.regenerate(image_id))
 
     @endpoint
     def submit_request(self, project_id, text):

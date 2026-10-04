@@ -18,6 +18,7 @@ const promptSettings: PromptSettings = {
   context_size: 2048,
   max_tokens: 1024,
   thinking: false,
+  history_turns: 4,
 };
 const empty: Project = {
   id: "p1",
@@ -32,7 +33,8 @@ const image = {
   request_text: "소녀를 그려줘",
   created_at: empty.created_at,
   parent_image_id: null,
-  siblings: ["i1"],
+  turn_id: "r1",
+  versions: ["i1"],
 };
 const withImage: Project = { ...empty, active_leaf_id: "i1", images: [image] };
 let current: Project;
@@ -67,7 +69,7 @@ beforeEach(() => {
     cancel_job: vi.fn(() => success(undefined)),
     copy_prompt: vi.fn(() => success(undefined)),
     fork: vi.fn((_id, base) => {
-      current = { ...current, fork_image_id: base as string | null };
+      current = { ...current, id: "p2", fork_image_id: null };
       return success(current);
     }),
     get_image_details: vi.fn(() =>
@@ -97,12 +99,131 @@ beforeEach(() => {
       current = { ...empty, id: "p2" };
       return success(current);
     }),
-    select_branch: vi.fn(() => success(current)),
+    select_version: vi.fn(() => success(current)),
+    regenerate: vi.fn(() =>
+      success({
+        id: "j1",
+        project_id: "p1",
+        request_id: "r2",
+        turn_id: "r1",
+        state: "queued",
+      }),
+    ),
   };
   window.pywebview = { api };
 });
 
 describe("conversation", () => {
+  it("keeps the reading position when generation updates arrive above the composer", async () => {
+    current = withImage;
+    api.get_job.mockResolvedValue({
+      ok: true,
+      value: {
+        id: "j1",
+        project_id: "p1",
+        request_id: "r2",
+        turn_id: "r1",
+        state: "generating",
+        prompt_text: "moonlit forest",
+        step: 2,
+        total: 10,
+      },
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByAltText("생성 이미지");
+    const conversation = screen.getByLabelText("대화");
+    Object.defineProperties(conversation, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 400 },
+    });
+    conversation.scrollTop = 100;
+    fireEvent.scroll(conversation);
+    await user.click(screen.getByRole("button", { name: "다시" }));
+    await screen.findByText("moonlit forest");
+    expect(conversation.scrollTop).toBe(100);
+    expect(screen.getByRole("button", { name: "맨 아래로" })).toBeTruthy();
+  });
+
+  it("regenerates inside the existing image turn and keeps live text in its placeholder", async () => {
+    current = withImage;
+    api.get_job.mockResolvedValue({
+      ok: true,
+      value: {
+        id: "j1",
+        project_id: "p1",
+        request_id: "r2",
+        turn_id: "r1",
+        state: "generating",
+        step: 1,
+        total: 10,
+        prompt_text: "forest, moonlight",
+      },
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByAltText("생성 이미지");
+    await user.click(screen.getByRole("button", { name: "다시" }));
+    expect(api.regenerate).toHaveBeenCalledWith("i1");
+    const progress = await screen.findByRole("region", { name: "생성 진행" });
+    expect(screen.getAllByText("소녀를 그려줘")).toHaveLength(1);
+    expect(
+      screen.getByLabelText("대화").querySelectorAll(".turn"),
+    ).toHaveLength(1);
+    expect(progress.closest(".turn")).toBeTruthy();
+    expect(
+      within(progress)
+        .getByText("forest, moonlight")
+        .closest(".generation-canvas"),
+    ).toBeTruthy();
+    expect(screen.queryByAltText("생성 이미지")).toBeNull();
+  });
+
+  it("shows a floating jump button only when scrolled away from the bottom", async () => {
+    current = withImage;
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByAltText("생성 이미지");
+    const conversation = screen.getByLabelText("대화");
+    const scrollTo = vi.fn();
+    Object.defineProperties(conversation, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 400 },
+      scrollTo: { configurable: true, value: scrollTo },
+    });
+    expect(screen.queryByRole("button", { name: "맨 아래로" })).toBeNull();
+    conversation.scrollTop = 100;
+    fireEvent.scroll(conversation);
+    await user.click(screen.getByRole("button", { name: "맨 아래로" }));
+    expect(scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: "instant" });
+    expect(screen.queryByRole("button", { name: "맨 아래로" })).toBeNull();
+    conversation.scrollTop = 600;
+    fireEvent.scroll(conversation);
+    expect(screen.queryByRole("button", { name: "맨 아래로" })).toBeNull();
+  });
+
+  it("opens the prompt of the currently selected image version", async () => {
+    current = { ...withImage, images: [{ ...image, versions: ["i1", "i2"] }] };
+    api.select_version.mockImplementation(() => {
+      current = {
+        ...current,
+        active_leaf_id: "i2",
+        images: [{ ...image, id: "i2", versions: ["i1", "i2"] }],
+      };
+      return Promise.resolve({ ok: true, value: current });
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("1 / 2");
+    await user.click(screen.getByLabelText("다음 이미지"));
+    await screen.findByText("2 / 2");
+    await user.click(screen.getByRole("button", { name: "수정" }));
+    expect(api.get_image_details).toHaveBeenCalledWith("i2");
+    expect(
+      screen.getByLabelText("대화").querySelectorAll(".turn"),
+    ).toHaveLength(1);
+  });
+
   it.each(["completed", "cancelled", "failed"])(
     "restores the send button after a %s job",
     async (state) => {
@@ -219,6 +340,7 @@ describe("conversation", () => {
           status: "failed",
           error_code: "GENERATION_FAILED",
           message: "이미지 생성에 실패했습니다.",
+          turn_id: null,
         },
       ],
     };
@@ -302,16 +424,20 @@ describe("conversation", () => {
     expect(api.submit_request).not.toHaveBeenCalled();
   });
 
-  it("selects a Fork base and lets the user cancel it", async () => {
+  it("copies a session immediately when the user forks an image", async () => {
     current = withImage;
+    api.list_projects.mockImplementation(() =>
+      Promise.resolve({ ok: true, value: [current, empty] }),
+    );
     const user = userEvent.setup();
     render(<App />);
     await screen.findByAltText("생성 이미지");
     await user.click(screen.getByText("분기"));
-    expect(await screen.findByText("분기: #i1")).toBeTruthy();
-    await user.click(screen.getByLabelText("분기 취소"));
-    expect(api.fork).toHaveBeenLastCalledWith("p1", null);
-    expect(screen.queryByText("분기: #i1")).toBeNull();
+    expect(api.fork).toHaveBeenCalledWith("p1", "i1");
+    expect(
+      (screen.getByLabelText("작업 기록") as HTMLSelectElement).value,
+    ).toBe("p2");
+    expect(screen.queryByLabelText("분기 취소")).toBeNull();
   });
 
   it("exposes the prompt only in its dialog and submits manual edits as a Fork", async () => {
@@ -348,14 +474,20 @@ describe("conversation", () => {
       ...withImage,
       images: [
         image,
-        { ...image, id: "i2", parent_image_id: "i1", siblings: ["i2", "i3"] },
+        {
+          ...image,
+          id: "i2",
+          turn_id: "r2",
+          parent_image_id: "i1",
+          versions: ["i2", "i3"],
+        },
       ],
     };
     const user = userEvent.setup();
     render(<App />);
     await screen.findByText("1 / 2");
-    await user.click(screen.getByLabelText("다음 분기"));
-    expect(api.select_branch).toHaveBeenCalledWith("p1", "i3");
+    await user.click(screen.getByLabelText("다음 이미지"));
+    expect(api.select_version).toHaveBeenCalledWith("p1", "i3");
   });
 
   it("saves a resolution preset and preserves a large seed as text", async () => {
@@ -402,6 +534,7 @@ describe("conversation", () => {
       context_size: 4096,
       max_tokens: 2048,
       thinking: true,
+      history_turns: 4,
     });
     await user.click(screen.getByLabelText("생성 설정"));
     await user.click(screen.getByText("고급 · 프롬프트 LLM"));

@@ -16,6 +16,7 @@ class PromptSettings:
     context_size: int = 2048
     max_tokens: int = 1024
     thinking: bool = False
+    history_turns: int = 4
 
     def __post_init__(self):
         if type(self.context_size) is not int or not 1024 <= self.context_size <= 32768:
@@ -24,6 +25,14 @@ class PromptSettings:
             raise MoruError("INVALID_SETTINGS")
         if type(self.thinking) is not bool:
             raise MoruError("INVALID_SETTINGS")
+        if type(self.history_turns) is not int or not 0 <= self.history_turns <= 20:
+            raise MoruError("INVALID_SETTINGS")
+
+
+@dataclass(frozen=True)
+class PromptTurn:
+    text: str
+    prompt: str
 
 
 @dataclass(frozen=True)
@@ -75,6 +84,7 @@ class Request:
     settings: GenerationSettings
     status: RequestStatus = "pending"
     error_code: str | None = None
+    turn_id: str | None = None
 
 
 @dataclass(frozen=True)

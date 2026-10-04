@@ -62,6 +62,7 @@ def main():
             "context_size": 2048,
             "max_tokens": 1024,
             "thinking": False,
+            "history_turns": 4,
         }
         if options.ui_only:
             assert report["clipboard_copied"]
@@ -69,6 +70,7 @@ def main():
                 "context_size": 4096,
                 "max_tokens": 2048,
                 "thinking": True,
+                "history_turns": 4,
             }
             print(f"portable_ui_and_clipboard_ok report={report_path}", flush=True)
             return

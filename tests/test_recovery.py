@@ -4,26 +4,29 @@ from moru.domain import GenerationSettings
 from moru.repository import Repository
 
 
-def test_restart_recovers_current_project_path_fork_settings_and_all_branches(app, tmp_path):
+def test_restart_recovers_copied_sessions_selected_versions_and_settings(app, tmp_path):
     project = app.create_project()
     root = generate(app, project.id)
-    first = generate(app, project.id)
-    app.fork(project.id, root.id)
-    sibling = generate(app, project.id)
-    app.select_branch(project.id, first.id)
-    app.fork(project.id, root.id)
+    job = app.generate_from_prompt(root.id, "manual version")
+    app.scheduler.run_next()
+    variant = app.get_job(job.id).image_id
+    app.select_version(project.id, root.id)
+    copied = app.fork(project.id, root.id)
     app.update_settings(GenerationSettings(seed=123))
     app.close()
 
     repository = Repository(tmp_path / "anima.db")
     try:
-        assert repository.get_preference("current_project") == project.id
+        assert repository.get_preference("current_project") == copied.id
         assert repository.get_preference("settings")["seed"] == 123
-        assert repository.active_path(project.id) == [root, first]
-        assert repository.get_project(project.id).fork_image_id == root.id
-        assert repository.children(project.id, root.id) == [first, sibling]
-        assert repository.get_request(root.request_id).text == "소녀를 그려줘"
-        assert not repository.get_image(root.id).image_path.startswith(str(tmp_path))
+        original = repository.conversation(project.id)[0]
+        assert original[1] == root
+        assert [image.id for image in original[2]] == [root.id, variant]
+        duplicate = repository.conversation(copied.id)[0]
+        assert duplicate[0].text == "소녀를 그려줘"
+        assert duplicate[1].image_path == root.image_path
+        assert duplicate[1].id != root.id
+        assert len(duplicate[2]) == 1
     finally:
         repository.close()
 

@@ -4,12 +4,13 @@ from unittest.mock import Mock
 import pytest
 
 from moru.config import ModelPaths
-from moru.domain import PromptSettings
+from moru.domain import PromptSettings, PromptTurn
 from moru.errors import MoruError
 from moru.prompting import (
     CREATE_SYSTEM,
     REFINE_SYSTEM,
     LlamaPrompts,
+    fit_messages,
     prompt_messages,
     read_completion,
 )
@@ -43,7 +44,7 @@ def test_model_load_is_lazy_cuda_and_reload_follows_unload(tmp_path):
     model = paths.get("prompt")
     model.parent.mkdir(parents=True)
     model.write_bytes(b"fake gguf")
-    llm = Mock()
+    llm = Mock(tokenize=lambda *args, **kwargs: [0])
     llm.create_chat_completion.side_effect = lambda **kwargs: completion("night, girl")
     load = Mock(return_value=llm)
     prompts = LlamaPrompts(paths, load_llama=load)
@@ -76,7 +77,7 @@ def test_reasoning_is_not_forwarded_as_an_image_prompt(tmp_path, content):
     model = paths.get("prompt")
     model.parent.mkdir(parents=True)
     model.write_bytes(b"fake gguf")
-    llm = Mock()
+    llm = Mock(tokenize=lambda *args, **kwargs: [0])
     llm.create_chat_completion.side_effect = lambda **kwargs: completion(content)
     prompts = LlamaPrompts(paths, load_llama=Mock(return_value=llm))
     assert prompts.create("girl", PromptSettings(thinking=True)) == "night, girl"
@@ -87,7 +88,7 @@ def test_truncated_llm_output_is_not_used_as_a_complete_image_prompt(tmp_path):
     model = paths.get("prompt")
     model.parent.mkdir(parents=True)
     model.write_bytes(b"fake gguf")
-    llm = Mock()
+    llm = Mock(tokenize=lambda *args, **kwargs: [0])
     llm.create_chat_completion.side_effect = lambda **kwargs: completion(
         "Thinking Process: ...", "length"
     )
@@ -103,7 +104,7 @@ def test_context_change_reloads_the_model_but_output_limit_change_reuses_it(tmp_
     model = paths.get("prompt")
     model.parent.mkdir(parents=True)
     model.write_bytes(b"fake gguf")
-    llm = Mock(metadata={})
+    llm = Mock(metadata={}, tokenize=lambda *args, **kwargs: [0])
     llm.create_chat_completion.side_effect = lambda **kwargs: completion("girl")
     load = Mock(return_value=llm)
     prompts = LlamaPrompts(paths, load_llama=load)
@@ -126,12 +127,17 @@ def test_thinking_toggle_uses_the_model_template_and_can_be_enabled_again(tmp_pa
     model.parent.mkdir(parents=True)
     model.write_bytes(b"fake gguf")
     template = "{% if enable_thinking %}<think>{% else %}</think>{% endif %}"
-    llm = Mock(metadata={"tokenizer.chat_template": template})
+    llm = Mock(metadata={"tokenizer.chat_template": template}, tokenize=lambda *args, **kwargs: [0])
     llm.token_eos.return_value = 2
     llm.token_bos.return_value = -1
     llm.detokenize.return_value = b"<eos>"
     llm.create_chat_completion.side_effect = lambda **kwargs: completion("girl")
-    formatter = Mock(side_effect=lambda **kwargs: Mock(to_chat_handler=lambda: kwargs))
+    formatter = Mock(
+        side_effect=lambda **kwargs: Mock(
+            to_chat_handler=lambda: kwargs,
+            return_value=SimpleNamespace(prompt="formatted", added_special=True),
+        )
+    )
     monkeypatch.setitem(
         sys.modules,
         "llama_cpp.llama_chat_format",
@@ -154,7 +160,7 @@ def test_disabling_thinking_on_an_unsupported_model_fails_explicitly(tmp_path):
     model = paths.get("prompt")
     model.parent.mkdir(parents=True)
     model.write_bytes(b"fake gguf")
-    llm = Mock(metadata={})
+    llm = Mock(metadata={}, tokenize=lambda *args, **kwargs: [0])
     prompts = LlamaPrompts(paths, load_llama=Mock(return_value=llm))
     with pytest.raises(MoruError) as error:
         prompts.create("girl", PromptSettings(thinking=False))
@@ -182,7 +188,7 @@ def test_cancelling_thinking_stops_reading_tokens_and_closes_the_completion(tmp_
         finally:
             closed.append(True)
 
-    llm = Mock(metadata={})
+    llm = Mock(metadata={}, tokenize=lambda *args, **kwargs: [0])
     llm.create_chat_completion.side_effect = lambda **kwargs: tokens()
     prompts = LlamaPrompts(paths, load_llama=Mock(return_value=llm))
     with pytest.raises(MoruError) as error:
@@ -209,7 +215,7 @@ def test_a_stream_without_a_normal_end_is_not_used_as_a_finished_prompt(tmp_path
     model = paths.get("prompt")
     model.parent.mkdir(parents=True)
     model.write_bytes(b"fake gguf")
-    llm = Mock(metadata={})
+    llm = Mock(metadata={}, tokenize=lambda *args, **kwargs: [0])
     llm.create_chat_completion.side_effect = lambda **kwargs: completion("girl", None)
     with pytest.raises(MoruError) as error:
         LlamaPrompts(paths, load_llama=Mock(return_value=llm)).create(
@@ -248,3 +254,54 @@ def test_disabling_thinking_streams_the_prompt_directly():
         == "night, girl"
     )
     assert snapshots == [("", "night, girl"), ("", "night, girl")]
+
+
+def test_recent_requests_and_selected_prompts_are_real_chat_turns_before_the_latest_request():
+    messages = prompt_messages(
+        "처음 분위기로",
+        "moonlight",
+        (PromptTurn("따뜻하게", "warm sunlight"), PromptTurn("밤으로", "moonlight")),
+    )
+    assert messages[1:5] == [
+        {"role": "user", "content": "따뜻하게"},
+        {"role": "assistant", "content": "warm sunlight"},
+        {"role": "user", "content": "밤으로"},
+        {"role": "assistant", "content": "moonlight"},
+    ]
+    assert (
+        messages[-1]["content"]
+        == "Existing image prompt:\nmoonlight\n\nChange request:\n처음 분위기로"
+    )
+    assert "Anima" not in messages[0]["content"]
+
+
+def test_aesthetic_instructions_omit_score_tags_without_naming_the_model():
+    system = prompt_messages("forest", model_id="anima-aesthetic-v1.1")[0]["content"]
+    assert "Omit score_* tags" in system
+    assert "Anima" not in system
+
+
+def test_context_budget_removes_oldest_complete_turns_but_preserves_current_state():
+    messages = [
+        {"role": "system", "content": "guide"},
+        {"role": "user", "content": "old"},
+        {"role": "assistant", "content": "old result"},
+        {"role": "user", "content": "recent"},
+        {"role": "assistant", "content": "recent result"},
+        {"role": "user", "content": "canonical state and latest request"},
+    ]
+    fitted = fit_messages(messages, lambda items: len(items) * 10, 40)
+    assert fitted == [messages[0], messages[3], messages[4], messages[5]]
+    assert len(messages) == 6
+
+
+def test_oversized_current_state_fails_explicitly_instead_of_being_truncated():
+    with pytest.raises(MoruError) as failure:
+        fit_messages(prompt_messages("new", "canonical"), lambda items: 101, 100)
+    assert failure.value.code == "PROMPT_CONTEXT_TOO_LONG"
+
+
+@pytest.mark.parametrize("content", ["은발 소녀, night", "少女, night", "девушка"])
+def test_non_english_script_is_not_forwarded_to_the_image_model(content):
+    with pytest.raises(MoruError):
+        read_completion(completion(content), Event())

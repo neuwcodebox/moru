@@ -10,6 +10,7 @@ export type PromptSettings = {
   context_size: number;
   max_tokens: number;
   thinking: boolean;
+  history_turns: number;
 };
 export type ProjectInfo = {
   id: string;
@@ -22,7 +23,8 @@ export type ImageItem = {
   request_text: string | null;
   created_at: string;
   parent_image_id: string | null;
-  siblings: string[];
+  turn_id: string;
+  versions: string[];
 };
 export type UnfinishedRequest = {
   id: string;
@@ -30,6 +32,7 @@ export type UnfinishedRequest = {
   status: string;
   error_code: string | null;
   message: string | null;
+  turn_id: string | null;
 };
 export type Project = ProjectInfo & {
   images: ImageItem[];
@@ -49,6 +52,7 @@ export type Job = {
   thinking_enabled?: boolean;
   thinking_text?: string;
   prompt_text?: string;
+  turn_id?: string | null;
 };
 export type ModelStatus = {
   id: string;

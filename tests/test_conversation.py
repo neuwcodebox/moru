@@ -27,28 +27,37 @@ def test_first_request_creates_root_and_next_request_refines_its_actual_prompt(a
     assert app.repository.get_request(child.request_id).base_image_id == root.id
 
 
-def test_fork_uses_selected_image_and_preserves_the_existing_branch(app):
+def test_fork_copies_history_through_selected_image_into_an_independent_session(app):
     project = app.create_project()
     root = generate(app, project.id)
     original = generate(app, project.id, "밤으로")
-    app.fork(project.id, root.id)
-    fork = generate(app, project.id, "비가 오게")
+    copied = app.fork(project.id, root.id)
+    copied_root = app.repository.conversation(copied.id)[0][1]
+    result = generate(app, copied.id, "비가 오게")
 
-    assert app.repository.children(project.id, root.id) == [original, fork]
-    assert app.repository.active_path(project.id) == [root, fork]
-    assert app.repository.get_image(original.id) == original
-    assert app.repository.get_project(project.id).fork_image_id is None
+    assert copied.id != project.id
+    assert app.current_project().id == copied.id
+    assert copied_root.id != root.id
+    assert copied_root.prompt == root.prompt
+    assert copied_root.image_path == root.image_path
+    assert result.parent_image_id == copied_root.id
+    assert app.repository.active_path(project.id) == [root, original]
+    assert len(app.repository.conversation(copied.id)) == 2
     assert app.prompts.inputs[-1] == ("refine", root.prompt, "비가 오게")
 
 
-def test_cancel_fork_restores_latest_image_as_refinement_base(app):
+def test_forking_a_manual_version_preserves_its_original_request_text(app):
     project = app.create_project()
     root = generate(app, project.id)
-    latest = generate(app, project.id)
-    app.fork(project.id, root.id)
-    app.fork(project.id, None)
-    result = generate(app, project.id)
-    assert result.parent_image_id == latest.id
+    job = app.generate_from_prompt(root.id, "night sky")
+    app.scheduler.run_next()
+    selected = app.get_job(job.id).image_id
+    copied = app.fork(project.id, selected)
+    request, image, versions = app.repository.conversation(copied.id)[0]
+    assert request.text == "소녀를 그려줘"
+    assert image.prompt == "night sky"
+    assert len(versions) == 1
+    assert len(app.repository.conversation(project.id)[0][2]) == 2
 
 
 def test_manual_prompt_fork_bypasses_llm_and_preserves_original_prompt(app):
@@ -65,17 +74,20 @@ def test_manual_prompt_fork_bypasses_llm_and_preserves_original_prompt(app):
     assert app.repository.get_image(root.id) == root
 
 
-def test_switching_sibling_branch_selects_its_latest_descendant(app):
+def test_version_selection_preserves_later_turns_and_becomes_the_next_refinement_base(app):
     project = app.create_project()
     root = generate(app, project.id)
-    child = generate(app, project.id)
-    leaf = generate(app, project.id)
-    app.fork(project.id, root.id)
-    sibling = generate(app, project.id)
-    app.select_branch(project.id, child.id)
-    assert app.repository.active_path(project.id) == [root, child, leaf]
-    app.select_branch(project.id, sibling.id)
-    assert app.repository.active_path(project.id) == [root, sibling]
+    job = app.generate_from_prompt(root.id, "changed sky")
+    app.scheduler.run_next()
+    variant = app.repository.get_image(app.get_job(job.id).image_id)
+    later = generate(app, project.id, "꽃도 넣어줘")
+    app.select_version(project.id, root.id)
+    turns = app.repository.conversation(project.id)
+    assert [turn[1] for turn in turns] == [root, later]
+    assert turns[0][2] == [root, variant]
+    result = generate(app, project.id, "처음 장면을 밤으로")
+    assert result.parent_image_id == root.id
+    assert app.prompts.inputs[-1] == ("refine", root.prompt, "처음 장면을 밤으로")
 
 
 def test_new_project_starts_empty_without_deleting_old_work(app):

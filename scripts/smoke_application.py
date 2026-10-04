@@ -55,20 +55,23 @@ def main():
             )
             second = finish(app.submit_request(project.id, "밤으로 바꾸고 비가 조금 오게 해줘"))
             assert second.parent_image_id == first.id
-            app.fork(project.id, first.id)
-            sibling = finish(app.submit_request(project.id, "햇살이 따뜻한 아침으로 바꿔줘"))
-            assert sibling.parent_image_id == first.id
+            copied = app.fork(project.id, first.id)
+            copied_root = app.repository.conversation(copied.id)[0][1]
+            sibling = finish(app.submit_request(copied.id, "햇살이 따뜻한 아침으로 바꿔줘"))
+            assert sibling.parent_image_id == copied_root.id
             manual = finish(
                 app.generate_from_prompt(first.id, first.prompt + ", watercolor painting")
             )
             assert manual.parent_image_id == first.id
-            app.select_branch(project.id, second.id)
+            app.select_version(project.id, second.id)
             assert app.repository.active_path(project.id) == [first, second]
             app.close()
             restored = Repository(data_dir / "test.db")
             try:
                 assert restored.active_path(project.id) == [first, second]
-                assert len(restored.children(project.id, first.id)) == 3
+                assert len(restored.conversation(project.id)) == 2
+                assert len(restored.conversation(project.id)[0][2]) == 2
+                assert len(restored.conversation(copied.id)) == 2
             finally:
                 restored.close()
             report = root / "data/application-smoke-report.json"

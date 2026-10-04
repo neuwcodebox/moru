@@ -257,7 +257,11 @@ SYSTEM
 수정된 전체 Anima 이미지 생성 프롬프트
 ```
 
-전체 대화 로그를 LLM context로 넣지 않는다.
+최근 성공한 요청 n개와 각 행의 선택된 결과 프롬프트를 user/assistant 쌍으로 전달한다. 기본 n=4이며 고급 설정에서 0~20개로 변경한다. 현재 기준 행 이후의 대화와 다른 세션은 제외한다. 기준 프롬프트와 이번 요청을 마지막 user 메시지에 명시한다.
+
+GGUF 채팅 템플릿을 렌더링한 뒤 tokenizer로 입력 토큰 수를 계산한다. context_size - max_tokens를 초과하면 오래된 완전한 user/assistant 쌍부터 제거한다. 현재 기준과 새 요청까지 초과하면 PROMPT_CONTEXT_TOO_LONG 오류를 반환한다. 현재 입력을 조용히 자르거나 다른 모델을 사용하지 않는다.
+
+시스템 지침은 이미지 생성 모델용 영어 positive prompt 작성으로 표현한다. 모델 이름을 지침에 넣지 않는다. 관련 booru 태그와 관계·위치의 자연어 묘사를 혼합하고, 소문자/공백 태그 및 요청된 아티스트의 @ 접두사를 사용한다. Aesthetic 설정일 때 score_* 제외 지침을 추가한다. 비라틴 문자로 작성된 최종 응답은 오류로 처리해 이미지 모델에 넘기지 않는다. 참고: https://huggingface.co/circlestone-labs/Anima#prompting
 
 기준 이미지의 실제 프롬프트가 현재 상태의 canonical representation이다.
 
@@ -554,65 +558,29 @@ images
 
 생성된 Image record는 수정하지 않는다.
 
-Fork는 새 Image record를 만든다.
+다시 생성과 수동 수정은 새 Image record와 Request를 만들되 Request.turn_id로 원래 대화 행에 연결한다. turns(id, project_id, selected_image_id)는 행 순서와 선택된 버전을 저장한다. 이미지의 parent_image_id는 실제 생성 기준을 보존하는 lineage이며 대화 표시 순서를 결정하지 않는다.
+
+기존 DB에는 requests.turn_id와 turns를 원자적으로 추가한다. 기존 자연어 요청은 각 행으로 보존하고 수동 생성은 기준 행의 버전으로 묶는다. 기존 Image record와 PNG는 변경하지 않는다.
 
 ---
 
-## 17. 현재 대화 경로
+## 17. 대화 행과 이미지 버전
 
-UI에는 전체 tree를 표시하지 않는다.
+Repository.conversation은 세션의 행을 생성 순서대로 반환하며 각 행은 원래 요청, 선택된 이미지, 전체 버전 목록으로 구성된다. UI에는 선택된 버전 하나만 표시한다.
 
-현재 active leaf에서 parent를 따라 root까지 올라간 뒤 reverse하여 현재 대화 경로를 계산한다.
+select_version은 그 행의 selected_image_id와 프로젝트의 active_leaf_id를 함께 저장한다. 다른 대화 행이나 이미지 기록은 변경하지 않는다. 다음 자연어 수정의 기준은 active_leaf_id이다.
 
-분기점에는 sibling child count를 조회해:
+## 18. 자연어 생성과 세션 분기
 
-```text
-‹ 1 / 3 ›
-```
+기준 이미지가 없으면 create, 있으면 refine을 호출한다. 최근 요청/선택된 프롬프트의 맥락은 현재 기준 행까지만 포함한다. 작업 도중 설정 변경은 해당 작업에 적용하지 않는다.
 
-형식의 selector를 표시한다.
+fork는 선택 행까지 요청과 이미지 record를 새 ID로 복사하고 current_project를 새 세션으로 바꾸는 하나의 SQLite transaction이다. 앞선 행의 이미지 버전과 선택 상태는 보존하며 목표 행에는 선택한 이미지만 복사한다. immutable PNG 파일은 공유한다. 복사 실패는 전체 transaction을 rollback한다.
 
----
+## 19. 다시 생성과 직접 프롬프트 수정
 
-## 18. 자연어 생성 처리
+regenerate는 현재 선택 이미지의 prompt를 generate_from_prompt에 전달한다. 두 경로 모두 LLM을 거치지 않고 현재 이미지 설정을 사용하며 원래 turn_id에 새 버전을 추가한다. Seed Auto는 새 seed를 결정한다. 완료 시 새 버전을 선택한다.
 
-기준 이미지 우선순위:
-
-1. 사용자가 Fork 버튼으로 선택한 이미지
-2. 현재 active leaf
-3. 없음
-
-기준 이미지 없음:
-
-```text
-자연어 요청
-→ Prompt LLM create
-→ Anima
-→ root Image
-```
-
-기준 이미지 있음:
-
-```text
-기준 Image.prompt
-+ 자연어 요청
-→ Prompt LLM refine
-→ Anima
-→ child Image
-```
-
----
-
-## 19. 수동 프롬프트 Fork
-
-이미지의 프롬프트 팝업에서 직접 수정 후 생성할 때:
-
-- Prompt LLM 호출 안 함
-- 선택 이미지가 parent
-- 편집된 prompt를 그대로 Anima에 전달
-- 새 child Image 생성
-
-원본 이미지와 기존 child branch는 보존한다.
+Job.turn_id와 unfinished_requests.turn_id를 bridge로 전달하여 placeholder와 실패/재시도를 원래 행에서 렌더링한다. 새 자연어 요청만 새 행으로 표시한다.
 
 ---
 
@@ -815,9 +783,9 @@ data/logs/image-worker.log
 
 - 새 작업 생성
 - root/child 생성
-- Fork 기준 선택
+- 선택한 이미지까지 세션 복사
 - root → leaf 경로 계산
-- sibling branch 이동
+- 이미지 버전 선택 및 다음 수정 기준
 - Prompt create/refine 입력 구성
 - generation settings validation
 - Auto seed
@@ -829,9 +797,9 @@ Mock LLM + Mock Image Worker:
 
 1. 첫 요청 → root image
 2. 수정 요청 → child image
-3. 과거 이미지 Fork → sibling
-4. prompt manual Fork
-5. branch switch
+3. 과거 이미지 분기 → 독립 세션 복사
+4. 직접 프롬프트 생성 → 같은 행의 새 버전
+5. 버전 선택 → 다음 수정 기준 변경
 6. generation failure → tree 유지
 7. restart → state 복구
 
@@ -866,7 +834,7 @@ Mock LLM + Mock Image Worker:
 - SQLite
 - Project / Request / Image tree
 - Fork
-- branch selector
+- 이미지 버전 선택기
 - restart recovery
 
 ### Phase 3 — Prompt LLM
@@ -905,7 +873,7 @@ Mock LLM + Mock Image Worker:
 - ComfyUI UI/노드 편집기를 앱에 포함하지 않는다.
 - 내부 worker는 앱이 자동 시작·종료한다.
 - 사용자가 서버/스크립트/콘솔을 실행하게 하지 않는다.
-- 이미지 결과는 불변이며 수정은 항상 Fork다.
+- 이미지 결과는 불변이며 재생성은 같은 행의 새 버전, 분기는 독립 세션 복사다.
 - release 사용자는 Python/Node/ComfyUI를 설치하지 않는다.
 - release는 portable ZIP이며 실행 진입점은 `Moru.exe` 하나다.
 
@@ -976,3 +944,5 @@ Job에 임시 텍스트를 저장하고 기존 polling bridge로 placeholder를 
 
 HTML을 직접 로드한 WebView2에서는 브라우저 Clipboard API를 사용할 수 없으므로
 프롬프트 복사는 Python bridge로 전달하여 Windows UI thread의 클립보드 API를 사용한다.
+
+대화 스크롤은 맨 아래를 따라가는 상태에서만 자동 이동한다. ResizeObserver로 이미지와 텍스트의 크기 변화를 추적하며, 위로 스크롤하면 입력창 중앙 상단의 플로팅 버튼으로 맨 아래로 이동한다. 실시간 프롬프트와 thinking은 placeholder의 이미지 canvas 안에 표시한다.

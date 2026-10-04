@@ -13,7 +13,7 @@ from threading import Event, RLock
 from PIL import Image as PngImage
 from PIL import UnidentifiedImageError
 
-from moru.domain import GenerationSettings, Image, Project, PromptSettings, Request
+from moru.domain import GenerationSettings, Image, Project, PromptSettings, PromptTurn, Request
 from moru.errors import MoruError
 from moru.ports import ImageGenerator, PromptGenerator
 from moru.repository import Repository
@@ -34,6 +34,7 @@ class Job:
     thinking_enabled: bool = False
     thinking_text: str = ""
     prompt_text: str = ""
+    turn_id: str | None = None
 
 
 class Application:
@@ -96,15 +97,17 @@ class Application:
             self.repository.set_current_project(project_id)
             return self.repository.get_project(project_id)
 
-    def fork(self, project_id: str, image_id: str | None):
+    def fork(self, project_id: str, image_id: str) -> Project:
         with self._lock:
             self._available()
-            self.repository.set_fork(project_id, image_id)
+            project = Project(self._new_id(), self._now())
+            self.repository.copy_session(project, project_id, image_id, self._new_id)
+            return self.repository.get_project(project.id)
 
-    def select_branch(self, project_id: str, image_id: str):
+    def select_version(self, project_id: str, image_id: str):
         with self._lock:
             self._available()
-            self.repository.select_branch(project_id, image_id)
+            self.repository.select_version(project_id, image_id)
 
     def get_settings(self) -> GenerationSettings:
         return GenerationSettings(**self.repository.get_preference("settings", {}))
@@ -129,7 +132,7 @@ class Application:
             if not isinstance(text, str) or not text.strip():
                 raise MoruError("INVALID_REQUEST")
             project = self.repository.get_project(project_id)
-            base = project.fork_image_id or project.active_leaf_id
+            base = project.active_leaf_id
             request = Request(
                 self._new_id(),
                 project_id,
@@ -156,9 +159,14 @@ class Application:
                 image.id,
                 "manual",
                 self.get_settings(),
+                turn_id=self.repository.image_turn(image.id),
             )
             self.repository.add_request(request)
             return self._enqueue(request)
+
+    def regenerate(self, image_id: str) -> Job:
+        image = self.repository.get_image(image_id)
+        return self.generate_from_prompt(image_id, image.prompt)
 
     def retry_request(self, request_id: str) -> Job:
         with self._lock:
@@ -170,7 +178,7 @@ class Application:
             return self._enqueue(replace(request, status="pending", error_code=None))
 
     def _enqueue(self, request: Request) -> Job:
-        job = Job(self._new_id(), request.id, request.project_id)
+        job = Job(self._new_id(), request.id, request.project_id, turn_id=request.turn_id)
         self._jobs[job.id] = job
         self._active_job = job.id
         self._cancelled = Event()
@@ -292,6 +300,18 @@ class Application:
         def progress(thinking, prompt):
             self._prompt_progress(job_id, thinking, prompt)
 
+        history = []
+        if settings.history_turns and request.base_image_id:
+            base_turn = self.repository.image_turn(request.base_image_id)
+            for original, selected, _ in self.repository.conversation(request.project_id):
+                if original.id == base_turn:
+                    selected = self.repository.get_image(request.base_image_id)
+                history.append(PromptTurn(original.text, selected.prompt))
+                if original.id == base_turn:
+                    break
+            history = history[-settings.history_turns :]
+        context = {"history": tuple(history), "model_id": request.settings.model_id}
+
         if request.base_image_id:
             base = self.repository.get_image(request.base_image_id)
             prompt = self.prompts.refine(
@@ -300,6 +320,7 @@ class Application:
                 settings,
                 cancelled,
                 progress,
+                **context,
             )
         else:
             prompt = self.prompts.create(
@@ -307,6 +328,7 @@ class Application:
                 settings,
                 cancelled,
                 progress,
+                **context,
             )
         if not isinstance(prompt, str) or not prompt.strip():
             raise MoruError("PROMPT_LLM_FAILED")
