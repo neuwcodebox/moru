@@ -14,13 +14,8 @@ import Lightbox from "./Lightbox";
 import PromptDialog from "./PromptDialog";
 import SettingsDialog from "./SettingsDialog";
 import ModelsDialog from "./ModelsDialog";
-
-const progressNames: Record<string, string> = {
-  queued: "생성 대기",
-  prompting: "프롬프트 준비",
-  loading_model: "이미지 모델 준비",
-  generating: "이미지 생성",
-};
+import Conversation from "./Conversation";
+import GenerationProgress from "./GenerationProgress";
 
 export default function App() {
   const [project, setProject] = useState<Project | null>(null);
@@ -40,7 +35,6 @@ export default function App() {
   const [viewer, setViewer] = useState<string | null>(null);
   const [sources, setSources] = useState<Record<string, string>>({});
   const input = useRef<HTMLTextAreaElement>(null);
-  const bottom = useRef<HTMLDivElement>(null);
   const busy = acting || job !== null;
 
   useEffect(() => {
@@ -144,10 +138,6 @@ export default function App() {
     };
   }, [project]);
 
-  useEffect(() => {
-    bottom.current?.scrollIntoView?.({ behavior: "smooth" });
-  }, [project, job?.state]);
-
   async function act(action: () => Promise<void>) {
     setActing(true);
     setError("");
@@ -162,38 +152,27 @@ export default function App() {
   async function submit() {
     if (!project || busy || !text.trim()) return;
     await act(async () => {
-      const next = await call<Job>("submit_request", project.id, text);
-      setJob(next);
+      await startGeneration("submit_request", project.id, text);
       setText("");
-      setProject(await call<Project>("get_project", project.id));
     });
   }
-  function branchSelector(siblings: string[], selectedId: string) {
-    if (!project || siblings.length < 2) return null;
-    const index = siblings.indexOf(selectedId);
-    const move = (offset: number) =>
-      void act(async () =>
-        setProject(
-          await call<Project>(
-            "select_branch",
-            project.id,
-            siblings[(index + offset + siblings.length) % siblings.length],
-          ),
-        ),
+  async function startGeneration(method: string, ...args: unknown[]) {
+    const next = await call<Job>(method, ...args);
+    setJob(next);
+    try {
+      setProject(await call<Project>("get_project", next.project_id));
+    } catch (error) {
+      // The request was accepted; keep observing its job instead of offering another submission.
+      setError(
+        error instanceof Error ? error.message : "대화를 불러올 수 없습니다.",
       );
-    return (
-      <div className="branch-selector" aria-label="분기 선택">
-        <button aria-label="이전 분기" disabled={busy} onClick={() => move(-1)}>
-          ‹
-        </button>
-        <span>
-          {index + 1} / {siblings.length}
-        </span>
-        <button aria-label="다음 분기" disabled={busy} onClick={() => move(1)}>
-          ›
-        </button>
-      </div>
-    );
+    }
+  }
+  function cancelGeneration() {
+    if (job)
+      void act(async () => {
+        await call("cancel_job", job.id);
+      });
   }
 
   return (
@@ -227,122 +206,37 @@ export default function App() {
           </select>
         )}
       </header>
-      <main className="conversation" aria-label="대화">
-        {project &&
-          !project.images.length &&
-          !project.unfinished_requests.length && (
-            <div className="empty">
-              <div className="empty-symbol">✦</div>
-              <h1>어떤 장면을 그릴까요?</h1>
-              <p>원하는 이미지를 이야기하고, 대화로 다듬어 보세요.</p>
-            </div>
-          )}
-        {!project && (
-          <p className="connecting" role="status">
-            데스크톱 앱에 연결하는 중…
-          </p>
-        )}
-        {project?.images.map((image, index) => (
-          <div className="turn" key={image.id}>
-            {image.request_text && (
-              <div className="user-row">
-                <div className="user-message">{image.request_text}</div>
-                <span className="avatar" aria-hidden="true">
-                  ♙
-                </span>
-              </div>
-            )}
-            <div className="image-result">
-              {sources[image.id] ? (
-                <button
-                  className="image-button"
-                  aria-label="이미지 전체 화면 보기"
-                  onClick={() => setViewer(sources[image.id])}
-                >
-                  <img src={sources[image.id]} alt="생성 이미지" />
-                </button>
-              ) : (
-                <div className="image-placeholder" role="status">
-                  이미지를 불러오는 중…
-                </div>
-              )}
-              <div className="image-actions">
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    void act(async () =>
-                      setDetails(
-                        await call<ImageDetails>("get_image_details", image.id),
-                      ),
-                    )
-                  }
-                >
-                  프롬프트
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    void act(async () => {
-                      setProject(
-                        await call<Project>("fork", project!.id, image.id),
-                      );
-                      input.current?.focus();
-                    })
-                  }
-                >
-                  ⑂ Fork
-                </button>
-                {index === 0 && branchSelector(image.siblings, image.id)}
-                {project.images[index + 1] &&
-                  branchSelector(
-                    project.images[index + 1].siblings,
-                    project.images[index + 1].id,
-                  )}
-              </div>
-            </div>
-          </div>
-        ))}
-        {project?.unfinished_requests.map((request) => (
-          <div className="unfinished" key={request.id}>
-            {request.text && (
-              <div className="user-row">
-                <div className="user-message">{request.text}</div>
-              </div>
-            )}
-            {request.status !== "pending" && (
-              <div className="request-error">
-                <span>{request.message}</span>
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    void act(async () =>
-                      setJob(await call<Job>("retry_request", request.id)),
-                    )
-                  }
-                >
-                  재시도
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
-        {job?.state === "prompting" && (
-          <div className="progress thinking" role="status" aria-live="polite">
-            <span className="spinner" />
-            <span>생각 중…</span>
-            <button
-              onClick={() =>
-                void act(async () => {
-                  await call("cancel_job", job.id);
-                })
-              }
-            >
-              취소
-            </button>
-          </div>
-        )}
-        <div ref={bottom} />
-      </main>
+      <Conversation
+        project={project}
+        sources={sources}
+        busy={busy}
+        job={job}
+        onViewImage={setViewer}
+        onShowPrompt={(id) =>
+          void act(async () => {
+            setDetails(await call<ImageDetails>("get_image_details", id));
+          })
+        }
+        onFork={(id) =>
+          void act(async () => {
+            if (!project) return;
+            setProject(await call<Project>("fork", project.id, id));
+            input.current?.focus();
+          })
+        }
+        onSelectBranch={(id) =>
+          void act(async () => {
+            if (project)
+              setProject(await call<Project>("select_branch", project.id, id));
+          })
+        }
+        onRetry={(id) =>
+          void act(async () => {
+            await startGeneration("retry_request", id);
+          })
+        }
+        onCancel={cancelGeneration}
+      />
       <footer>
         {error && (
           <div className="error-banner" role="alert">
@@ -353,24 +247,7 @@ export default function App() {
           </div>
         )}
         {job && job.state !== "prompting" && (
-          <div className="progress" role="status">
-            <span className="spinner" />
-            <span>
-              {progressNames[job.state] ?? "이미지 생성"}
-              {job.step != null && job.total != null
-                ? ` · ${job.step} / ${job.total}`
-                : ""}
-            </span>
-            <button
-              onClick={() =>
-                void act(async () => {
-                  await call("cancel_job", job.id);
-                })
-              }
-            >
-              취소
-            </button>
-          </div>
+          <GenerationProgress job={job} onCancel={cancelGeneration} />
         )}
         <div className="composer-tools">
           {project?.fork_image_id && (
@@ -474,13 +351,7 @@ export default function App() {
           details={details}
           onClose={() => setDetails(null)}
           onGenerate={async (prompt) => {
-            const next = await call<Job>(
-              "generate_from_prompt",
-              details.id,
-              prompt,
-            );
-            setJob(next);
-            setProject(await call<Project>("get_project", next.project_id));
+            await startGeneration("generate_from_prompt", details.id, prompt);
           }}
         />
       )}

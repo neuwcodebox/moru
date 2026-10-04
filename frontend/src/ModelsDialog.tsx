@@ -2,14 +2,7 @@ import { useEffect, useState } from "react";
 import { call } from "./api";
 import type { ModelStatus } from "./api";
 import Modal from "./Modal";
-
-const names: Record<string, string> = {
-  prompt: "프롬프트 작성 모델",
-  "anima-turbo-v1.1": "Anima Turbo",
-  "anima-aesthetic-v1.1": "Anima Aesthetic",
-  text_encoder: "문장 이해 모델",
-  vae: "이미지 복원 모델",
-};
+import { modelNames } from "./modelNames";
 export default function ModelsDialog({
   initial,
   onUpdate,
@@ -77,7 +70,7 @@ export default function ModelsDialog({
           return (
             <div className="model-row" key={model.id}>
               <div className="model-label">
-                <strong>{names[model.id]}</strong>
+                <strong>{modelNames[model.id]}</strong>
                 <span className="hint">
                   {model.available ? "준비됨" : "준비 필요"}
                 </span>
@@ -87,7 +80,7 @@ export default function ModelsDialog({
                   <progress
                     value={d.received}
                     max={d.total}
-                    aria-label={`${names[model.id]} 다운로드 진행률`}
+                    aria-label={`${modelNames[model.id]} 다운로드 진행률`}
                   />
                   <span>{Math.floor((d.received * 100) / d.total)}%</span>
                   <button

@@ -81,6 +81,18 @@ beforeEach(() => {
       success({ id: "j1", project_id: "p1", state: "queued" }),
     ),
     update_settings: vi.fn((values) => success(values)),
+    retry_request: vi.fn(() => {
+      current = {
+        ...current,
+        unfinished_requests: current.unfinished_requests.map((request) => ({
+          ...request,
+          status: "pending",
+          error_code: null,
+          message: null,
+        })),
+      };
+      return success({ id: "j1", project_id: "p1", state: "queued" });
+    }),
     create_project: vi.fn(() => {
       current = { ...empty, id: "p2" };
       return success(current);
@@ -91,6 +103,50 @@ beforeEach(() => {
 });
 
 describe("conversation", () => {
+  it("closes the manual prompt dialog when generation is accepted even if refreshing the conversation fails", async () => {
+    current = withImage;
+    api.get_project.mockRejectedValue(new Error("대화를 불러올 수 없습니다."));
+    api.get_job.mockResolvedValue({
+      ok: true,
+      value: { id: "j1", project_id: "p1", state: "prompting" },
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByAltText("생성 이미지");
+    await user.click(screen.getByText("프롬프트"));
+    await user.click(screen.getByText("이 프롬프트로 생성"));
+    await screen.findByText("생각 중…");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(api.generate_from_prompt).toHaveBeenCalledOnce();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "대화를 불러올 수 없습니다.",
+    );
+  });
+  it("clears a failed request status as soon as its retry is accepted", async () => {
+    current = {
+      ...empty,
+      unfinished_requests: [
+        {
+          id: "r1",
+          text: "밤 풍경",
+          status: "failed",
+          error_code: "GENERATION_FAILED",
+          message: "이미지 생성에 실패했습니다.",
+        },
+      ],
+    };
+    api.get_job.mockResolvedValue({
+      ok: true,
+      value: { id: "j1", project_id: "p1", state: "prompting" },
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("이미지 생성에 실패했습니다.");
+    await user.click(screen.getByText("재시도"));
+    await screen.findByText("생각 중…");
+    expect(screen.queryByText("이미지 생성에 실패했습니다.")).toBeNull();
+    expect(api.retry_request).toHaveBeenCalledWith("r1");
+  });
   it("copies the edited prompt through the desktop clipboard bridge", async () => {
     current = withImage;
     const user = userEvent.setup();
@@ -291,6 +347,30 @@ it("fits, zooms, and closes the fullscreen viewer with Escape", async () => {
   expect(screen.getByText("100%")).toBeTruthy();
   await user.keyboard("{Escape}");
   expect(close).toHaveBeenCalledOnce();
+});
+
+it("pans the fullscreen image while dragging and resets its position when fitted", async () => {
+  const user = userEvent.setup();
+  render(<Lightbox source="data:image/png;base64,abc" onClose={vi.fn()} />);
+  const image = screen.getByAltText("생성 이미지 전체 화면");
+  const viewer = image.parentElement!;
+  fireEvent(
+    viewer,
+    new MouseEvent("pointerdown", { bubbles: true, clientX: 10, clientY: 20 }),
+  );
+  fireEvent(
+    viewer,
+    new MouseEvent("pointermove", { bubbles: true, clientX: 40, clientY: 60 }),
+  );
+  expect(image.style.transform).toBe("translate(30px, 40px) scale(1)");
+  fireEvent(viewer, new MouseEvent("pointerup", { bubbles: true }));
+  fireEvent(
+    viewer,
+    new MouseEvent("pointermove", { bubbles: true, clientX: 80, clientY: 100 }),
+  );
+  expect(image.style.transform).toBe("translate(30px, 40px) scale(1)");
+  await user.click(screen.getByText("화면 맞춤"));
+  expect(image.style.transform).toBe("translate(0px, 0px) scale(1)");
 });
 
 it("waits for the pywebview ready event before loading state", async () => {

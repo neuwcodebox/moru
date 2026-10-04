@@ -2,7 +2,7 @@ import { useState } from "react";
 import { call } from "./api";
 import type { ImageDetails } from "./api";
 import Modal from "./Modal";
-import { modelNames } from "./SettingsDialog";
+import { imageModelNames } from "./modelNames";
 
 export default function PromptDialog({
   details,
@@ -30,7 +30,7 @@ export default function PromptDialog({
       <dl className="metadata">
         <div>
           <dt>모델</dt>
-          <dd>{modelNames[s.model_id]}</dd>
+          <dd>{imageModelNames[s.model_id]}</dd>
         </div>
         <div>
           <dt>Width / Height</dt>

@@ -1,11 +1,7 @@
 import { useState } from "react";
 import type { PromptSettings, Settings } from "./api";
 import Modal from "./Modal";
-
-export const modelNames: Record<string, string> = {
-  "anima-turbo-v1.1": "Anima Turbo",
-  "anima-aesthetic-v1.1": "Anima Aesthetic",
-};
+import { imageModelNames } from "./modelNames";
 const resolutions = [
   [1024, 1024],
   [832, 1216],
@@ -66,7 +62,7 @@ export default function SettingsDialog({
               setDraft({ ...draft, model_id: event.target.value })
             }
           >
-            {Object.entries(modelNames).map(([id, name]) => (
+            {Object.entries(imageModelNames).map(([id, name]) => (
               <option key={id} value={id}>
                 {name}
               </option>
