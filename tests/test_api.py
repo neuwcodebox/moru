@@ -83,13 +83,29 @@ def test_bootstrap_exposes_prompt_defaults_and_restores_saved_values(app):
     assert api.bootstrap()["value"]["prompt_settings"] == {
         "context_size": 2048,
         "max_tokens": 1024,
-        "thinking": False,
+        "thinking": True,
         "history_turns": 4,
+        "reasoning_level": "low",
     }
-    values = {"context_size": 4096, "max_tokens": 2048, "thinking": False, "history_turns": 2}
+    values = {
+        "context_size": 4096, "max_tokens": 2048, "thinking": False,
+        "history_turns": 2, "reasoning_level": "high",
+    }
     assert api.update_settings({"steps": 12}, values)["ok"]
     assert api.get_prompt_settings()["value"] == values
     assert api.bootstrap()["value"]["prompt_settings"] == values
+
+
+def test_model_defaults_exposed_to_the_ui_match_partial_settings_and_actual_generation(app):
+    api = Api(app)
+    defaults = api.bootstrap()["value"]["generation_defaults"]["anima-aesthetic-v1.1"]
+    saved = api.update_settings({"model_id": "anima-aesthetic-v1.1"})["value"]
+    assert saved["steps"] == defaults["steps"] == 40
+    assert saved["cfg"] == defaults["cfg"] == 4.5
+    project = app.create_project()
+    image = generate(app, project.id)
+    assert image.settings.steps == 40
+    assert image.settings.cfg == 4.5
 
 
 @pytest.mark.parametrize(

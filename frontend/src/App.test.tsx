@@ -17,8 +17,9 @@ const settings: Settings = {
 const promptSettings: PromptSettings = {
   context_size: 2048,
   max_tokens: 1024,
-  thinking: false,
+  thinking: true,
   history_turns: 4,
+  reasoning_level: "low",
 };
 const empty: Project = {
   id: "p1",
@@ -48,6 +49,10 @@ beforeEach(() => {
         project: current,
         projects: [empty],
         settings,
+        generation_defaults: {
+          "anima-turbo-v1.1": { steps: 10, cfg: 1 },
+          "anima-aesthetic-v1.1": { steps: 40, cfg: 4.5 },
+        },
         prompt_settings: promptSettings,
       }),
     ),
@@ -523,7 +528,7 @@ describe("conversation", () => {
     const thinking = screen.getByLabelText("Thinking 사용") as HTMLInputElement;
     expect((context as HTMLInputElement).value).toBe("2048");
     expect((output as HTMLInputElement).value).toBe("1024");
-    expect(thinking.checked).toBe(false);
+    expect(thinking.checked).toBe(true);
     await user.clear(context);
     await user.type(context, "4096");
     await user.clear(output);
@@ -533,8 +538,9 @@ describe("conversation", () => {
     expect(api.update_settings).toHaveBeenCalledWith(settings, {
       context_size: 4096,
       max_tokens: 2048,
-      thinking: true,
+      thinking: false,
       history_turns: 4,
+      reasoning_level: "low",
     });
     await user.click(screen.getByLabelText("생성 설정"));
     await user.click(screen.getByText("고급 · 프롬프트 LLM"));
@@ -543,7 +549,49 @@ describe("conversation", () => {
     ).toBe("4096");
     expect(
       (screen.getByLabelText("Thinking 사용") as HTMLInputElement).checked,
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it("applies the chosen model's recommended sampling settings and saves custom overrides", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("어떤 장면을 그릴까요?");
+    await user.click(screen.getByLabelText("생성 설정"));
+    await user.selectOptions(screen.getByLabelText("모델"), "anima-aesthetic-v1.1");
+    expect((screen.getByLabelText("Steps") as HTMLInputElement).value).toBe("40");
+    expect((screen.getByLabelText("CFG") as HTMLInputElement).value).toBe("4.5");
+    await user.clear(screen.getByLabelText("Steps"));
+    await user.type(screen.getByLabelText("Steps"), "35");
+    await user.click(screen.getByText("저장"));
+    expect(api.update_settings).toHaveBeenCalledWith(
+      { ...settings, model_id: "anima-aesthetic-v1.1", steps: 35, cfg: 4.5 },
+      promptSettings,
+    );
+    await user.click(screen.getByLabelText("생성 설정"));
+    await user.selectOptions(screen.getByLabelText("모델"), "anima-turbo-v1.1");
+    expect((screen.getByLabelText("Steps") as HTMLInputElement).value).toBe("10");
+    expect((screen.getByLabelText("CFG") as HTMLInputElement).value).toBe("1");
+  });
+
+  it("defaults to low reasoning and persists the chosen level while disabling it with thinking", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("어떤 장면을 그릴까요?");
+    await user.click(screen.getByLabelText("생성 설정"));
+    await user.click(screen.getByText("고급 · 프롬프트 LLM"));
+    expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).value).toBe("low");
+    await user.selectOptions(screen.getByLabelText("추론 수준"), "high");
+    await user.click(screen.getByLabelText("Thinking 사용"));
+    expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).disabled).toBe(true);
+    await user.click(screen.getByText("저장"));
+    expect(api.update_settings).toHaveBeenCalledWith(settings, {
+      ...promptSettings, thinking: false, reasoning_level: "high",
+    });
+    await user.click(screen.getByLabelText("생성 설정"));
+    await user.click(screen.getByText("고급 · 프롬프트 LLM"));
+    await user.click(screen.getByLabelText("Thinking 사용"));
+    expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).value).toBe("high");
+    expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).disabled).toBe(false);
   });
 
   it("keeps the dialog open without saving when output leaves no input context", async () => {

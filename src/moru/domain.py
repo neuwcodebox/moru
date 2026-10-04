@@ -6,7 +6,12 @@ from typing import Literal
 
 from moru.errors import MoruError
 
-MODEL_IDS = ("anima-turbo-v1.1", "anima-aesthetic-v1.1")
+MODEL_DEFAULTS = {
+    "anima-turbo-v1.1": {"steps": 10, "cfg": 1.0},
+    "anima-aesthetic-v1.1": {"steps": 40, "cfg": 4.5},
+}
+MODEL_IDS = tuple(MODEL_DEFAULTS)
+REASONING_BUDGETS = {"low": 128, "medium": 256, "high": 512}
 RequestKind = Literal["create", "refine", "manual"]
 RequestStatus = Literal["pending", "completed", "failed", "cancelled"]
 
@@ -15,8 +20,9 @@ RequestStatus = Literal["pending", "completed", "failed", "cancelled"]
 class PromptSettings:
     context_size: int = 2048
     max_tokens: int = 1024
-    thinking: bool = False
+    thinking: bool = True
     history_turns: int = 4
+    reasoning_level: Literal["low", "medium", "high"] = "low"
 
     def __post_init__(self):
         if type(self.context_size) is not int or not 1024 <= self.context_size <= 32768:
@@ -27,6 +33,16 @@ class PromptSettings:
             raise MoruError("INVALID_SETTINGS")
         if type(self.history_turns) is not int or not 0 <= self.history_turns <= 20:
             raise MoruError("INVALID_SETTINGS")
+        if (
+            not isinstance(self.reasoning_level, str)
+            or self.reasoning_level not in REASONING_BUDGETS
+        ):
+            raise MoruError("INVALID_SETTINGS")
+
+    @property
+    def thinking_budget(self) -> int:
+        # Reserve at least half the output allowance for the actual image prompt.
+        return min(REASONING_BUDGETS[self.reasoning_level], self.max_tokens // 2)
 
 
 @dataclass(frozen=True)
@@ -40,13 +56,16 @@ class GenerationSettings:
     model_id: str = MODEL_IDS[0]
     width: int = 1024
     height: int = 1024
-    steps: int = 10
-    cfg: float = 1.0
+    steps: int | None = None
+    cfg: float | None = None
     seed: int | None = None
 
     def __post_init__(self):
         if self.model_id not in MODEL_IDS:
             raise MoruError("INVALID_SETTINGS")
+        for field in ("steps", "cfg"):
+            if getattr(self, field) is None:
+                object.__setattr__(self, field, MODEL_DEFAULTS[self.model_id][field])
         for value in (self.width, self.height):
             if type(value) is not int or not 64 <= value <= 4096 or value % 16:
                 raise MoruError("INVALID_SETTINGS")

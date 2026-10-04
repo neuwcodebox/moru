@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS requests (
     id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
     text TEXT NOT NULL, created_at TEXT NOT NULL,
     base_image_id TEXT REFERENCES images(id), kind TEXT NOT NULL,
-    settings TEXT NOT NULL, status TEXT NOT NULL, error_code TEXT
+    settings TEXT NOT NULL, status TEXT NOT NULL, error_code TEXT, turn_id TEXT
 );
 CREATE TABLE IF NOT EXISTS images (
     id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
@@ -53,53 +53,16 @@ class Repository:
             self._db.execute("PRAGMA journal_mode=WAL")
             self._db.execute("PRAGMA synchronous=FULL")
             self._db.executescript(SCHEMA)
+            self._db.execute("SELECT turn_id FROM requests LIMIT 0")
             with self._db:
-                # sqlite3 does not implicitly begin a transaction for ALTER TABLE.
-                self._db.execute("BEGIN")
-                columns = {row[1] for row in self._db.execute("PRAGMA table_info(requests)")}
-                if "turn_id" not in columns:
-                    self._db.execute("ALTER TABLE requests ADD COLUMN turn_id TEXT")
-                    self._migrate_turns()
                 self._db.execute(
                     "UPDATE requests SET status='failed', error_code='GENERATION_INTERRUPTED' "
                     "WHERE status='pending'"
                 )
         except (OSError, sqlite3.Error) as exc:
+            if hasattr(self, "_db"):
+                self._db.close()
             raise MoruError("DATABASE_FAILED") from exc
-
-    def _migrate_turns(self):
-        # Existing image records stay immutable. Manual generations become versions.
-        image_turns = {}
-        rows = self._db.execute(
-            "SELECT images.*, requests.kind FROM images "
-            "JOIN requests ON requests.id=images.request_id ORDER BY images.rowid"
-        ).fetchall()
-        for row in rows:
-            turn_id = row["request_id"]
-            if row["kind"] == "manual":
-                turn_id = image_turns.get(row["parent_image_id"], turn_id)
-            image_turns[row["id"]] = turn_id
-            self._db.execute(
-                "UPDATE requests SET turn_id=? WHERE id=?", (turn_id, row["request_id"])
-            )
-            self._db.execute(
-                "INSERT INTO turns VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE "
-                "SET selected_image_id=excluded.selected_image_id",
-                (turn_id, row["project_id"], row["id"]),
-            )
-        for project in self._db.execute("SELECT * FROM projects").fetchall():
-            if turn_id := image_turns.get(project["active_leaf_id"]):
-                self._db.execute(
-                    "UPDATE turns SET selected_image_id=? WHERE id=?",
-                    (project["active_leaf_id"], turn_id),
-                )
-        for request in self._db.execute(
-            "SELECT * FROM requests WHERE kind='manual' AND turn_id IS NULL"
-        ).fetchall():
-            if turn_id := image_turns.get(request["base_image_id"]):
-                self._db.execute(
-                    "UPDATE requests SET turn_id=? WHERE id=?", (turn_id, request["id"])
-                )
 
     @contextmanager
     def _transaction(self):

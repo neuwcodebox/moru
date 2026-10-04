@@ -135,17 +135,12 @@ def test_failed_session_copy_rolls_back_the_new_session_and_current_project(tmp_
         app.close()
 
 
-def test_legacy_database_migrates_manual_images_into_versions_without_changing_images(
-    app, tmp_path
-):
+def test_latest_schema_restores_selected_versions_without_migrating_records(app, tmp_path):
     project = app.create_project()
     root = generate(app, project.id)
     revised = variant(app, root, "moonlight")
     app.close()
     database = tmp_path / "anima.db"
-    with sqlite3.connect(database) as db:
-        db.execute("DROP TABLE turns")
-        db.execute("ALTER TABLE requests DROP COLUMN turn_id")
     repository = Repository(database)
     try:
         request, selected, versions = repository.conversation(project.id)[0]
@@ -163,26 +158,20 @@ def test_invalid_history_counts_are_rejected(value):
         PromptSettings(history_turns=value)
 
 
-def test_failed_legacy_migration_rolls_back_schema_and_can_be_retried(app, tmp_path):
+def test_incompatible_schema_fails_explicitly_without_rewriting_history(app, tmp_path):
     project = app.create_project()
     root = generate(app, project.id)
     app.close()
     database = tmp_path / "anima.db"
     with sqlite3.connect(database) as db:
-        db.execute("DROP TABLE turns")
         db.execute("ALTER TABLE requests DROP COLUMN turn_id")
-        db.execute(
-            "CREATE TRIGGER fail_migration BEFORE UPDATE ON requests "
-            "BEGIN SELECT RAISE(ABORT, 'disk failure'); END"
-        )
-    with pytest.raises(MoruError):
+    with pytest.raises(MoruError) as failure:
         Repository(database)
+    assert failure.value.code == "DATABASE_FAILED"
     with sqlite3.connect(database) as db:
         columns = {row[1] for row in db.execute("PRAGMA table_info(requests)")}
         assert "turn_id" not in columns
-        db.execute("DROP TRIGGER fail_migration")
-    repository = Repository(database)
-    try:
-        assert repository.conversation(project.id)[0][1] == root
-    finally:
-        repository.close()
+        assert (
+            db.execute("SELECT prompt FROM images WHERE id=?", (root.id,)).fetchone()[0]
+            == root.prompt
+        )

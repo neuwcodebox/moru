@@ -11,7 +11,9 @@ export type PromptSettings = {
   max_tokens: number;
   thinking: boolean;
   history_turns: number;
+  reasoning_level: "low" | "medium" | "high";
 };
+export type GenerationDefaults = Record<string, Pick<Settings, "steps" | "cfg">>;
 export type ProjectInfo = {
   id: string;
   created_at: string;
@@ -71,6 +73,7 @@ export type Bootstrap = {
   project: Project;
   projects: ProjectInfo[];
   settings: Settings;
+  generation_defaults: GenerationDefaults;
   prompt_settings: PromptSettings;
   models?: ModelStatus[];
 };

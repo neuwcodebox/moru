@@ -61,8 +61,9 @@ def main():
         assert report["prompt_defaults"] == {
             "context_size": 2048,
             "max_tokens": 1024,
-            "thinking": False,
+            "thinking": True,
             "history_turns": 4,
+            "reasoning_level": "low",
         }
         if options.ui_only:
             assert report["clipboard_copied"]
@@ -71,6 +72,7 @@ def main():
                 "max_tokens": 2048,
                 "thinking": True,
                 "history_turns": 4,
+                "reasoning_level": "high",
             }
             print(f"portable_ui_and_clipboard_ok report={report_path}", flush=True)
             return

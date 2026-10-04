@@ -10,6 +10,7 @@ from moru.prompting import (
     CREATE_SYSTEM,
     REFINE_SYSTEM,
     LlamaPrompts,
+    ThinkingBudget,
     fit_messages,
     prompt_messages,
     read_completion,
@@ -305,3 +306,76 @@ def test_oversized_current_state_fails_explicitly_instead_of_being_truncated():
 def test_non_english_script_is_not_forwarded_to_the_image_model(content):
     with pytest.raises(MoruError):
         read_completion(completion(content), Event())
+
+
+class Scores(list):
+    """Small stand-in for the mutable logit array, without inference dependencies."""
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, [value] * len(self) if isinstance(key, slice) else value)
+
+
+def test_reasoning_budget_closes_thinking_and_leaves_final_prompt_tokens_unrestricted():
+    processor = ThinkingBudget([3], 2)
+    scores = Scores([1.0] * 5)
+    assert processor([9, 3], scores) == [1.0] * 5  # A history marker isn't generated reasoning.
+    assert processor([9, 3, 1], scores) == [1.0] * 5
+    assert processor([9, 3, 1, 2], scores) == [float("-inf")] * 3 + [0.0, float("-inf")]
+    final_scores = Scores([1.0] * 5)
+    assert processor([9, 3, 1, 2, 3, 4], final_scores) == [1.0] * 5
+
+
+def test_naturally_completed_thinking_is_not_extended_to_fill_the_budget():
+    processor = ThinkingBudget([3], 10)
+    processor([9], Scores([1.0] * 5))
+    assert processor([9, 1, 3, 2], Scores([1.0] * 5)) == [1.0] * 5
+
+
+def test_a_multi_token_thinking_marker_is_completed_in_order():
+    processor = ThinkingBudget([3, 4], 1)
+    processor([9], Scores([1.0] * 5))
+    assert processor([9, 1], Scores([1.0] * 5))[3] == 0.0
+    assert processor([9, 1, 3], Scores([1.0] * 5))[4] == 0.0
+    assert processor([9, 1, 3, 4], Scores([1.0] * 5)) == [1.0] * 5
+
+
+def test_forced_reasoning_end_completes_the_final_answer_cue_before_releasing_sampling():
+    processor = ThinkingBudget([3], 1, [4])
+    processor([9], Scores([1.0] * 5))
+    assert processor([9, 1], Scores([1.0] * 5))[3] == 0.0
+    assert processor([9, 1, 3], Scores([1.0] * 5))[4] == 0.0
+    assert processor([9, 1, 3, 4], Scores([1.0] * 5)) == [1.0] * 5
+
+
+def test_final_answer_cue_is_removed_from_both_live_text_and_the_image_prompt():
+    snapshots = []
+
+    def chunks():
+        for token in ("reasoning</think>\n\nFinal", " image prompt:\n", "black cat, moonlight"):
+            yield {"choices": [{"delta": {"content": token}, "finish_reason": None}]}
+        yield {"choices": [{"delta": {}, "finish_reason": "stop"}]}
+
+    result = read_completion(chunks(), Event(), True, lambda *text: snapshots.append(text))
+    assert result == "black cat, moonlight"
+    assert snapshots[:2] == [("reasoning", ""), ("reasoning", "")]
+    assert snapshots[-1] == ("reasoning", result)
+
+
+def test_reasoning_level_changes_the_completion_budget_without_reloading_the_model(tmp_path):
+    paths = ModelPaths(tmp_path)
+    model = paths.get("prompt")
+    model.parent.mkdir(parents=True)
+    model.write_bytes(b"fake gguf")
+    llm = Mock(
+        metadata={},
+        tokenize=lambda text, **kwargs: [3] if text == b"</think>" else [4],
+    )
+    llm.create_chat_completion.side_effect = lambda **kwargs: completion("girl")
+    load = Mock(return_value=llm)
+    prompts = LlamaPrompts(paths, load_llama=load)
+    for level, budget in (("low", 128), ("high", 512)):
+        prompts.create("girl", PromptSettings(reasoning_level=level))
+        processor = llm.create_chat_completion.call_args.kwargs["logits_processor"][0]
+        processor([9], Scores([1.0] * 5))
+        assert processor([9] + [1] * (budget - 2), Scores([1.0] * 5))[3] == 0.0
+    load.assert_called_once()

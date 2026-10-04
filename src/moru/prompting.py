@@ -18,26 +18,23 @@ from moru.ports import PromptProgress
 
 log = logging.getLogger(__name__)
 CREATE_SYSTEM = (
-    "Write one complete English positive prompt for an image generation model. "
-    "Translate the latest request; use prior conversation only to resolve references. "
-    "The existing image prompt is the current visual state; a new request overrides older wishes. "
-    "Describe requested subjects, appearance, clothing, pose, expression, setting, lighting and "
-    "composition. Preserve specifics; do not invent unrelated characters, styles or objects. "
-    "Combine concise visual sentences for spatial relations and interactions with relevant "
-    "comma-separated booru tags. Use lowercase tags and spaces; only score tags use underscores. "
-    "Examples of tags, only when appropriate: 1girl, 1boy, solo, long hair, looking at viewer, "
-    "full body, upper body, outdoors, backlighting. Put quality tags before subject-count tags, "
-    "then requested character/series/artist and general tags. Prefix requested artist tags with @. "
-    "For multiple subjects, connect each subject to their appearance, actions and position. "
-    "Do not indiscriminately stack quality tags or introduce safety/rating tags without a request. "
-    "Return only the entire English prompt, without explanations, markdown, wrapper quotes, "
-    "reasoning, negative-prompt lists or tool calls."
+    "Convert the user's visual request into one complete English positive image prompt. "
+    "Output only the prompt, without explanations, markdown, quotes or negative prompts. "
+    "The existing prompt is the current visual state. The latest request takes priority; "
+    "use history only to resolve references. Preserve requested details and each subject's "
+    "appearance, actions and position. Do not invent unrelated subjects or styles. "
+    "Combine short visual sentences with relevant comma-separated booru tags. "
+    "Use lowercase tags with spaces, except score_* tags. "
+    "Order tags: optional quality, subject count, requested character/series/artist, general. "
+    "Prefix requested artist tags with @. Add rating tags only when requested. "
+    "Never repeat tags or stack quality tags."
 )
 REFINE_SYSTEM = (
     CREATE_SYSTEM + " Revise the provided existing image prompt according to the user's "
     "change request. Preserve all details not affected by the requested change. Return the "
     "entire revised prompt, never a patch or a list of changes."
 )
+PROMPT_PREFIX = "Final image prompt:"
 
 
 def prompt_messages(
@@ -74,7 +71,7 @@ def fit_messages(messages, count_tokens, input_limit):
 
 def final_prompt(content: str) -> str:
     # Templates may prefill the opening tag outside the generated content.
-    prompt = content.rsplit("</think>", 1)[-1].strip()
+    prompt = content.rsplit("</think>", 1)[-1].strip().removeprefix(PROMPT_PREFIX).strip()
     if not prompt or "<think>" in prompt or prompt.startswith("Thinking Process:"):
         raise MoruError("PROMPT_LLM_FAILED")
     if any(char.isalpha() and "LATIN" not in unicodedata.name(char, "") for char in prompt):
@@ -87,10 +84,46 @@ def check_cancelled(cancelled: Event):
         raise MoruError("GENERATION_CANCELLED")
 
 
+class ThinkingBudget:
+    """End reasoning at its token allowance without truncating the final prompt."""
+
+    def __init__(self, end_tokens: list[int], budget: int, suffix_tokens: list[int] | None = None):
+        if not end_tokens:
+            raise MoruError("THINKING_UNSUPPORTED")
+        self._end_tokens = end_tokens
+        self._closing_tokens = end_tokens + (suffix_tokens or [])
+        self._budget = budget
+        self._input_length: int | None = None
+        self._forcing = False
+
+    def __call__(self, input_ids, scores):
+        if self._input_length is None:
+            self._input_length = len(input_ids)
+        generated = list(input_ids[self._input_length :])
+        end_length = len(self._end_tokens)
+        if not self._forcing and any(
+            generated[index : index + end_length] == self._end_tokens
+            for index in range(len(generated) - end_length + 1)
+        ):
+            return scores
+        forced_index = len(generated) - self._budget
+        if 0 <= forced_index < len(self._closing_tokens):
+            self._forcing = True
+            scores[:] = float("-inf")
+            scores[self._closing_tokens[forced_index]] = 0.0
+        return scores
+
+
 def stream_text(content: str, thinking: bool) -> tuple[str, str]:
     reasoning, marker, prompt = content.partition("</think>")
     if marker:
-        return reasoning.removeprefix("<think>").strip(), prompt.strip()
+        prompt = prompt.strip()
+        if PROMPT_PREFIX.startswith(prompt):
+            prompt = ""
+        return (
+            reasoning.removeprefix("<think>").strip(),
+            prompt.removeprefix(PROMPT_PREFIX).strip(),
+        )
     # Keep incomplete control tags out of the live text when a tag spans tokens.
     for tag in ("<think>", "</think>"):
         for length in range(1, len(tag)):
@@ -232,14 +265,30 @@ class LlamaPrompts:
                 messages = fit_messages(
                     messages, count_tokens, settings.context_size - settings.max_tokens
                 )
+                processors = None
+                if settings.thinking:
+                    end_tokens = llm.tokenize(b"</think>", add_bos=False, special=True)
+                    # A final-answer cue prevents continuation of an interrupted analysis sentence.
+                    suffix_tokens = llm.tokenize(
+                        f"\n\n{PROMPT_PREFIX}\n".encode(), add_bos=False
+                    )
+                    processors = [
+                        ThinkingBudget(
+                            end_tokens,
+                            max(0, settings.thinking_budget - len(end_tokens) - len(suffix_tokens)),
+                            suffix_tokens,
+                        )
+                    ]
                 response = llm.create_chat_completion(
                     messages=messages,
-                    temperature=0.6,
-                    top_p=0.95,
+                    temperature=0.6 if settings.thinking else 0.7,
+                    top_p=0.95 if settings.thinking else 0.8,
                     top_k=20,
                     min_p=0.0,
+                    presence_penalty=1.5,
                     max_tokens=settings.max_tokens,
                     stream=True,
+                    logits_processor=processors,
                 )
                 return read_completion(response, cancelled, settings.thinking, progress)
             except MoruError:

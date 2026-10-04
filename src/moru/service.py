@@ -51,15 +51,6 @@ class Application:
         new_seed: Callable[[], int] = lambda: secrets.randbelow(2**63),
     ):
         self.repository = repository
-        if not repository.get_preference("prompt_defaults_version", 0):
-            values = {"prompt_defaults_version": 1}
-            if repository.get_preference("prompt_settings") == {
-                "context_size": 8192,
-                "max_tokens": 4096,
-                "thinking": True,
-            }:
-                values["prompt_settings"] = asdict(PromptSettings())
-            repository.set_preferences(values)
         self.prompts = prompts
         self.images = images
         self.data_dir = data_dir

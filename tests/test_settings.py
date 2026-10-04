@@ -49,8 +49,28 @@ def test_resolving_seed_preserves_explicit_seed():
     assert GenerationSettings(seed=9).resolve_seed(42).seed == 9
 
 
-def test_prompt_defaults_use_compact_context_and_output_without_thinking():
-    assert PromptSettings() == PromptSettings(context_size=2048, max_tokens=1024, thinking=False)
+def test_prompt_defaults_enable_low_reasoning_with_compact_context_and_output():
+    settings = PromptSettings()
+    assert settings.context_size == 2048
+    assert settings.max_tokens == 1024
+    assert settings.thinking is True
+    assert settings.reasoning_level == "low"
+    assert settings.thinking_budget == 128
+
+
+def test_aesthetic_defaults_use_full_sampling_and_preserve_explicit_settings():
+    settings = GenerationSettings(model_id="anima-aesthetic-v1.1")
+    assert settings.steps == 40
+    assert settings.cfg == 4.5
+    explicit = GenerationSettings(model_id="anima-aesthetic-v1.1", steps=35, cfg=4)
+    assert explicit.steps == 35
+    assert explicit.cfg == 4
+
+
+@pytest.mark.parametrize("level,budget", [("low", 128), ("medium", 256), ("high", 512)])
+def test_reasoning_levels_leave_room_for_the_final_prompt(level, budget):
+    assert PromptSettings(reasoning_level=level).thinking_budget == budget
+    assert PromptSettings(reasoning_level=level, max_tokens=100).thinking_budget == 50
 
 
 @pytest.mark.parametrize(
@@ -66,6 +86,9 @@ def test_prompt_defaults_use_compact_context_and_output_without_thinking():
         {"max_tokens": 1.5},
         {"thinking": "false"},
         {"thinking": 0},
+        {"reasoning_level": "extreme"},
+        {"reasoning_level": None},
+        {"reasoning_level": []},
     ],
 )
 def test_invalid_prompt_limits_and_non_boolean_thinking_are_rejected(values):
@@ -77,7 +100,9 @@ def test_invalid_prompt_limits_and_non_boolean_thinking_are_rejected(values):
 def test_prompt_settings_apply_to_next_job_without_changing_an_accepted_request(app):
     project = app.create_project()
     original = PromptSettings()
-    changed = PromptSettings(context_size=4096, max_tokens=2048, thinking=False)
+    changed = PromptSettings(
+        context_size=4096, max_tokens=2048, thinking=False, reasoning_level="high"
+    )
     app.submit_request(project.id, "girl")
     app.update_settings(app.get_settings(), changed)
     app.scheduler.run_next()
@@ -131,14 +156,17 @@ def test_prompt_settings_are_restored_after_application_restart(app, tmp_path):
 @pytest.mark.parametrize(
     "stored,expected",
     [
-        ({"context_size": 8192, "max_tokens": 4096, "thinking": True}, PromptSettings()),
+        (
+            {"context_size": 8192, "max_tokens": 4096, "thinking": True},
+            PromptSettings(context_size=8192, max_tokens=4096, thinking=True),
+        ),
         (
             {"context_size": 4096, "max_tokens": 1536, "thinking": True},
             PromptSettings(context_size=4096, max_tokens=1536, thinking=True),
         ),
     ],
 )
-def test_old_defaults_migrate_once_and_custom_prompt_settings_are_preserved(
+def test_stored_prompt_settings_are_preserved_without_default_migrations(
     tmp_path, stored, expected
 ):
     from conftest import FakeImages, FakePrompts, ManualExecutor
@@ -153,6 +181,7 @@ def test_old_defaults_migrate_once_and_custom_prompt_settings_are_preserved(
         repository, FakePrompts(), FakeImages(), tmp_path, executor=ManualExecutor()
     )
     assert application.get_prompt_settings() == expected
+    assert repository.get_preference("prompt_defaults_version") is None
     explicit_old_values = PromptSettings(context_size=8192, max_tokens=4096, thinking=True)
     application.update_settings(application.get_settings(), explicit_old_values)
     application.close()

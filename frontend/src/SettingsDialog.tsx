@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { PromptSettings, Settings } from "./api";
+import type { GenerationDefaults, PromptSettings, Settings } from "./api";
 import Modal from "./Modal";
 import { imageModelNames } from "./modelNames";
 import { Check } from "lucide-react";
@@ -13,11 +13,13 @@ const resolutions = [
 
 export default function SettingsDialog({
   settings,
+  generationDefaults,
   promptSettings,
   onClose,
   onSave,
 }: {
   settings: Settings;
+  generationDefaults: GenerationDefaults;
   promptSettings: PromptSettings;
   onClose: () => void;
   onSave: (settings: Settings, promptSettings: PromptSettings) => Promise<void>;
@@ -60,7 +62,11 @@ export default function SettingsDialog({
           <select
             value={draft.model_id}
             onChange={(event) =>
-              setDraft({ ...draft, model_id: event.target.value })
+              setDraft({
+                ...draft,
+                model_id: event.target.value,
+                ...generationDefaults[event.target.value],
+              })
             }
           >
             {Object.entries(imageModelNames).map(([id, name]) => (
@@ -70,6 +76,7 @@ export default function SettingsDialog({
             ))}
           </select>
         </label>
+        <p className="hint">모델을 바꾸면 해당 모델의 권장 Steps와 CFG를 적용합니다.</p>
         <label>
           이미지 크기
           <select
@@ -248,6 +255,27 @@ export default function SettingsDialog({
             />
             Thinking 사용
           </label>
+          <label>
+            추론 수준
+            <select
+              value={promptDraft.reasoning_level}
+              disabled={!promptDraft.thinking}
+              onChange={(event) =>
+                setPromptDraft({
+                  ...promptDraft,
+                  reasoning_level: event.target.value as PromptSettings["reasoning_level"],
+                })
+              }
+            >
+              <option value="low">낮음 · 최대 128 토큰</option>
+              <option value="medium">보통 · 최대 256 토큰</option>
+              <option value="high">높음 · 최대 512 토큰</option>
+            </select>
+          </label>
+          <p className="hint">
+            생각에 쓸 토큰을 조절합니다. 최종 프롬프트 작성 공간을 남기기 위해
+            출력 한도의 절반까지만 사용합니다.
+          </p>
           <p className="hint">
             컨텍스트는 입력과 출력을 합친 크기입니다. 출력 한도에는 thinking
             토큰도 포함됩니다. 큰 컨텍스트는 GPU 메모리를 더 사용합니다.

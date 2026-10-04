@@ -20,12 +20,14 @@ def main():
     parser.add_argument("--prompt", action="store_true")
     parser.add_argument("--context-size", type=int, default=2048)
     parser.add_argument("--max-tokens", type=int, default=1024)
-    parser.add_argument("--thinking", action="store_true")
+    parser.add_argument("--thinking", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--reasoning-level", choices=("low", "medium", "high"), default="low")
     parser.add_argument("--cancel-prompt", action="store_true")
     parser.add_argument("--image", choices=("turbo", "aesthetic"))
     parser.add_argument("--width", type=int, default=512)
     parser.add_argument("--height", type=int, default=512)
-    parser.add_argument("--steps", type=int, default=4)
+    parser.add_argument("--steps", type=int)
+    parser.add_argument("--cfg", type=float)
     parser.add_argument("--cancel-restart", action="store_true")
     options = parser.parse_args()
     root = application_root()
@@ -41,6 +43,7 @@ def main():
                 context_size=options.context_size,
                 max_tokens=options.max_tokens,
                 thinking=options.thinking,
+                reasoning_level=options.reasoning_level,
             )
             prompt = prompts.create("은발 소녀가 편의점 앞에서 컵라면을 먹는 장면", prompt_settings)
             if not prompt.strip() or "Thinking Process:" in prompt or "<think>" in prompt:
@@ -78,6 +81,7 @@ def main():
                 width=options.width,
                 height=options.height,
                 steps=options.steps,
+                cfg=options.cfg,
                 seed=123,
             )
             output = root / "data/images" / f"smoke-{uuid.uuid4().hex}.png"

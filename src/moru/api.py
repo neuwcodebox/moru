@@ -7,7 +7,7 @@ from functools import wraps
 from pathlib import Path
 
 from moru.config import ModelPaths
-from moru.domain import GenerationSettings, PromptSettings
+from moru.domain import MODEL_DEFAULTS, GenerationSettings, PromptSettings
 from moru.downloads import ModelDownloads
 from moru.errors import MESSAGES, MoruError
 from moru.service import Application
@@ -76,6 +76,7 @@ class Api:
             "project": self._project_view(project.id),
             "projects": self._projects_view(),
             "settings": settings_to_wire(self._app.get_settings()),
+            "generation_defaults": MODEL_DEFAULTS,
             "prompt_settings": asdict(self._app.get_prompt_settings()),
             "models": self._model_status(),
         }

@@ -18,6 +18,7 @@ import type {
   Project,
   ProjectInfo,
   PromptSettings,
+  GenerationDefaults,
   Settings,
 } from "./api";
 import Lightbox from "./Lightbox";
@@ -30,6 +31,9 @@ export default function App() {
   const [project, setProject] = useState<Project | null>(null);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [generationDefaults, setGenerationDefaults] = useState<GenerationDefaults>(
+    {},
+  );
   const [promptSettings, setPromptSettings] = useState<PromptSettings | null>(
     null,
   );
@@ -59,6 +63,7 @@ export default function App() {
         setProject(result.project);
         setProjects(result.projects);
         setSettings(result.settings);
+        setGenerationDefaults(result.generation_defaults);
         setPromptSettings(result.prompt_settings);
         setError("");
         setModels(result.models ?? []);
@@ -360,6 +365,7 @@ export default function App() {
       {settingsOpen && settings && promptSettings && (
         <SettingsDialog
           settings={settings}
+          generationDefaults={generationDefaults}
           promptSettings={promptSettings}
           onClose={() => setSettingsOpen(false)}
           onSave={async (draft, promptDraft) => {

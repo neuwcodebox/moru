@@ -560,7 +560,9 @@ images
 
 다시 생성과 수동 수정은 새 Image record와 Request를 만들되 Request.turn_id로 원래 대화 행에 연결한다. turns(id, project_id, selected_image_id)는 행 순서와 선택된 버전을 저장한다. 이미지의 parent_image_id는 실제 생성 기준을 보존하는 lineage이며 대화 표시 순서를 결정하지 않는다.
 
-기존 DB에는 requests.turn_id와 turns를 원자적으로 추가한다. 기존 자연어 요청은 각 행으로 보존하고 수동 생성은 기준 행의 버전으로 묶는다. 기존 Image record와 PNG는 변경하지 않는다.
+DB 생성 코드에는 requests.turn_id와 turns를 포함한 최신 스키마만 정의한다.
+버전 검사와 마이그레이션은 수행하지 않는다. 지원하지 않는 스키마는 DATABASE_FAILED로 표시한다.
+기록을 자동 변환하거나 삭제하지 않는다. 중단된 pending 요청의 실패 복구는 유지한다.
 
 ---
 
@@ -616,7 +618,9 @@ class GenerationSettings:
 
 `seed=None`은 Auto.
 
-기본 Steps는 10, CFG는 1.0이다.
+Turbo 기본값은 Steps 10, CFG 1.0이고 Aesthetic 기본값은 Steps 40, CFG 4.5이다.
+Python의 MODEL_DEFAULTS를 bootstrap에서 UI에 전달한다. 모델 전환 시 권장값을 표시하고
+저장하며, 명시적으로 입력한 Steps와 CFG는 실제 추론과 이력에 그대로 사용한다.
 
 실제 생성 직전에 seed를 확정하고 DB에 실제 값을 저장한다.
 
@@ -912,16 +916,16 @@ worker와 executor 종료까지 유지한다. 같은 저장 폴더의 두 번째
 GPU 및 실제 WebView2 검증은 `scripts/smoke_*.py`에 분리되어 있으며
 일반 `uv run pytest`에서는 실행하지 않는다.
 
-프롬프트 LLM의 thinking은 기본적으로 끈다. 사고 과정은 생성용 프롬프트에서 제외하고
+프롬프트 LLM의 thinking은 기본적으로 켠다. 사고 과정은 생성용 프롬프트에서 제외하고
 완성된 최종 프롬프트만 Anima에 전달한다. `prompting` 상태는 대화의 생성 placeholder에
 표시하며, 토큰 제한 때문에 잘린 응답은 오류로 처리한다.
 기본 프롬프트 모델은 HauhauCS Qwen3.5-4B Uncensored Aggressive Q4_K_M이다.
 기본 context는 2048, 출력 한도는 1024 tokens로 설정한다.
-생성 설정의 고급 영역에서 두 한도와 thinking 사용 여부를
+생성 설정의 고급 영역에서 두 한도와 thinking 사용 여부, 추론 수준을
 변경할 수 있다. 불변 `PromptSettings`는 이미지 설정과 함께 preferences에 원자적으로
 저장되며 작업 접수 시 고정한다. 현재 작업에는 저장 후 변경한 값을 적용하지 않는다.
 컨텍스트 또는 모델 경로가 변경되면 다음 LLM 호출에서 모델을 다시 로드한다.
-출력 한도 및 thinking 변경은 모델을 재사용한다. GGUF의 chat template에
+출력 한도, thinking 및 추론 수준 변경은 모델을 재사용한다. GGUF의 chat template에
 `enable_thinking`을 명시하여 기존 템플릿의 thinking 분기를 선택한다.
 해당 기능이 없는 템플릿에 thinking 끄기를 요청하면 명시적 오류를 반환한다.
 
@@ -934,9 +938,16 @@ Job에 임시 텍스트를 저장하고 기존 polling bridge로 placeholder를 
 성공·실패·취소 후 Job에서도 지운다. 표시용 문자열은 각각 최대 65536자로 제한한다.
 이미지 생성 중에는 같은 placeholder에 step/전체 steps와 진행률을 표시한다.
 
-이전 기본 설정 8192/4096/thinking 켜짐은 최초 실행 시 한 번 새 기본값으로 전환한다.
-`prompt_defaults_version`을 preferences에 기록하여 이후 사용자가 같은 값을 명시적으로
-저장해도 재전환하지 않는다. 그 외의 기존 사용자 설정은 보존한다.
+추론 수준의 기본값은 low이며 low/medium/high는 최대 128/256/512 thinking 토큰을 허용한다.
+이는 모델의 네이티브 reasoning_effort 옵션이 아니라 앱이 적용하는 토큰 예산이다.
+전체 출력 한도의 절반을 넘지 않으며 종료 태그와 최종 답변 구분자도 예산에 포함한다.
+완료용 logits processor가 예산에 도달하면 </think>와 최종 답변 구분자를 생성하게 하여
+중단된 사고 문장을 계속 쓰지 않고 최종 프롬프트 작성을 이어 간다. 구분자는 반환/표시 전에 제거한다.
+모델이 먼저 thinking을 마치면 개입하지 않으며 thinking을 끄면 processor를 사용하지 않는다.
+사용자가 저장한 설정의 자동 전환 코드는 두지 않는다.
+
+추론 설정 근거: [이미지 모델 권장값](https://huggingface.co/circlestone-labs/Anima),
+[프롬프트 LLM 샘플링 권장값](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive).
 
 아이콘은 `lucide-react`의 개별 component import를 사용한다. 전송/중지는 하나의 버튼이며,
 이미지 뷰어는 Modal의 한 줄 toolbar에 맞춤·확대/축소·닫기를 함께 배치한다.
@@ -946,3 +957,40 @@ HTML을 직접 로드한 WebView2에서는 브라우저 Clipboard API를 사용�
 프롬프트 복사는 Python bridge로 전달하여 Windows UI thread의 클립보드 API를 사용한다.
 
 대화 스크롤은 맨 아래를 따라가는 상태에서만 자동 이동한다. ResizeObserver로 이미지와 텍스트의 크기 변화를 추적하며, 위로 스크롤하면 입력창 중앙 상단의 플로팅 버튼으로 맨 아래로 이동한다. 실시간 프롬프트와 thinking은 placeholder의 이미지 canvas 안에 표시한다.
+
+
+## 개발 및 검증
+
+Python 3.12, uv와 Node.js가 필요하다. 실제 추론과 Windows 배포 빌드에는 inference extra를 설치한다.
+
+```powershell
+uv sync --frozen --extra inference
+uv run --extra inference python scripts/setup_comfyui.py
+cd frontend
+npm ci
+npm run build
+cd ..
+uv run --extra inference python -m moru
+```
+
+일반 테스트는 GPU와 모델을 로드하지 않는다.
+
+```powershell
+uv run pytest
+uv run ruff check src tests scripts app.py
+cd frontend
+npm run test
+npm run check
+npm run build
+```
+
+실제 모델/GPU 검증과 portable 빌드는 프로젝트 루트에서 별도로 실행한다.
+
+```powershell
+uv run --extra inference python scripts/smoke_runtime.py --prompt --reasoning-level low
+uv run --extra inference python scripts/smoke_runtime.py --image aesthetic --width 1024 --height 1024
+uv run --extra inference python scripts/build_portable.py
+uv run --extra inference python scripts/smoke_portable.py <빌드된-Moru-폴더> --ui-only
+```
+
+배포 ZIP은 release/Moru.zip이며 모델은 포함하지 않는다. 사용자 데이터와 모델은 빌드에 넣지 않는다.
