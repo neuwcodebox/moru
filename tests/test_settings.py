@@ -1,0 +1,109 @@
+import pytest
+
+from moru.domain import GenerationSettings, PromptSettings
+from moru.errors import MoruError
+
+
+def test_generation_defaults_use_ten_steps_and_cfg_one_with_auto_seed():
+    settings = GenerationSettings()
+    assert settings.steps == 10
+    assert settings.cfg == 1.0
+    assert settings.seed is None
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"model_id": "other"},
+        {"width": 0},
+        {"height": 1000},
+        {"width": True},
+        {"height": 5000},
+        {"steps": 0},
+        {"steps": 151},
+        {"steps": 10.5},
+        {"cfg": -1},
+        {"cfg": float("nan")},
+        {"cfg": float("inf")},
+        {"cfg": True},
+        {"seed": -1},
+        {"seed": 2**63},
+        {"seed": 1.5},
+        {"seed": False},
+    ],
+)
+def test_invalid_settings_are_rejected(values):
+    with pytest.raises(MoruError) as error:
+        GenerationSettings(**values)
+    assert error.value.code == "INVALID_SETTINGS"
+
+
+@pytest.mark.parametrize(
+    "width,height", [(1024, 1024), (832, 1216), (1216, 832), (768, 1344), (1344, 768), (512, 768)]
+)
+def test_resolution_presets_and_valid_custom_dimensions_are_accepted(width, height):
+    assert GenerationSettings(width=width, height=height).width == width
+
+
+def test_resolving_seed_preserves_explicit_seed():
+    assert GenerationSettings(seed=9).resolve_seed(42).seed == 9
+
+
+def test_prompt_defaults_keep_eight_k_context_four_k_output_and_thinking_enabled():
+    assert PromptSettings() == PromptSettings(context_size=8192, max_tokens=4096, thinking=True)
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"context_size": 1023},
+        {"context_size": 32769},
+        {"context_size": True},
+        {"context_size": 8192.5},
+        {"max_tokens": 0},
+        {"max_tokens": 8192},
+        {"max_tokens": True},
+        {"max_tokens": 1.5},
+        {"thinking": "false"},
+        {"thinking": 0},
+    ],
+)
+def test_invalid_prompt_limits_and_non_boolean_thinking_are_rejected(values):
+    with pytest.raises(MoruError) as error:
+        PromptSettings(**values)
+    assert error.value.code == "INVALID_SETTINGS"
+
+
+def test_prompt_settings_apply_to_next_job_without_changing_an_accepted_request(app):
+    project = app.create_project()
+    original = PromptSettings()
+    changed = PromptSettings(context_size=4096, max_tokens=2048, thinking=False)
+    app.submit_request(project.id, "girl")
+    app.update_settings(app.get_settings(), changed)
+    app.scheduler.run_next()
+    app.submit_request(project.id, "night")
+    app.scheduler.run_next()
+    assert app.prompts.settings == [original, changed]
+
+
+def test_prompt_settings_are_restored_after_application_restart(app, tmp_path):
+    from conftest import FakeImages, FakePrompts, ManualExecutor
+
+    from moru.repository import Repository
+    from moru.service import Application
+
+    changed = PromptSettings(context_size=4096, max_tokens=2048, thinking=False)
+    app.update_settings(GenerationSettings(steps=12), changed)
+    app.close()
+    restored = Application(
+        Repository(tmp_path / "anima.db"),
+        FakePrompts(),
+        FakeImages(),
+        tmp_path,
+        executor=ManualExecutor(),
+    )
+    try:
+        assert restored.get_prompt_settings() == changed
+        assert restored.get_settings().steps == 12
+    finally:
+        restored.close()

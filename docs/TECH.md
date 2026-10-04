@@ -275,7 +275,7 @@ from llama_cpp import Llama
 llm = Llama(
     model_path=model_path,
     n_gpu_layers=-1,
-    n_ctx=4096,
+    n_ctx=8192,
 )
 ```
 
@@ -648,6 +648,8 @@ class GenerationSettings:
 
 `seed=None`은 Auto.
 
+기본 Steps는 10, CFG는 1.0이다.
+
 실제 생성 직전에 seed를 확정하고 DB에 실제 값을 저장한다.
 
 ---
@@ -906,3 +908,49 @@ Mock LLM + Mock Image Worker:
 - 이미지 결과는 불변이며 수정은 항상 Fork다.
 - release 사용자는 Python/Node/ComfyUI를 설치하지 않는다.
 - release는 portable ZIP이며 실행 진입점은 `Moru.exe` 하나다.
+
+## 31. 구현 및 고정 런타임
+
+애플리케이션 패키지는 `src/moru/`이며 UI 리소스는 `src/moru/web/index.html`이다.
+React/Vite 빌드에서 JS와 CSS를 HTML에 포함하여 HTTP 서버 없이 로드한다.
+개발 시 `uv run --extra inference python -m moru` 또는 `python -m app`을 사용한다.
+
+모델과 GPU가 필요 없는 일반 테스트 환경과 실제 추론 환경을 구분하기 위해
+큰 추론 의존성은 `inference` extra로 관리한다. 앱 실행 및 배포 빌드는
+`uv sync --frozen --extra inference`로 환경을 준비한다.
+
+ComfyUI core는 `vendor/comfyui-revision.txt`에 기록된
+`f1072eb0350638a3390ddb6afbcaa8c6b237c6fd`를 사용한다. 노드나 서버를
+로드하지 않고 core의 모델 로딩·샘플링·VAE API를 직접 호출한다.
+Qwen Image VAE의 단일 이미지 출력도 시간 축을 포함할 수 있으므로
+`[batch, time, height, width, channels]`에서 단일 프레임을 추출한다.
+
+현재 검증한 추론 조합은 PyTorch 2.8 CUDA 12.8 wheel과
+llama-cpp-python 0.3.36 CUDA 12.4 Windows wheel이다. llama.cpp CUDA DLL은
+패키지에 포함된 PyTorch CUDA 라이브러리를 사용하며 시스템 CUDA Toolkit에
+의존하지 않는다. 정확한 패키지와 모델 다운로드 버전은 `uv.lock`과
+`src/moru/model-manifest.json`에 고정한다.
+
+Windows worker는 부모 PID 감시와 `KILL_ON_JOB_CLOSE` Job Object를 함께
+사용하여 worker가 생성한 하위 프로세스도 종료한다. `windowed` 실행 파일에서는
+Python의 stdio 객체가 없으므로 상속받은 Windows pipe handle로 JSON Lines
+스트림을 복구한다.
+
+GPU 및 실제 WebView2 검증은 `scripts/smoke_*.py`에 분리되어 있으며
+일반 `uv run pytest`에서는 실행하지 않는다.
+
+프롬프트 LLM의 thinking은 기본적으로 유지한다. 사고 과정은 생성용 프롬프트에서 제외하고
+완성된 최종 프롬프트만 Anima에 전달한다. `prompting` 상태는 대화 창에
+`생각 중…`으로 표시하며, 토큰 제한 때문에 잘린 응답은 오류로 처리한다.
+기본 프롬프트 모델은 HauhauCS Qwen3.5-4B Uncensored Aggressive Q4_K_M이다.
+thinking과 최종 답변의 토큰 여유를 위해 기본 context는 8192, 출력 한도는
+4096 tokens로 설정한다. 생성 설정의 고급 영역에서 두 한도와 thinking 사용 여부를
+변경할 수 있다. 불변 `PromptSettings`는 이미지 설정과 함께 preferences에 원자적으로
+저장되며 작업 접수 시 고정한다. 현재 작업에는 저장 후 변경한 값을 적용하지 않는다.
+컨텍스트 또는 모델 경로가 변경되면 다음 LLM 호출에서 모델을 다시 로드한다.
+출력 한도 및 thinking 변경은 모델을 재사용한다. GGUF의 chat template에
+`enable_thinking`을 명시하여 기존 템플릿의 thinking 분기를 선택한다.
+해당 기능이 없는 템플릿에 thinking 끄기를 요청하면 명시적 오류를 반환한다.
+
+HTML을 직접 로드한 WebView2에서는 브라우저 Clipboard API를 사용할 수 없으므로
+프롬프트 복사는 Python bridge로 전달하여 Windows UI thread의 클립보드 API를 사용한다.

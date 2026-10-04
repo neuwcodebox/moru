@@ -1,2 +1,4 @@
 def main() -> None:
-    print("Hello from moru!")
+    from moru.desktop import main as launch
+
+    launch()

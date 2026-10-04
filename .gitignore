@@ -2,6 +2,18 @@
 *.gguf
 *.safetensors
 
+# Local runtime state and generated frontend/runtime assets
+/data/
+/vendor/comfyui/
+/src/moru/web/
+node_modules/
+*.tsbuildinfo
+*.part
+*.db
+*.db-wal
+*.db-shm
+/release/
+
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
 

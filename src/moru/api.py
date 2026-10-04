@@ -1,0 +1,256 @@
+"""Explicit pywebview bridge. No filesystem paths or tracebacks cross the boundary."""
+
+import base64
+import logging
+from dataclasses import asdict
+from functools import wraps
+from pathlib import Path
+
+from moru.config import ModelPaths
+from moru.domain import GenerationSettings, PromptSettings
+from moru.downloads import ModelDownloads
+from moru.errors import MESSAGES, MoruError
+from moru.service import Application
+
+log = logging.getLogger(__name__)
+
+
+def endpoint(function):
+    @wraps(function)
+    def call(*args, **kwargs):
+        try:
+            return {"ok": True, "value": function(*args, **kwargs)}
+        except MoruError as exc:
+            return {"ok": False, "error": {"code": exc.code, "message": str(exc)}}
+        except Exception:
+            log.exception("bridge call failed endpoint=%s", function.__name__)
+            return {
+                "ok": False,
+                "error": {
+                    "code": "GENERATION_FAILED",
+                    "message": MESSAGES["GENERATION_FAILED"],
+                },
+            }
+
+    return call
+
+
+def settings_to_wire(settings: GenerationSettings) -> dict:
+    values = asdict(settings)
+    # JavaScript numbers cannot represent every persisted 63-bit seed exactly.
+    values["seed"] = str(settings.seed) if settings.seed is not None else None
+    return values
+
+
+class Api:
+    def __init__(
+        self,
+        application: Application,
+        models: ModelPaths | None = None,
+        downloads: ModelDownloads | None = None,
+        choose_file=None,
+        copy_to_clipboard=None,
+    ):
+        self._app = application
+        self._models = models
+        self._downloads = downloads
+        self._choose_file = choose_file
+        self._copy_to_clipboard = copy_to_clipboard
+
+    @endpoint
+    def copy_prompt(self, text):
+        if not isinstance(text, str):
+            raise MoruError("INVALID_REQUEST")
+        if self._copy_to_clipboard is None:
+            raise MoruError("CLIPBOARD_FAILED")
+        try:
+            self._copy_to_clipboard(text)
+        except Exception as exc:
+            log.exception("prompt clipboard copy failed")
+            raise MoruError("CLIPBOARD_FAILED") from exc
+
+    @endpoint
+    def bootstrap(self):
+        project = self._app.current_project()
+        return {
+            "project": self._project_view(project.id),
+            "projects": self._projects_view(),
+            "settings": settings_to_wire(self._app.get_settings()),
+            "prompt_settings": asdict(self._app.get_prompt_settings()),
+            "models": self._model_status(),
+        }
+
+    def _model_status(self):
+        if self._downloads is not None:
+            return [
+                {
+                    **item,
+                    "download": {
+                        **item["download"],
+                        "message": MESSAGES.get(item["download"]["error_code"]),
+                    }
+                    if item["download"]
+                    else None,
+                }
+                for item in self._downloads.status()
+            ]
+        return self._models.status() if self._models is not None else []
+
+    @endpoint
+    def get_model_status(self):
+        return self._model_status()
+
+    @endpoint
+    def select_local_model(self, model_id):
+        if self._models is None or self._choose_file is None:
+            raise MoruError("MODEL_LOAD_FAILED")
+        selected = self._choose_file(model_id)
+        if selected:
+            self._models.set(model_id, Path(selected))
+        return self._model_status()
+
+    @endpoint
+    def download_model(self, model_id):
+        if self._downloads is None:
+            raise MoruError("MODEL_DOWNLOAD_FAILED")
+        self._downloads.start(model_id)
+        return self._model_status()
+
+    @endpoint
+    def cancel_model_download(self, model_id):
+        if self._downloads is not None:
+            self._downloads.cancel(model_id)
+        return self._model_status()
+
+    def _projects_view(self):
+        return [asdict(project) for project in self._app.repository.list_projects()]
+
+    @endpoint
+    def list_projects(self):
+        return self._projects_view()
+
+    @endpoint
+    def create_project(self):
+        return self._project_view(self._app.create_project().id)
+
+    @endpoint
+    def open_project(self, project_id):
+        return self._project_view(self._app.open_project(project_id).id)
+
+    @endpoint
+    def get_project(self, project_id):
+        return self._project_view(project_id)
+
+    def _project_view(self, project_id):
+        repository = self._app.repository
+        project = repository.get_project(project_id)
+        path = repository.active_path(project_id)
+        images = []
+        for image in path:
+            request = repository.get_request(image.request_id)
+            images.append(
+                {
+                    "id": image.id,
+                    "request_text": request.text if request.kind != "manual" else None,
+                    "created_at": image.created_at,
+                    "parent_image_id": image.parent_image_id,
+                    "siblings": [
+                        sibling.id
+                        for sibling in repository.children(project_id, image.parent_image_id)
+                    ],
+                }
+            )
+        current_base = project.fork_image_id or project.active_leaf_id
+        unfinished = [
+            {
+                "id": request.id,
+                "text": request.text if request.kind != "manual" else None,
+                "status": request.status,
+                "error_code": request.error_code,
+                "message": MESSAGES.get(request.error_code),
+            }
+            for request in repository.unfinished_requests(project_id)
+            if request.base_image_id == current_base or request.status == "pending"
+        ]
+        return {**asdict(project), "images": images, "unfinished_requests": unfinished}
+
+    @endpoint
+    def fork(self, project_id, image_id=None):
+        self._app.fork(project_id, image_id)
+        return self._project_view(project_id)
+
+    @endpoint
+    def select_branch(self, project_id, image_id):
+        self._app.select_branch(project_id, image_id)
+        return self._project_view(project_id)
+
+    @endpoint
+    def submit_request(self, project_id, text):
+        return asdict(self._app.submit_request(project_id, text))
+
+    @endpoint
+    def generate_from_prompt(self, image_id, prompt):
+        return asdict(self._app.generate_from_prompt(image_id, prompt))
+
+    @endpoint
+    def retry_request(self, request_id):
+        return asdict(self._app.retry_request(request_id))
+
+    @endpoint
+    def get_job(self, job_id):
+        job = self._app.get_job(job_id)
+        return {**asdict(job), "message": MESSAGES.get(job.error_code)}
+
+    @endpoint
+    def cancel_job(self, job_id):
+        self._app.cancel_job(job_id)
+
+    @endpoint
+    def get_settings(self):
+        return settings_to_wire(self._app.get_settings())
+
+    @endpoint
+    def get_prompt_settings(self):
+        return asdict(self._app.get_prompt_settings())
+
+    @endpoint
+    def update_settings(self, values, prompt_values=None):
+        try:
+            if not isinstance(values, dict):
+                raise ValueError("settings must be an object")
+            values = dict(values)
+            seed = values.get("seed")
+            if isinstance(seed, str):
+                if not seed.isascii() or not seed.isdecimal():
+                    raise ValueError("invalid seed")
+                values["seed"] = int(seed)
+            settings = GenerationSettings(**values)
+            if prompt_values is not None and not isinstance(prompt_values, dict):
+                raise ValueError("prompt settings must be an object")
+            prompt_settings = PromptSettings(**prompt_values) if prompt_values is not None else None
+        except (TypeError, ValueError) as exc:
+            raise MoruError("INVALID_SETTINGS") from exc
+        self._app.update_settings(settings, prompt_settings)
+        return settings_to_wire(settings)
+
+    @endpoint
+    def get_image_details(self, image_id):
+        image = self._app.repository.get_image(image_id)
+        return {
+            "id": image.id,
+            "prompt": image.prompt,
+            "settings": settings_to_wire(image.settings),
+        }
+
+    @endpoint
+    def get_image_source(self, image_id):
+        image = self._app.repository.get_image(image_id)
+        root = self._app.data_dir.resolve()
+        path = (root / image.image_path).resolve()
+        if not path.is_relative_to(root):
+            raise MoruError("IMAGE_SAVE_FAILED")
+        try:
+            content = path.read_bytes()
+        except OSError as exc:
+            raise MoruError("IMAGE_SAVE_FAILED") from exc
+        return "data:image/png;base64," + base64.b64encode(content).decode("ascii")
