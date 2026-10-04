@@ -1,0 +1,17 @@
+[project]
+name = "moru"
+version = "0.1.0"
+description = "Moru is a local, conversational image-generation desktop app."
+readme = "README.md"
+authors = [
+    { name = "Neuwcodebox", email = "neuwgmbox@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+moru = "moru:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"

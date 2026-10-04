@@ -1,0 +1,4 @@
+e.g.)
+anima_turboV11.safetensors
+qwen_3_600m.safetensors
+qwen_image_vae.safetensors
