@@ -19,6 +19,31 @@ def test_main_conversation_view_hides_prompt_and_generation_metadata(app):
     assert details["settings"]["seed"] == "42"
 
 
+def test_live_prompt_is_available_during_generation_but_thinking_is_never_saved(app):
+    api = Api(app)
+    snapshots = []
+    project = app.create_project()
+    app.update_settings(app.get_settings(), PromptSettings(thinking=True))
+
+    def create(text, settings, cancelled, progress):
+        progress("choosing a scene", "")
+        snapshots.append(api.get_job(job.id)["value"])
+        progress("choosing a scene", "night, girl")
+        snapshots.append(api.get_job(job.id)["value"])
+        return "night, girl"
+
+    app.prompts.create = create
+    job = app.submit_request(project.id, "girl")
+    app.scheduler.run_next()
+    assert snapshots[0]["thinking_text"] == "choosing a scene"
+    assert snapshots[0]["prompt_text"] == ""
+    assert snapshots[0]["thinking_enabled"] is True
+    assert snapshots[1]["prompt_text"] == "night, girl"
+    completed = api.get_job(job.id)["value"]
+    assert completed["thinking_text"] == completed["prompt_text"] == ""
+    assert api.get_image_details(completed["image_id"])["value"]["prompt"] == "night, girl"
+
+
 def test_manual_prompt_stays_in_details_instead_of_appearing_as_user_chat(app):
     api = Api(app)
     project = app.create_project()
@@ -53,9 +78,9 @@ def test_invalid_bridge_settings_have_stable_korean_error(app):
 def test_bootstrap_exposes_prompt_defaults_and_restores_saved_values(app):
     api = Api(app)
     assert api.bootstrap()["value"]["prompt_settings"] == {
-        "context_size": 8192,
-        "max_tokens": 4096,
-        "thinking": True,
+        "context_size": 2048,
+        "max_tokens": 1024,
+        "thinking": False,
     }
     values = {"context_size": 4096, "max_tokens": 2048, "thinking": False}
     assert api.update_settings({"steps": 12}, values)["ok"]

@@ -1,4 +1,14 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  ArrowUp,
+  Box,
+  GitBranch,
+  Plus,
+  Settings2,
+  Sparkles,
+  Square,
+  X,
+} from "lucide-react";
 import { call } from "./api";
 import type {
   Bootstrap,
@@ -15,7 +25,6 @@ import PromptDialog from "./PromptDialog";
 import SettingsDialog from "./SettingsDialog";
 import ModelsDialog from "./ModelsDialog";
 import Conversation from "./Conversation";
-import GenerationProgress from "./GenerationProgress";
 
 export default function App() {
   const [project, setProject] = useState<Project | null>(null);
@@ -27,6 +36,7 @@ export default function App() {
   const [text, setText] = useState("");
   const [job, setJob] = useState<Job | null>(null);
   const [acting, setActing] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [models, setModels] = useState<ModelStatus[]>([]);
@@ -93,6 +103,7 @@ export default function App() {
           if (disposed) return;
           setProject(refreshed);
           setJob(null);
+          setStopping(false);
           if (result.message) setError(result.message);
           input.current?.focus();
           return;
@@ -169,22 +180,22 @@ export default function App() {
     }
   }
   function cancelGeneration() {
-    if (job)
-      void act(async () => {
-        await call("cancel_job", job.id);
-      });
+    if (!job || stopping) return;
+    setStopping(true);
+    void call("cancel_job", job.id).catch((error) => {
+      setStopping(false);
+      setError(error instanceof Error ? error.message : "중지할 수 없습니다.");
+    });
   }
 
   return (
     <div className="app">
       <header>
         <span className="brand">
-          moru<span className="brand-dot">✦</span>
+          moru
+          <Sparkles className="brand-dot" size={18} aria-hidden="true" />
         </span>
-        <button disabled={busy} onClick={() => setModelsOpen(true)}>
-          모델 준비
-        </button>
-        {projects.length > 1 && (
+        <div className="header-actions">
           <select
             aria-label="작업 기록"
             value={project?.id ?? ""}
@@ -204,7 +215,10 @@ export default function App() {
               </option>
             ))}
           </select>
-        )}
+          <button disabled={busy} onClick={() => setModelsOpen(true)}>
+            <Box size={16} aria-hidden="true" /> 모델 설정
+          </button>
+        </div>
       </header>
       <Conversation
         project={project}
@@ -235,26 +249,23 @@ export default function App() {
             await startGeneration("retry_request", id);
           })
         }
-        onCancel={cancelGeneration}
       />
       <footer>
         {error && (
           <div className="error-banner" role="alert">
             <span>{error}</span>
             <button aria-label="오류 메시지 닫기" onClick={() => setError("")}>
-              ×
+              <X size={16} aria-hidden="true" />
             </button>
           </div>
-        )}
-        {job && job.state !== "prompting" && (
-          <GenerationProgress job={job} onCancel={cancelGeneration} />
         )}
         <div className="composer-tools">
           {project?.fork_image_id && (
             <span className="fork-chip">
-              Fork: #{project.fork_image_id.slice(0, 8)}
+              <GitBranch size={14} aria-hidden="true" /> 분기: #
+              {project.fork_image_id.slice(0, 8)}
               <button
-                aria-label="Fork 취소"
+                aria-label="분기 취소"
                 disabled={busy}
                 onClick={() =>
                   void act(async () =>
@@ -262,7 +273,7 @@ export default function App() {
                   )
                 }
               >
-                ×
+                <X size={14} aria-hidden="true" />
               </button>
             </span>
           )}
@@ -278,24 +289,26 @@ export default function App() {
               })
             }
           >
-            + 새 작업
+            <Plus size={16} aria-hidden="true" /> 새 작업
           </button>
         </div>
         <form
           className="composer"
           onSubmit={(event) => {
             event.preventDefault();
-            void submit();
+            if (job) cancelGeneration();
+            else void submit();
           }}
         >
           <button
             type="button"
             className="settings-button"
             aria-label="생성 설정"
+            title="생성 설정"
             disabled={!settings}
             onClick={() => setSettingsOpen(true)}
           >
-            ☷
+            <Settings2 size={20} aria-hidden="true" />
           </button>
           <textarea
             ref={input}
@@ -319,10 +332,15 @@ export default function App() {
           />
           <button
             className="send-button"
-            aria-label="전송"
-            disabled={busy || !text.trim() || !project}
+            aria-label={job ? "중지" : "전송"}
+            title={job ? (stopping ? "중지하는 중…" : "생성 중지") : "전송"}
+            disabled={job ? stopping : busy || !text.trim() || !project}
           >
-            ↑
+            {job ? (
+              <Square size={17} fill="currentColor" aria-hidden="true" />
+            ) : (
+              <ArrowUp size={22} aria-hidden="true" />
+            )}
           </button>
         </form>
       </footer>

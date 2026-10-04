@@ -66,8 +66,8 @@ def verify_window(window, report_path: Path, ui_only=False):
                     await waitFor(() => document.querySelector('.advanced-settings'));
                     document.querySelector('.advanced-settings summary').click();
                     const controls = document.querySelectorAll('.advanced-settings input');
-                    if (controls[0].value !== '8192' || controls[1].value !== '4096'
-                        || !controls[2].checked) throw new Error('Incorrect prompt defaults');
+                    if (controls[0].value !== '2048' || controls[1].value !== '1024'
+                        || controls[2].checked) throw new Error('Incorrect prompt defaults');
                     await setValue(controls[0], '4096');
                     await setValue(controls[1], '2048');
                     controls[2].click();
@@ -76,7 +76,7 @@ def verify_window(window, report_path: Path, ui_only=False):
                     await waitFor(() => !document.querySelector('.advanced-settings'));
                     const saved = await call('get_prompt_settings');
                     if (saved.context_size !== 4096 || saved.max_tokens !== 2048
-                        || saved.thinking !== false) throw new Error('Prompt settings not saved');
+                        || saved.thinking !== true) throw new Error('Prompt settings not saved');
                     await call('update_settings', settings, promptSettings);
                     await call('copy_prompt', 'Moru clipboard smoke');
                     return {ok: true, title: document.title, defaults: settings,

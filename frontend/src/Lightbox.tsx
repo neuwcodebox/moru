@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import Modal from "./Modal";
+import { Expand, ZoomIn, ZoomOut } from "lucide-react";
 
 export default function Lightbox({
   source,
@@ -24,17 +25,30 @@ export default function Lightbox({
     setPosition({ x: 0, y: 0 });
   }
   return (
-    <Modal title="이미지 보기" className="lightbox" onClose={onClose}>
-      <div className="viewer-toolbar">
-        <button onClick={fit}>화면 맞춤</button>
-        <button aria-label="축소" onClick={() => changeZoom(zoom / 1.25)}>
-          −
-        </button>
-        <span>{Math.round(zoom * 100)}%</span>
-        <button aria-label="확대" onClick={() => changeZoom(zoom * 1.25)}>
-          +
-        </button>
-      </div>
+    <Modal
+      title="이미지 보기"
+      className="lightbox"
+      onClose={onClose}
+      toolbar={
+        <div className="viewer-toolbar">
+          <button
+            className="icon-button"
+            aria-label="화면 맞춤"
+            title="화면 맞춤"
+            onClick={fit}
+          >
+            <Expand size={18} aria-hidden="true" />
+          </button>
+          <button aria-label="축소" onClick={() => changeZoom(zoom / 1.25)}>
+            <ZoomOut size={18} aria-hidden="true" />
+          </button>
+          <span>{Math.round(zoom * 100)}%</span>
+          <button aria-label="확대" onClick={() => changeZoom(zoom * 1.25)}>
+            <ZoomIn size={18} aria-hidden="true" />
+          </button>
+        </div>
+      }
+    >
       <div
         className="viewer"
         onWheel={(event) =>

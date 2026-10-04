@@ -49,8 +49,8 @@ def test_resolving_seed_preserves_explicit_seed():
     assert GenerationSettings(seed=9).resolve_seed(42).seed == 9
 
 
-def test_prompt_defaults_keep_eight_k_context_four_k_output_and_thinking_enabled():
-    assert PromptSettings() == PromptSettings(context_size=8192, max_tokens=4096, thinking=True)
+def test_prompt_defaults_use_compact_context_and_output_without_thinking():
+    assert PromptSettings() == PromptSettings(context_size=2048, max_tokens=1024, thinking=False)
 
 
 @pytest.mark.parametrize(
@@ -86,6 +86,25 @@ def test_prompt_settings_apply_to_next_job_without_changing_an_accepted_request(
     assert app.prompts.settings == [original, changed]
 
 
+def test_failed_prompt_settings_read_leaves_a_retryable_request_and_releases_generation_slot(
+    app, monkeypatch
+):
+    from unittest.mock import Mock
+
+    project = app.create_project()
+    original = app.get_prompt_settings
+    monkeypatch.setattr(app, "get_prompt_settings", Mock(side_effect=MoruError("DATABASE_FAILED")))
+    with pytest.raises(MoruError):
+        app.submit_request(project.id, "girl")
+    request = app.repository.unfinished_requests(project.id)[0]
+    assert request.status == "failed"
+    assert request.error_code == "GENERATION_FAILED"
+    monkeypatch.setattr(app, "get_prompt_settings", original)
+    app.retry_request(request.id)
+    app.scheduler.run_next()
+    assert app.repository.get_request(request.id).status == "completed"
+
+
 def test_prompt_settings_are_restored_after_application_restart(app, tmp_path):
     from conftest import FakeImages, FakePrompts, ManualExecutor
 
@@ -105,5 +124,42 @@ def test_prompt_settings_are_restored_after_application_restart(app, tmp_path):
     try:
         assert restored.get_prompt_settings() == changed
         assert restored.get_settings().steps == 12
+    finally:
+        restored.close()
+
+
+@pytest.mark.parametrize(
+    "stored,expected",
+    [
+        ({"context_size": 8192, "max_tokens": 4096, "thinking": True}, PromptSettings()),
+        (
+            {"context_size": 4096, "max_tokens": 1536, "thinking": True},
+            PromptSettings(context_size=4096, max_tokens=1536, thinking=True),
+        ),
+    ],
+)
+def test_old_defaults_migrate_once_and_custom_prompt_settings_are_preserved(
+    tmp_path, stored, expected
+):
+    from conftest import FakeImages, FakePrompts, ManualExecutor
+
+    from moru.repository import Repository
+    from moru.service import Application
+
+    database = tmp_path / "anima.db"
+    repository = Repository(database)
+    repository.set_preference("prompt_settings", stored)
+    application = Application(
+        repository, FakePrompts(), FakeImages(), tmp_path, executor=ManualExecutor()
+    )
+    assert application.get_prompt_settings() == expected
+    explicit_old_values = PromptSettings(context_size=8192, max_tokens=4096, thinking=True)
+    application.update_settings(application.get_settings(), explicit_old_values)
+    application.close()
+    restored = Application(
+        Repository(database), FakePrompts(), FakeImages(), tmp_path, executor=ManualExecutor()
+    )
+    try:
+        assert restored.get_prompt_settings() == explicit_old_values
     finally:
         restored.close()

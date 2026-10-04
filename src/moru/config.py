@@ -86,7 +86,14 @@ class ModelPaths:
             raise MoruError("IMAGE_SAVE_FAILED") from exc
 
     def status(self) -> list[dict]:
-        return [{"id": key, "available": self.get(key).is_file()} for key in DEFAULT_MODEL_FILES]
+        result = []
+        for key in DEFAULT_MODEL_FILES:
+            path = self.get(key)
+            available = path.is_file()
+            result.append(
+                {"id": key, "available": available, "filename": path.name if available else None}
+            )
+        return result
 
     def image_payload(self, model_id: str) -> dict[str, str]:
         paths = {

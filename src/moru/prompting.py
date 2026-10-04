@@ -13,6 +13,7 @@ from threading import Event, RLock
 from moru.config import ModelPaths
 from moru.domain import PromptSettings
 from moru.errors import MoruError
+from moru.ports import PromptProgress
 
 log = logging.getLogger(__name__)
 CREATE_SYSTEM = (
@@ -54,8 +55,25 @@ def check_cancelled(cancelled: Event):
         raise MoruError("GENERATION_CANCELLED")
 
 
-def read_completion(chunks, cancelled: Event) -> str:
-    content = []
+def stream_text(content: str, thinking: bool) -> tuple[str, str]:
+    reasoning, marker, prompt = content.partition("</think>")
+    if marker:
+        return reasoning.removeprefix("<think>").strip(), prompt.strip()
+    # Keep incomplete control tags out of the live text when a tag spans tokens.
+    for tag in ("<think>", "</think>"):
+        for length in range(1, len(tag)):
+            if content.endswith(tag[:length]):
+                content = content[:-length]
+                break
+    if thinking or content.startswith("<think>"):
+        return content.removeprefix("<think>").strip(), ""
+    return "", content.strip()
+
+
+def read_completion(
+    chunks, cancelled: Event, thinking=False, progress: PromptProgress | None = None
+) -> str:
+    content = ""
     finished = False
     with closing(chunks):
         for chunk in chunks:
@@ -64,11 +82,13 @@ def read_completion(chunks, cancelled: Event) -> str:
             if choice.get("finish_reason") == "length":
                 raise MoruError("PROMPT_LLM_FAILED")
             finished = choice.get("finish_reason") == "stop"
-            content.append(choice["delta"].get("content") or "")
+            content += choice["delta"].get("content") or ""
+            if progress is not None:
+                progress(*stream_text(content, thinking))
         check_cancelled(cancelled)
     if not finished:
         raise MoruError("PROMPT_LLM_FAILED")
-    return final_prompt("".join(content))
+    return final_prompt(content)
 
 
 class LlamaPrompts:
@@ -151,7 +171,9 @@ class LlamaPrompts:
             self._thinking_handlers[enabled] = formatter.to_chat_handler()
         llm.chat_handler = self._thinking_handlers[enabled]
 
-    def _complete(self, messages, settings: PromptSettings, cancelled: Event) -> str:
+    def _complete(
+        self, messages, settings: PromptSettings, cancelled: Event, progress: PromptProgress | None
+    ) -> str:
         with self._lock:
             check_cancelled(cancelled)
             llm = self._load(settings)
@@ -167,17 +189,21 @@ class LlamaPrompts:
                     max_tokens=settings.max_tokens,
                     stream=True,
                 )
-                return read_completion(response, cancelled)
+                return read_completion(response, cancelled, settings.thinking, progress)
             except MoruError:
                 raise
             except Exception as exc:
                 raise MoruError("PROMPT_LLM_FAILED") from exc
 
     def create(
-        self, text: str, settings: PromptSettings | None = None, cancelled: Event | None = None
+        self,
+        text: str,
+        settings: PromptSettings | None = None,
+        cancelled: Event | None = None,
+        progress: PromptProgress | None = None,
     ) -> str:
         return self._complete(
-            prompt_messages(text), settings or PromptSettings(), cancelled or Event()
+            prompt_messages(text), settings or PromptSettings(), cancelled or Event(), progress
         )
 
     def refine(
@@ -186,9 +212,13 @@ class LlamaPrompts:
         text: str,
         settings: PromptSettings | None = None,
         cancelled: Event | None = None,
+        progress: PromptProgress | None = None,
     ) -> str:
         return self._complete(
-            prompt_messages(text, prompt), settings or PromptSettings(), cancelled or Event()
+            prompt_messages(text, prompt),
+            settings or PromptSettings(),
+            cancelled or Event(),
+            progress,
         )
 
     def unload(self):

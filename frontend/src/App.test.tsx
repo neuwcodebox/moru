@@ -15,9 +15,9 @@ const settings: Settings = {
   seed: null,
 };
 const promptSettings: PromptSettings = {
-  context_size: 8192,
-  max_tokens: 4096,
-  thinking: true,
+  context_size: 2048,
+  max_tokens: 1024,
+  thinking: false,
 };
 const empty: Project = {
   id: "p1",
@@ -103,6 +103,93 @@ beforeEach(() => {
 });
 
 describe("conversation", () => {
+  it.each(["completed", "cancelled", "failed"])(
+    "restores the send button after a %s job",
+    async (state) => {
+      const scheduled: (() => Promise<void>)[] = [];
+      const realTimeout = globalThis.setTimeout;
+      const timer = vi
+        .spyOn(globalThis, "setTimeout")
+        .mockImplementation((callback, delay, ...args) => {
+          if (delay === 300 && typeof callback === "function") {
+            scheduled.push(callback as () => Promise<void>);
+            return 0 as unknown as ReturnType<typeof setTimeout>;
+          }
+          return realTimeout(callback, delay, ...args);
+        });
+      try {
+        const user = userEvent.setup();
+        api.get_job.mockResolvedValue({
+          ok: true,
+          value: {
+            id: "j1",
+            project_id: "p1",
+            state: "generating",
+            step: 3,
+            total: 10,
+          },
+        });
+        render(<App />);
+        await screen.findByText("어떤 장면을 그릴까요?");
+        await user.type(screen.getByLabelText("이미지 요청"), "풍경{Enter}");
+        expect(screen.getByRole("button", { name: "중지" })).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "전송" })).toBeNull();
+        if (state === "cancelled") {
+          await user.click(screen.getByRole("button", { name: "중지" }));
+          expect(api.cancel_job).toHaveBeenCalledWith("j1");
+        }
+        api.get_job.mockResolvedValue({
+          ok: true,
+          value: { id: "j1", project_id: "p1", state },
+        });
+        await act(async () => {
+          await scheduled.shift()!();
+        });
+        expect(screen.queryByRole("button", { name: "중지" })).toBeNull();
+        expect(screen.getByRole("button", { name: "전송" })).toBeTruthy();
+        expect(screen.queryByRole("region", { name: "생성 진행" })).toBeNull();
+      } finally {
+        timer.mockRestore();
+      }
+    },
+  );
+
+  it("keeps model settings and history in the same header group when another project is added", async () => {
+    const user = userEvent.setup();
+    api.list_projects.mockImplementation(() =>
+      Promise.resolve({ ok: true, value: [current, empty] }),
+    );
+    render(<App />);
+    await screen.findByText("어떤 장면을 그릴까요?");
+    const history = screen.getByRole("combobox", { name: "작업 기록" });
+    const models = screen.getByRole("button", { name: "모델 설정" });
+    expect(history.parentElement).toBe(models.parentElement);
+    await user.click(screen.getByRole("button", { name: "새 작업" }));
+    expect(screen.getByRole("combobox", { name: "작업 기록" })).toBe(history);
+    expect(screen.getByRole("button", { name: "모델 설정" })).toBe(models);
+    expect(within(history).getAllByRole("option")).toHaveLength(2);
+  });
+
+  it("keeps the stop button usable when cancellation fails", async () => {
+    const user = userEvent.setup();
+    api.get_job.mockResolvedValue({
+      ok: true,
+      value: { id: "j1", project_id: "p1", state: "loading_model" },
+    });
+    api.cancel_job.mockRejectedValue(new Error("중지 요청 실패"));
+    render(<App />);
+    await screen.findByText("어떤 장면을 그릴까요?");
+    await user.type(screen.getByLabelText("이미지 요청"), "풍경{Enter}");
+    await user.click(screen.getByRole("button", { name: "중지" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "중지 요청 실패",
+    );
+    expect(
+      (screen.getByRole("button", { name: "중지" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(screen.queryByRole("button", { name: "전송" })).toBeNull();
+  });
   it("closes the manual prompt dialog when generation is accepted even if refreshing the conversation fails", async () => {
     current = withImage;
     api.get_project.mockRejectedValue(new Error("대화를 불러올 수 없습니다."));
@@ -113,9 +200,9 @@ describe("conversation", () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByAltText("생성 이미지");
-    await user.click(screen.getByText("프롬프트"));
+    await user.click(screen.getByText("수정"));
     await user.click(screen.getByText("이 프롬프트로 생성"));
-    await screen.findByText("생각 중…");
+    await screen.findByText("프롬프트 작성 중…");
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(api.generate_from_prompt).toHaveBeenCalledOnce();
     expect(screen.getByRole("alert").textContent).toContain(
@@ -143,7 +230,7 @@ describe("conversation", () => {
     render(<App />);
     await screen.findByText("이미지 생성에 실패했습니다.");
     await user.click(screen.getByText("재시도"));
-    await screen.findByText("생각 중…");
+    await screen.findByText("프롬프트 작성 중…");
     expect(screen.queryByText("이미지 생성에 실패했습니다.")).toBeNull();
     expect(api.retry_request).toHaveBeenCalledWith("r1");
   });
@@ -152,7 +239,7 @@ describe("conversation", () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByAltText("생성 이미지");
-    await user.click(screen.getByText("프롬프트"));
+    await user.click(screen.getByText("수정"));
     const editor = screen.getByLabelText("실제 생성 프롬프트");
     await user.clear(editor);
     await user.type(editor, "edited image prompt");
@@ -161,11 +248,17 @@ describe("conversation", () => {
     expect(await screen.findByText("복사했습니다.")).toBeTruthy();
   });
 
-  it("shows a compact thinking status inside the conversation while writing the prompt", async () => {
+  it("shows thinking in the generation placeholder and cancels with the composer stop button", async () => {
     const user = userEvent.setup();
     api.get_job.mockResolvedValue({
       ok: true,
-      value: { id: "j1", project_id: "p1", state: "prompting" },
+      value: {
+        id: "j1",
+        project_id: "p1",
+        state: "prompting",
+        thinking_enabled: true,
+        thinking_text: "Choosing the scene",
+      },
     });
     render(<App />);
     await screen.findByText("어떤 장면을 그릴까요?");
@@ -175,10 +268,12 @@ describe("conversation", () => {
     );
     const conversation = screen.getByRole("main", { name: "대화" });
     const thinking = await within(conversation).findByText("생각 중…");
-    const status = thinking.closest('[role="status"]') as HTMLElement;
+    const status = thinking.closest('[aria-label="생성 진행"]') as HTMLElement;
     expect(screen.queryByText("프롬프트 준비")).toBeNull();
-    expect(within(status).getByText("취소")).toBeTruthy();
-    await user.click(within(status).getByText("취소"));
+    expect(within(status).getByText("Choosing the scene")).toBeTruthy();
+    expect(screen.queryByText("취소")).toBeNull();
+    expect(screen.queryByRole("button", { name: "전송" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "중지" }));
     expect(api.cancel_job).toHaveBeenCalledWith("j1");
   });
 
@@ -212,11 +307,11 @@ describe("conversation", () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByAltText("생성 이미지");
-    await user.click(screen.getByText("⑂ Fork"));
-    expect(await screen.findByText("Fork: #i1")).toBeTruthy();
-    await user.click(screen.getByLabelText("Fork 취소"));
+    await user.click(screen.getByText("분기"));
+    expect(await screen.findByText("분기: #i1")).toBeTruthy();
+    await user.click(screen.getByLabelText("분기 취소"));
     expect(api.fork).toHaveBeenLastCalledWith("p1", null);
-    expect(screen.queryByText("Fork: #i1")).toBeNull();
+    expect(screen.queryByText("분기: #i1")).toBeNull();
   });
 
   it("exposes the prompt only in its dialog and submits manual edits as a Fork", async () => {
@@ -224,7 +319,7 @@ describe("conversation", () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByAltText("생성 이미지");
-    await user.click(screen.getByText("프롬프트"));
+    await user.click(screen.getByText("수정"));
     const dialog = await screen.findByRole("dialog", { name: "프롬프트" });
     const prompt = within(dialog).getByLabelText("실제 생성 프롬프트");
     await user.clear(prompt);
@@ -242,9 +337,9 @@ describe("conversation", () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByAltText("생성 이미지");
-    await user.click(screen.getByText("+ 새 작업"));
+    await user.click(screen.getByText("새 작업"));
     await screen.findByText("어떤 장면을 그릴까요?");
-    expect(screen.queryByText("Fork: #i1")).toBeNull();
+    expect(screen.queryByText("분기: #i1")).toBeNull();
     expect(api.create_project).toHaveBeenCalledOnce();
   });
 
@@ -294,9 +389,9 @@ describe("conversation", () => {
     const context = screen.getByLabelText("컨텍스트 크기");
     const output = screen.getByLabelText("출력 토큰 한도");
     const thinking = screen.getByLabelText("Thinking 사용") as HTMLInputElement;
-    expect((context as HTMLInputElement).value).toBe("8192");
-    expect((output as HTMLInputElement).value).toBe("4096");
-    expect(thinking.checked).toBe(true);
+    expect((context as HTMLInputElement).value).toBe("2048");
+    expect((output as HTMLInputElement).value).toBe("1024");
+    expect(thinking.checked).toBe(false);
     await user.clear(context);
     await user.type(context, "4096");
     await user.clear(output);
@@ -306,7 +401,7 @@ describe("conversation", () => {
     expect(api.update_settings).toHaveBeenCalledWith(settings, {
       context_size: 4096,
       max_tokens: 2048,
-      thinking: false,
+      thinking: true,
     });
     await user.click(screen.getByLabelText("생성 설정"));
     await user.click(screen.getByText("고급 · 프롬프트 LLM"));
@@ -315,7 +410,7 @@ describe("conversation", () => {
     ).toBe("4096");
     expect(
       (screen.getByLabelText("Thinking 사용") as HTMLInputElement).checked,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("keeps the dialog open without saving when output leaves no input context", async () => {
@@ -340,10 +435,15 @@ it("fits, zooms, and closes the fullscreen viewer with Escape", async () => {
   const user = userEvent.setup();
   const close = vi.fn();
   render(<Lightbox source="data:image/png;base64,abc" onClose={close} />);
+  const dialog = screen.getByRole("dialog", { name: "이미지 보기" });
+  expect(within(dialog).queryByRole("heading")).toBeNull();
+  expect(screen.getByLabelText("확대").closest(".modal-header")).toBe(
+    screen.getByLabelText("닫기").closest(".modal-header"),
+  );
   expect(screen.getByText("100%")).toBeTruthy();
   await user.click(screen.getByLabelText("확대"));
   expect(screen.getByText("125%")).toBeTruthy();
-  await user.click(screen.getByText("화면 맞춤"));
+  await user.click(screen.getByLabelText("화면 맞춤"));
   expect(screen.getByText("100%")).toBeTruthy();
   await user.keyboard("{Escape}");
   expect(close).toHaveBeenCalledOnce();
@@ -369,7 +469,7 @@ it("pans the fullscreen image while dragging and resets its position when fitted
     new MouseEvent("pointermove", { bubbles: true, clientX: 80, clientY: 100 }),
   );
   expect(image.style.transform).toBe("translate(30px, 40px) scale(1)");
-  await user.click(screen.getByText("화면 맞춤"));
+  await user.click(screen.getByLabelText("화면 맞춤"));
   expect(image.style.transform).toBe("translate(0px, 0px) scale(1)");
 });
 

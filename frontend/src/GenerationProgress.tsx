@@ -1,33 +1,87 @@
+import { Brain, Image, LoaderCircle, WandSparkles } from "lucide-react";
+import { useEffect, useRef } from "react";
 import type { Job } from "./api";
 
-const progressNames: Record<string, string> = {
-  queued: "생성 대기",
-  loading_model: "이미지 모델 준비",
-  generating: "이미지 생성",
-};
-
-export default function GenerationProgress({
-  job,
-  onCancel,
-}: {
-  job: Job;
-  onCancel: () => void;
-}) {
-  const thinking = job.state === "prompting";
+function LiveText({ text }: { text: string }) {
+  const panel = useRef<HTMLPreElement>(null);
+  const following = useRef(true);
+  useEffect(() => {
+    if (panel.current && following.current)
+      panel.current.scrollTop = panel.current.scrollHeight;
+  }, [text]);
   return (
-    <div
-      className={`progress${thinking ? " thinking" : ""}`}
-      role="status"
-      aria-live="polite"
+    <pre
+      ref={panel}
+      onScroll={(event) => {
+        const element = event.currentTarget;
+        following.current =
+          element.scrollHeight - element.scrollTop - element.clientHeight < 24;
+      }}
     >
-      <span className="spinner" />
-      <span>
-        {thinking ? "생각 중…" : (progressNames[job.state] ?? "이미지 생성")}
-        {!thinking && job.step != null && job.total != null
-          ? ` · ${job.step} / ${job.total}`
-          : ""}
-      </span>
-      <button onClick={onCancel}>취소</button>
-    </div>
+      {text}
+    </pre>
+  );
+}
+
+export default function GenerationProgress({ job }: { job: Job }) {
+  const writing = job.state === "prompting";
+  const label =
+    job.state === "queued"
+      ? "생성 대기 중…"
+      : writing
+        ? job.thinking_enabled
+          ? "생각 중…"
+          : "프롬프트 작성 중…"
+        : job.state === "loading_model"
+          ? "이미지 모델을 불러오는 중…"
+          : "이미지 생성 중…";
+  return (
+    <section className="generation-placeholder" aria-label="생성 진행">
+      <div className="generation-stage" role="status" aria-live="polite">
+        <LoaderCircle className="spinner" size={18} aria-hidden="true" />
+        <span>{label}</span>
+        {job.step != null && job.total != null && (
+          <span className="step-count">
+            {job.step} / {job.total}
+          </span>
+        )}
+      </div>
+      <div className="generation-canvas" aria-hidden="true">
+        {writing ? <WandSparkles size={32} /> : <Image size={32} />}
+        <span>
+          {writing ? "장면을 준비하고 있어요" : "곧 이미지가 여기에 나타나요"}
+        </span>
+      </div>
+      {job.step != null && job.total != null && (
+        <progress
+          value={job.step}
+          max={job.total}
+          aria-label="이미지 생성 단계"
+        />
+      )}
+      {(job.thinking_text || job.prompt_text) && (
+        <div className="generation-text">
+          {job.thinking_text && (
+            <details
+              className="stream-section"
+              open={writing && !job.prompt_text}
+            >
+              <summary>
+                <Brain size={14} aria-hidden="true" /> 생각 과정
+              </summary>
+              <LiveText text={job.thinking_text} />
+            </details>
+          )}
+          {job.prompt_text && (
+            <div className="stream-section">
+              <div className="stream-label">
+                <WandSparkles size={14} aria-hidden="true" /> 생성 프롬프트
+              </div>
+              <LiveText text={job.prompt_text} />
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   );
 }

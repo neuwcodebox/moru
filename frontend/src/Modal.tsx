@@ -1,16 +1,19 @@
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
+import { X } from "lucide-react";
 
 export default function Modal({
   title,
   onClose,
   children,
   className = "",
+  toolbar,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   className?: string;
+  toolbar?: ReactNode;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
@@ -72,9 +75,14 @@ export default function Modal({
         tabIndex={-1}
       >
         <div className="modal-header">
-          <h2>{title}</h2>
-          <button aria-label="닫기" onClick={onClose}>
-            ×
+          {toolbar ?? <h2>{title}</h2>}
+          <button
+            className="icon-button"
+            aria-label="닫기"
+            title="닫기"
+            onClick={onClose}
+          >
+            <X size={20} aria-hidden="true" />
           </button>
         </div>
         {children}

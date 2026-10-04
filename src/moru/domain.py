@@ -13,9 +13,9 @@ RequestStatus = Literal["pending", "completed", "failed", "cancelled"]
 
 @dataclass(frozen=True)
 class PromptSettings:
-    context_size: int = 8192
-    max_tokens: int = 4096
-    thinking: bool = True
+    context_size: int = 2048
+    max_tokens: int = 1024
+    thinking: bool = False
 
     def __post_init__(self):
         if type(self.context_size) is not int or not 1024 <= self.context_size <= 32768:

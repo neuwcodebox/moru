@@ -31,6 +31,9 @@ class Job:
     total: int | None = None
     image_id: str | None = None
     error_code: str | None = None
+    thinking_enabled: bool = False
+    thinking_text: str = ""
+    prompt_text: str = ""
 
 
 class Application:
@@ -47,6 +50,15 @@ class Application:
         new_seed: Callable[[], int] = lambda: secrets.randbelow(2**63),
     ):
         self.repository = repository
+        if not repository.get_preference("prompt_defaults_version", 0):
+            values = {"prompt_defaults_version": 1}
+            if repository.get_preference("prompt_settings") == {
+                "context_size": 8192,
+                "max_tokens": 4096,
+                "thinking": True,
+            }:
+                values["prompt_settings"] = asdict(PromptSettings())
+            repository.set_preferences(values)
         self.prompts = prompts
         self.images = images
         self.data_dir = data_dir
@@ -163,9 +175,10 @@ class Application:
         self._active_job = job.id
         self._cancelled = Event()
         try:
-            self._executor.submit(
-                self._generate, job.id, request, self._cancelled, self.get_prompt_settings()
-            )
+            prompt_settings = self.get_prompt_settings()
+            job = replace(job, thinking_enabled=prompt_settings.thinking)
+            self._jobs[job.id] = job
+            self._executor.submit(self._generate, job.id, request, self._cancelled, prompt_settings)
         except Exception as exc:
             self._active_job = None
             self.repository.set_request_status(request.id, "failed", "GENERATION_FAILED")
@@ -236,7 +249,11 @@ class Application:
                 self._check_cancelled(cancelled)
                 self.repository.complete_generation(image)
                 self._jobs[job_id] = replace(
-                    self._jobs[job_id], state="completed", image_id=image.id
+                    self._jobs[job_id],
+                    state="completed",
+                    image_id=image.id,
+                    thinking_text="",
+                    prompt_text="",
                 )
             output_path = None
             log.info("generation completed id=%s", job_id)
@@ -250,7 +267,13 @@ class Application:
                 code = "DATABASE_FAILED"
                 log.exception("request failure could not be saved id=%s", request.id)
             with self._lock:
-                self._jobs[job_id] = replace(self._jobs[job_id], state=state, error_code=code)
+                self._jobs[job_id] = replace(
+                    self._jobs[job_id],
+                    state=state,
+                    error_code=code,
+                    thinking_text="",
+                    prompt_text="",
+                )
         finally:
             if output_path is not None:
                 try:
@@ -262,16 +285,40 @@ class Application:
 
     def _prepare_prompt(self, job_id, request, settings, cancelled) -> str:
         if request.kind == "manual":
+            self._prompt_progress(job_id, "", request.text)
             return request.text
         self._progress(job_id, "prompting")
+
+        def progress(thinking, prompt):
+            self._prompt_progress(job_id, thinking, prompt)
+
         if request.base_image_id:
             base = self.repository.get_image(request.base_image_id)
-            prompt = self.prompts.refine(base.prompt, request.text, settings, cancelled)
+            prompt = self.prompts.refine(
+                base.prompt,
+                request.text,
+                settings,
+                cancelled,
+                progress,
+            )
         else:
-            prompt = self.prompts.create(request.text, settings, cancelled)
+            prompt = self.prompts.create(
+                request.text,
+                settings,
+                cancelled,
+                progress,
+            )
         if not isinstance(prompt, str) or not prompt.strip():
             raise MoruError("PROMPT_LLM_FAILED")
+        with self._lock:
+            self._prompt_progress(job_id, self._jobs[job_id].thinking_text, prompt)
         return prompt
+
+    def _prompt_progress(self, job_id, thinking, prompt):
+        with self._lock:
+            self._jobs[job_id] = replace(
+                self._jobs[job_id], thinking_text=thinking[-65536:], prompt_text=prompt[-65536:]
+            )
 
     def _write_image(self, prompt, settings, output_path, progress, cancelled):
         try:

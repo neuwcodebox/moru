@@ -46,10 +46,14 @@ export type Job = {
   image_id: string | null;
   error_code: string | null;
   message?: string | null;
+  thinking_enabled?: boolean;
+  thinking_text?: string;
+  prompt_text?: string;
 };
 export type ModelStatus = {
   id: string;
   available: boolean;
+  filename?: string | null;
   download?: {
     model_id: string;
     state: string;

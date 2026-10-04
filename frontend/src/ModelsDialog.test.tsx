@@ -9,7 +9,7 @@ it("offers local selection and download for a missing model without exposing bac
   const status = vi.fn(async () => ({ ok: true as const, value: models }));
   const select = vi.fn(async () => ({
     ok: true as const,
-    value: [{ id: "prompt", available: true }],
+    value: [{ id: "prompt", available: true, filename: "custom-qwen.gguf" }],
   }));
   window.pywebview = {
     api: { get_model_status: status, select_local_model: select },
@@ -21,6 +21,8 @@ it("offers local selection and download for a missing model without exposing bac
   await user.click(screen.getByText("파일 선택"));
   expect(select).toHaveBeenCalledWith("prompt");
   expect(await screen.findByText("준비됨")).toBeTruthy();
+  expect(screen.getByText("custom-qwen.gguf")).toBeTruthy();
+  expect(screen.getByRole("dialog", { name: "모델 설정" })).toBeTruthy();
   expect(screen.queryByText("다운로드")).toBeNull();
 });
 

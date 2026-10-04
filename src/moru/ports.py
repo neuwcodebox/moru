@@ -8,11 +8,21 @@ from typing import Protocol
 from moru.domain import GenerationSettings, PromptSettings
 
 Progress = Callable[[str, int | None, int | None], None]
+PromptProgress = Callable[[str, str], None]
 
 
 class PromptGenerator(Protocol):
-    def create(self, text: str, settings: PromptSettings, cancelled: Event) -> str: ...
-    def refine(self, prompt: str, text: str, settings: PromptSettings, cancelled: Event) -> str: ...
+    def create(
+        self, text: str, settings: PromptSettings, cancelled: Event, progress: PromptProgress
+    ) -> str: ...
+    def refine(
+        self,
+        prompt: str,
+        text: str,
+        settings: PromptSettings,
+        cancelled: Event,
+        progress: PromptProgress,
+    ) -> str: ...
     def unload(self) -> None: ...
 
 

@@ -3,6 +3,7 @@ import { call } from "./api";
 import type { ImageDetails } from "./api";
 import Modal from "./Modal";
 import { imageModelNames } from "./modelNames";
+import { Copy, WandSparkles } from "lucide-react";
 
 export default function PromptDialog({
   details,
@@ -66,7 +67,7 @@ export default function PromptDialog({
             }
           }}
         >
-          복사
+          <Copy size={15} aria-hidden="true" /> 복사
         </button>
         <button
           className="primary"
@@ -87,7 +88,7 @@ export default function PromptDialog({
             }
           }}
         >
-          이 프롬프트로 생성
+          <WandSparkles size={15} aria-hidden="true" /> 이 프롬프트로 생성
         </button>
       </div>
     </Modal>

@@ -18,9 +18,9 @@ from moru.worker_client import ImageWorker
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--prompt", action="store_true")
-    parser.add_argument("--context-size", type=int, default=8192)
-    parser.add_argument("--max-tokens", type=int, default=4096)
-    parser.add_argument("--no-thinking", action="store_true")
+    parser.add_argument("--context-size", type=int, default=2048)
+    parser.add_argument("--max-tokens", type=int, default=1024)
+    parser.add_argument("--thinking", action="store_true")
     parser.add_argument("--cancel-prompt", action="store_true")
     parser.add_argument("--image", choices=("turbo", "aesthetic"))
     parser.add_argument("--width", type=int, default=512)
@@ -40,7 +40,7 @@ def main():
             prompt_settings = PromptSettings(
                 context_size=options.context_size,
                 max_tokens=options.max_tokens,
-                thinking=not options.no_thinking,
+                thinking=options.thinking,
             )
             prompt = prompts.create("은발 소녀가 편의점 앞에서 컵라면을 먹는 장면", prompt_settings)
             if not prompt.strip() or "Thinking Process:" in prompt or "<think>" in prompt:
@@ -57,7 +57,11 @@ def main():
             timer = Timer(0.5, cancelled.set)
             timer.start()
             try:
-                prompts.create("별이 가득한 밤하늘 아래 검은 고양이", cancelled=cancelled)
+                prompts.create(
+                    "별이 가득한 밤하늘 아래 검은 고양이",
+                    PromptSettings(thinking=True),
+                    cancelled=cancelled,
+                )
             except MoruError as exc:
                 assert exc.code == "GENERATION_CANCELLED", exc.code
                 print("prompt_cancel_ok", flush=True)

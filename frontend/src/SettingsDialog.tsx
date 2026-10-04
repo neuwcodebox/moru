@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { PromptSettings, Settings } from "./api";
 import Modal from "./Modal";
 import { imageModelNames } from "./modelNames";
+import { Check } from "lucide-react";
 const resolutions = [
   [1024, 1024],
   [832, 1216],
@@ -234,7 +235,7 @@ export default function SettingsDialog({
             닫기
           </button>
           <button className="primary" disabled={saving}>
-            저장
+            <Check size={16} aria-hidden="true" /> 저장
           </button>
         </div>
       </form>

@@ -45,3 +45,15 @@ def test_uncensored_prompt_model_is_discovered_before_the_older_local_model(tmp_
     preferred.write_bytes(b"selected uncensored model")
     (prompt_folder / "Qwen3.5-4B-Q4_K_M.gguf").write_bytes(b"older model")
     assert ModelPaths(tmp_path).get("prompt") == preferred
+
+
+def test_model_status_exposes_the_selected_filename_without_its_directory(tmp_path):
+    model = tmp_path / "private-directory/my-custom-model.gguf"
+    model.parent.mkdir()
+    model.write_bytes(b"fake gguf")
+    paths = ModelPaths(tmp_path)
+    paths.set("prompt", model)
+    status = next(item for item in paths.status() if item["id"] == "prompt")
+    assert status == {"id": "prompt", "available": True, "filename": "my-custom-model.gguf"}
+    missing = next(item for item in paths.status() if item["id"] == "vae")
+    assert missing["filename"] is None

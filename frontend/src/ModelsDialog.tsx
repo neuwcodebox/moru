@@ -3,6 +3,7 @@ import { call } from "./api";
 import type { ModelStatus } from "./api";
 import Modal from "./Modal";
 import { modelNames } from "./modelNames";
+import { CheckCircle2, Download, FolderOpen, Square } from "lucide-react";
 export default function ModelsDialog({
   initial,
   onUpdate,
@@ -59,7 +60,7 @@ export default function ModelsDialog({
     }
   }
   return (
-    <Modal title="모델 준비" onClose={onClose}>
+    <Modal title="모델 설정" onClose={onClose}>
       <p className="hint">
         필요한 모델을 다운로드하거나 이미 가지고 있는 파일을 선택하세요.
       </p>
@@ -72,9 +73,18 @@ export default function ModelsDialog({
               <div className="model-label">
                 <strong>{modelNames[model.id]}</strong>
                 <span className="hint">
-                  {model.available ? "준비됨" : "준비 필요"}
+                  {model.available ? (
+                    <>
+                      <CheckCircle2 size={14} aria-hidden="true" /> 준비됨
+                    </>
+                  ) : (
+                    "준비 필요"
+                  )}
                 </span>
               </div>
+              <p className="model-filename" title={model.filename ?? undefined}>
+                {model.filename ?? "선택된 파일 없음"}
+              </p>
               {active ? (
                 <div className="download-progress">
                   <progress
@@ -89,7 +99,7 @@ export default function ModelsDialog({
                       void action("cancel_model_download", model.id)
                     }
                   >
-                    취소
+                    <Square size={12} aria-hidden="true" /> 취소
                   </button>
                 </div>
               ) : (
@@ -98,14 +108,14 @@ export default function ModelsDialog({
                     disabled={acting || downloading}
                     onClick={() => void action("select_local_model", model.id)}
                   >
-                    파일 선택
+                    <FolderOpen size={14} aria-hidden="true" /> 파일 선택
                   </button>
                   {!model.available && (
                     <button
                       disabled={acting || downloading}
                       onClick={() => void action("download_model", model.id)}
                     >
-                      다운로드
+                      <Download size={14} aria-hidden="true" /> 다운로드
                     </button>
                   )}
                 </div>

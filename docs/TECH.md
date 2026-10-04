@@ -275,7 +275,7 @@ from llama_cpp import Llama
 llm = Llama(
     model_path=model_path,
     n_gpu_layers=-1,
-    n_ctx=8192,
+    n_ctx=2048,
 )
 ```
 
@@ -944,12 +944,12 @@ worker와 executor 종료까지 유지한다. 같은 저장 폴더의 두 번째
 GPU 및 실제 WebView2 검증은 `scripts/smoke_*.py`에 분리되어 있으며
 일반 `uv run pytest`에서는 실행하지 않는다.
 
-프롬프트 LLM의 thinking은 기본적으로 유지한다. 사고 과정은 생성용 프롬프트에서 제외하고
-완성된 최종 프롬프트만 Anima에 전달한다. `prompting` 상태는 대화 창에
-`생각 중…`으로 표시하며, 토큰 제한 때문에 잘린 응답은 오류로 처리한다.
+프롬프트 LLM의 thinking은 기본적으로 끈다. 사고 과정은 생성용 프롬프트에서 제외하고
+완성된 최종 프롬프트만 Anima에 전달한다. `prompting` 상태는 대화의 생성 placeholder에
+표시하며, 토큰 제한 때문에 잘린 응답은 오류로 처리한다.
 기본 프롬프트 모델은 HauhauCS Qwen3.5-4B Uncensored Aggressive Q4_K_M이다.
-thinking과 최종 답변의 토큰 여유를 위해 기본 context는 8192, 출력 한도는
-4096 tokens로 설정한다. 생성 설정의 고급 영역에서 두 한도와 thinking 사용 여부를
+기본 context는 2048, 출력 한도는 1024 tokens로 설정한다.
+생성 설정의 고급 영역에서 두 한도와 thinking 사용 여부를
 변경할 수 있다. 불변 `PromptSettings`는 이미지 설정과 함께 preferences에 원자적으로
 저장되며 작업 접수 시 고정한다. 현재 작업에는 저장 후 변경한 값을 적용하지 않는다.
 컨텍스트 또는 모델 경로가 변경되면 다음 LLM 호출에서 모델을 다시 로드한다.
@@ -959,7 +959,20 @@ thinking과 최종 답변의 토큰 여유를 위해 기본 context는 8192, 출
 
 LLM 응답은 내부에서 스트리밍으로 소비하며 토큰마다 취소 여부를 확인한다.
 취소 시 completion generator를 닫고 이미지 생성으로 넘어가지 않는다.
-스트림은 UI에 전달하지 않으며, 정상 종료된 전체 응답에서 최종 프롬프트만 추출한다.
+프로젝트 소유 `PromptProgress` callback은 thinking과 프롬프트를 분리해 전달한다.
+Job에 임시 텍스트를 저장하고 기존 polling bridge로 placeholder를 갱신한다.
+제어 태그가 토큰 경계에서 나뉘어도 표시하지 않으며, 정상 종료된 전체 응답에서만
+이미지 생성용 최종 프롬프트를 추출한다. 임시 텍스트는 DB·로그에 저장하지 않고
+성공·실패·취소 후 Job에서도 지운다. 표시용 문자열은 각각 최대 65536자로 제한한다.
+이미지 생성 중에는 같은 placeholder에 step/전체 steps와 진행률을 표시한다.
+
+이전 기본 설정 8192/4096/thinking 켜짐은 최초 실행 시 한 번 새 기본값으로 전환한다.
+`prompt_defaults_version`을 preferences에 기록하여 이후 사용자가 같은 값을 명시적으로
+저장해도 재전환하지 않는다. 그 외의 기존 사용자 설정은 보존한다.
+
+아이콘은 `lucide-react`의 개별 component import를 사용한다. 전송/중지는 하나의 버튼이며,
+이미지 뷰어는 Modal의 한 줄 toolbar에 맞춤·확대/축소·닫기를 함께 배치한다.
+모델 상태 bridge는 선택된 파일 이름만 전달하여 전체 경로를 UI에 노출하지 않는다.
 
 HTML을 직접 로드한 WebView2에서는 브라우저 Clipboard API를 사용할 수 없으므로
 프롬프트 복사는 Python bridge로 전달하여 Windows UI thread의 클립보드 API를 사용한다.
