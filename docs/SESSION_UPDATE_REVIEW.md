@@ -21,7 +21,7 @@
 다중 인물의 외형/위치 연결과 Aesthetic의 score 태그 제외를 반영했다.
 품질 태그를 무조건 나열하거나 요청하지 않은 rating/style을 강제하지 않는다.
 
-자동 검증은 모델·GPU·네트워크 없이 Python 146개, UI 29개, Ruff,
+자동 검증은 모델·GPU·네트워크 없이 Python 148개, UI 29개, Ruff,
 TypeScript와 Vite build를 통과했다. 별도 WebView2 검사 결과는
 `build/session-review/report.json`, 생성 영역 캡처는
 `build/session-review/in-place-generation.png`에 있다.

@@ -147,3 +147,37 @@ def test_clipboard_failure_has_a_specific_error_and_does_not_expose_content(app)
     assert not result["ok"]
     assert result["error"]["code"] == "CLIPBOARD_FAILED"
     assert "private prompt" not in result["error"]["message"]
+
+
+def test_bridge_regeneration_and_selection_keep_one_turn_and_use_the_chosen_prompt(app):
+    api = Api(app)
+    project = app.create_project()
+    image = generate(app, project.id)
+    accepted = api.regenerate(image.id)
+    assert accepted["ok"]
+    assert accepted["value"]["turn_id"] == image.request_id
+    app.scheduler.run_next()
+    view = api.get_project(project.id)["value"]
+    assert len(view["images"]) == 1
+    assert len(view["images"][0]["versions"]) == 2
+    selected = api.select_version(project.id, image.id)["value"]
+    assert selected["images"][0]["id"] == image.id
+    assert selected["active_leaf_id"] == image.id
+    api.submit_request(project.id, "밤으로")
+    app.scheduler.run_next()
+    assert app.prompts.inputs[-1] == ("refine", image.prompt, "밤으로")
+
+
+def test_bridge_fork_opens_a_copied_session_and_excludes_later_conversation(app):
+    api = Api(app)
+    project = app.create_project()
+    root = generate(app, project.id, "숲")
+    generate(app, project.id, "나중의 밤 장면")
+    copied = api.fork(project.id, root.id)["value"]
+    assert copied["id"] != project.id
+    assert api.bootstrap()["value"]["project"]["id"] == copied["id"]
+    assert len(copied["images"]) == 1
+    assert copied["images"][0]["request_text"] == "숲"
+    assert copied["images"][0]["id"] != root.id
+    assert len(api.get_project(project.id)["value"]["images"]) == 2
+    assert len(api.list_projects()["value"]) == 2
