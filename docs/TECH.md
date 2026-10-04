@@ -923,6 +923,13 @@ GPU 및 실제 WebView2 검증은 `scripts/smoke_*.py`에 분리되어 있으며
 표시하며, 토큰 제한 때문에 잘린 응답은 오류로 처리한다.
 기본 프롬프트 모델은 HauhauCS Qwen3.5-4B Uncensored Aggressive Q4_K_M이다.
 기본 context는 2048, 출력 한도는 1024 tokens로 설정한다.
+프롬프트 작성 지침은 CUDA 추론 코드와 분리한 `prompt_instructions.py`에서 관리한다.
+공통 출력·해석·구성·태그·검토 규칙에 생성용 예시 또는 수정용 예시를 붙인다.
+`prompt_messages`는 이 지침을 system으로 전달하고 실제 user/assistant 이력만
+대화 턴으로 추가한다. 예시는 이력으로 세지 않으며 현재 상태와 최신 요청을 유지한다.
+모델명은 지침에 넣지 않고 Aesthetic 선택 시 점수 태그 제외 규칙을 추가한다.
+규칙의 조사 근거, 태그 선택표와 상세 예시는 [프롬프트 작성 지침](PROMPT_GUIDE.md)에 둔다.
+문서 전체를 읽어 넣거나 외부 검색 결과를 실행 중 컨텍스트에 주입하지 않는다.
 생성 설정의 고급 영역에서 두 한도와 thinking 사용 여부, 추론 수준을
 변경할 수 있다. 불변 `PromptSettings`는 이미지 설정과 함께 preferences에 원자적으로
 저장되며 작업 접수 시 고정한다. 현재 작업에는 저장 후 변경한 값을 적용하지 않는다.

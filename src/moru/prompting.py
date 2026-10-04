@@ -15,27 +15,9 @@ from moru.config import ModelPaths
 from moru.domain import PromptSettings, PromptTurn
 from moru.errors import MoruError
 from moru.ports import PromptProgress
+from moru.prompt_instructions import CREATE_SYSTEM, REFINE_SYSTEM
 
 log = logging.getLogger(__name__)
-CREATE_SYSTEM = (
-    "Convert the user's visual request into one complete English positive image prompt. "
-    "Include only requested subjects; never add people to an animal-only scene. "
-    "Output only one paragraph of prompt text, without explanations, markdown, quotes, "
-    "command flags or negative prompts. "
-    "The existing prompt is the current visual state. The latest request takes priority; "
-    "use history only to resolve references. Preserve requested details and each subject's "
-    "appearance, actions and position. Do not invent unrelated subjects or styles. "
-    "Combine short visual sentences with relevant comma-separated booru tags. "
-    "Use lowercase tags with spaces, except score_* tags. "
-    "Use human-count tags only for requested people; prefix requested artist tags with @. "
-    "Add rating tags only when requested. Do not include field labels or metadata. "
-    "Never repeat tags or stack quality tags."
-)
-REFINE_SYSTEM = (
-    CREATE_SYSTEM + " Revise the provided existing image prompt according to the user's "
-    "change request. Preserve all details not affected by the requested change. Return the "
-    "entire revised prompt, never a patch or a list of changes."
-)
 PROMPT_PREFIX = "Final image prompt:"
 
 
