@@ -18,7 +18,10 @@ def copy_licenses(destination: Path, root: Path):
     destination.mkdir(parents=True, exist_ok=True)
     shutil.copy2(root / "vendor/comfyui/LICENSE", destination / "ComfyUI-LICENSE.txt")
     shutil.copytree(root / "vendor/licenses", destination / "models", dirs_exist_ok=True)
-    for package in ("react", "react-dom", "lucide-react"):
+    for package in (
+        "react", "react-dom", "lucide-react", "i18next", "react-i18next",
+        "@babel/runtime", "html-parse-stringify", "use-sync-external-store",
+    ):
         source = root / "frontend/node_modules" / package / "LICENSE"
         target = destination / "frontend" / package / "LICENSE"
         target.parent.mkdir(parents=True, exist_ok=True)

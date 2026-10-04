@@ -1,3 +1,5 @@
+import { errorMessage } from "./errorMessages";
+import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
@@ -29,6 +31,7 @@ import Conversation from "./Conversation";
 import appIcon from "../../docs/ICON.png?inline";
 
 export default function App() {
+  const { t, i18n } = useTranslation();
   const [project, setProject] = useState<Project | null>(null);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -42,7 +45,7 @@ export default function App() {
   const [job, setJob] = useState<Job | null>(null);
   const [acting, setActing] = useState(false);
   const [stopping, setStopping] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<unknown>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [models, setModels] = useState<ModelStatus[]>([]);
   const [modelsOpen, setModelsOpen] = useState(false);
@@ -118,6 +121,8 @@ export default function App() {
       try {
         const result = await call<Bootstrap>("bootstrap");
         if (disposed) return;
+        await i18n.changeLanguage(result.language ?? "ko");
+        if (disposed) return;
         setProject(result.project);
         setProjects(result.projects);
         setSettings(result.settings);
@@ -140,7 +145,7 @@ export default function App() {
       } catch (error) {
         if (!disposed)
           setError(
-            error instanceof Error ? error.message : "앱을 불러올 수 없습니다.",
+            error ?? { code: "APP_LOAD_FAILED" },
           );
       }
     }
@@ -170,7 +175,7 @@ export default function App() {
           setProject(refreshed);
           setJob(null);
           setStopping(false);
-          if (result.message) setError(result.message);
+          if (result.error_code || result.message) setError(result);
           input.current?.focus();
           return;
         }
@@ -178,9 +183,7 @@ export default function App() {
       } catch (error) {
         if (!disposed)
           setError(
-            error instanceof Error
-              ? error.message
-              : "진행 상태를 확인할 수 없습니다.",
+            error ?? { code: "PROGRESS_FAILED" },
           );
       }
       if (!disposed) timer = setTimeout(poll, 300);
@@ -204,9 +207,7 @@ export default function App() {
         .catch((error) => {
           if (!disposed)
             setError(
-              error instanceof Error
-                ? error.message
-                : "이미지를 불러올 수 없습니다.",
+              error ?? { code: "IMAGE_LOAD_FAILED" },
             );
         });
     }
@@ -215,15 +216,15 @@ export default function App() {
     };
   }, [project]);
 
-  async function act(action: () => Promise<void>) {
+  async function act(action: () => Promise<void>, clearError = true) {
     if (actingNow.current) return;
     actingNow.current = true;
     setActing(true);
-    setError("");
+    if (clearError) setError(null);
     try {
       await action();
     } catch (error) {
-      setError(error instanceof Error ? error.message : "요청에 실패했습니다.");
+      setError(error ?? { code: "REQUEST_FAILED" });
     } finally {
       actingNow.current = false;
       setActing(false);
@@ -244,7 +245,7 @@ export default function App() {
     } catch (error) {
       // The request was accepted; keep observing its job instead of offering another submission.
       setError(
-        error instanceof Error ? error.message : "대화를 불러올 수 없습니다.",
+        error ?? { code: "CONVERSATION_LOAD_FAILED" },
       );
     }
   }
@@ -253,20 +254,38 @@ export default function App() {
     setStopping(true);
     void call("cancel_job", job.id).catch((error) => {
       setStopping(false);
-      setError(error instanceof Error ? error.message : "중지할 수 없습니다.");
+      setError(error ?? { code: "CANCEL_FAILED" });
     });
   }
 
   return (
     <div className="app">
       <header inert={modalOpen}>
-        <span className="brand">
-          <img className="brand-icon" src={appIcon} alt="" />
-          moru
-        </span>
+        <div className="brand-group">
+          <span className="brand">
+            <img className="brand-icon" src={appIcon} alt="" />
+            moru
+          </span>
+          <select
+            className="language-select"
+            aria-label={t("language")}
+            value={i18n.resolvedLanguage ?? "ko"}
+            disabled={acting || !project}
+            onChange={(event) => {
+              const language = event.target.value;
+              void act(async () => {
+                const saved = await call<string>("set_language", language);
+                await i18n.changeLanguage(saved);
+              }, false);
+            }}
+          >
+            <option value="ko" lang="ko">한국어</option>
+            <option value="en" lang="en">English</option>
+          </select>
+        </div>
         <div className="header-actions">
           <select
-            aria-label="작업 기록"
+            aria-label={t("projectHistory")}
             value={project?.id ?? ""}
             disabled={busy}
             onChange={(event) =>
@@ -279,13 +298,13 @@ export default function App() {
           >
             {projects.map((p, index) => (
               <option key={p.id} value={p.id}>
-                작업 {projects.length - index} ·{" "}
-                {new Date(p.created_at).toLocaleDateString("ko-KR")}
+                {t("project", { number: projects.length - index })} ·{" "}
+                {new Date(p.created_at).toLocaleDateString(i18n.resolvedLanguage === "ko" ? "ko-KR" : "en-US")}
               </option>
             ))}
           </select>
           <button disabled={busy} onClick={() => setModelsOpen(true)}>
-            <Box size={16} aria-hidden="true" /> 모델 설정
+            <Box size={16} aria-hidden="true" /> {t("models")}
           </button>
         </div>
       </header>
@@ -318,7 +337,7 @@ export default function App() {
             setProject(forked);
             setNotice({
               id: forked.id,
-              text: "선택한 이미지까지 새 작업으로 분기했습니다.",
+              text: "forked",
             });
             setProjects(await call<ProjectInfo[]>("list_projects"));
             setText("");
@@ -340,8 +359,8 @@ export default function App() {
       {notice && (
         <div className="action-toast" key={notice.id} role="status" aria-live="polite">
           <GitBranch size={17} aria-hidden="true" />
-          <span>{notice.text}</span>
-          <button aria-label="알림 닫기" onClick={() => setNotice(null)}>
+          <span>{t(notice.text)}</span>
+          <button aria-label={t("dismissNotice")}  onClick={() => setNotice(null)}>
             <X size={14} aria-hidden="true" />
           </button>
         </div>
@@ -350,8 +369,8 @@ export default function App() {
         {!atBottom && (
           <button
             className="scroll-bottom"
-            aria-label="맨 아래로"
-            title="맨 아래로"
+            aria-label={t("scrollBottom")}
+            title={t("scrollBottom")}
             onClick={() => {
               followLatest.current = true;
               conversation.current?.scrollTo({
@@ -364,10 +383,10 @@ export default function App() {
             <ArrowDown size={18} aria-hidden="true" />
           </button>
         )}
-        {error && (
+        {error != null && error !== "" && (
           <div className="error-banner" role="alert">
-            <span>{error}</span>
-            <button aria-label="오류 메시지 닫기" onClick={() => setError("")}>
+            <span>{errorMessage(error)}</span>
+            <button aria-label={t("dismissError")}  onClick={() => setError("")}>
               <X size={16} aria-hidden="true" />
             </button>
           </div>
@@ -385,7 +404,7 @@ export default function App() {
               })
             }
           >
-            <Plus size={16} aria-hidden="true" /> 새 작업
+            <Plus size={16} aria-hidden="true" /> {t("newProject")}
           </button>
         </div>
         <form
@@ -399,8 +418,8 @@ export default function App() {
           <button
             type="button"
             className="settings-button"
-            aria-label="생성 설정"
-            title="생성 설정"
+            aria-label={t("settings")}
+            title={t("settings")}
             disabled={!settings}
             onClick={() => setSettingsOpen(true)}
           >
@@ -408,8 +427,8 @@ export default function App() {
           </button>
           <textarea
             ref={input}
-            aria-label="이미지 요청"
-            placeholder="이미지를 설명하거나 수정 요청을 입력하세요…"
+            aria-label={t("imageRequest")}
+            placeholder={t("requestPlaceholder")}
             rows={1}
             value={text}
             onChange={(event) => setText(event.target.value)}
@@ -428,8 +447,8 @@ export default function App() {
           />
           <button
             className="send-button"
-            aria-label={job ? "중지" : "전송"}
-            title={job ? (stopping ? "중지하는 중…" : "생성 중지") : "전송"}
+            aria-label={job ? t("stop") : t("send")}
+            title={job ? (stopping ? t("stopping") : t("stopGeneration")) : t("send")}
             disabled={job ? stopping : busy || !text.trim() || !project}
           >
             {job ? (
@@ -474,7 +493,7 @@ export default function App() {
         <Lightbox
           source={sources[activeImage.id] ?? null}
           imageId={activeImage.id}
-          positionLabel={`${(project?.images.indexOf(activeImage) ?? 0) + 1} / ${project?.images.length} · 버전 ${activeImage.versions.indexOf(activeImage.id) + 1} / ${activeImage.versions.length}`}
+          positionLabel={t("viewerPosition", { image: (project?.images.indexOf(activeImage) ?? 0) + 1, images: project?.images.length, version: activeImage.versions.indexOf(activeImage.id) + 1, versions: activeImage.versions.length })}
           onClose={() => setViewer(false)}
           onReturnFocus={() => {
             // The viewer may have moved away from the image that originally opened it.

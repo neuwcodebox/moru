@@ -1,0 +1,64 @@
+{
+  "common": {
+    "close": "닫기",
+    "save": "저장",
+    "model": "모델",
+    "width": "너비",
+    "height": "높이",
+    "steps": "생성 단계",
+    "cfg": "프롬프트 반영 강도 (CFG)",
+    "seed": "시드",
+    "auto": "자동",
+    "dimensions": "너비 / 높이"
+  },
+  "settings": {
+    "title": "생성 설정",
+    "modelHint": "모델을 바꾸면 해당 모델의 권장 생성 단계와 프롬프트 반영 강도를 적용합니다.",
+    "imageSize": "이미지 크기",
+    "resolutionPreset": "해상도 프리셋",
+    "custom": "직접 입력",
+    "seedHint": "시드를 비워 두면 매번 자동으로 결정합니다.",
+    "advanced": "고급 · 프롬프트 LLM",
+    "contextSize": "컨텍스트 크기",
+    "maxTokens": "출력 토큰 한도",
+    "historyTurns": "최근 요청 수",
+    "historyHint": "최근 요청과 선택된 이미지의 프롬프트를 함께 참고합니다. 0이면 이력을 보내지 않으며, 공간이 부족하면 오래된 요청부터 제외합니다.",
+    "thinking": "추론 사용",
+    "reasoningLevel": "추론 수준",
+    "reasoningLow": "낮음 · 추론 예산의 50%",
+    "reasoningMedium": "보통 · 추론 예산의 75%",
+    "reasoningHigh": "높음 · 추론 예산의 100%",
+    "reasoningHint": "출력 한도에서 최종 프롬프트용 512토큰과 여유 128토큰을 남긴 나머지가 추론 예산입니다. 출력 한도를 늘리면 더 오래 생각할 수 있습니다. 640토큰 이하에서는 추론 없이 프롬프트 작성을 시작합니다.",
+    "contextHint": "컨텍스트는 입력과 출력을 합친 크기입니다. 출력 한도에는 추론 토큰도 포함됩니다. 큰 컨텍스트는 GPU 메모리를 더 사용합니다.",
+    "persistHint": "변경한 값은 다음 생성부터 적용되며 앱 재시작 후에도 유지됩니다."
+  },
+  "models": {
+    "title": "모델 설정",
+    "hint": "필요한 모델을 다운로드하거나 이미 가지고 있는 파일을 선택하세요.",
+    "ready": "준비됨",
+    "notReady": "준비 필요",
+    "noFile": "선택된 파일 없음",
+    "progress": "{{model}} 다운로드 진행률",
+    "cancel": "취소",
+    "selectFile": "파일 선택",
+    "download": "다운로드",
+    "names": {
+      "prompt": "프롬프트 작성 모델",
+      "text_encoder": "문장 이해 모델",
+      "vae": "이미지 복원 모델"
+    }
+  },
+  "prompt": {
+    "title": "프롬프트",
+    "actualPrompt": "실제 생성 프롬프트",
+    "generate": "이 프롬프트로 생성"
+  },
+  "lightbox": {
+    "title": "이미지 보기",
+    "fit": "화면 맞춤",
+    "zoomOut": "축소",
+    "zoomIn": "확대",
+    "imageAlt": "생성 이미지 전체 화면",
+    "loading": "이미지를 불러오는 중"
+  }
+}

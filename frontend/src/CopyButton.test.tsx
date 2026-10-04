@@ -21,7 +21,7 @@ it("reports copy failure and makes the action available to retry", async () => {
   const error = vi.fn();
   render(<CopyButton onCopy={vi.fn().mockRejectedValue(new Error("복사 실패"))} onError={error} />);
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "복사" })); });
-  expect(error).toHaveBeenCalledWith("복사 실패");
+  expect(error).toHaveBeenCalledWith(expect.objectContaining({ message: "복사 실패" }));
   expect(screen.getByRole("button", { name: "복사" }).hasAttribute("disabled")).toBe(false);
   expect(screen.queryByRole("button", { name: "복사 완료" })).toBeNull();
 });

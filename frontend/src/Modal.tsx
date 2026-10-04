@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
@@ -17,6 +18,7 @@ export default function Modal({
   toolbar?: ReactNode;
   onReturnFocus?: () => void;
 }) {
+  const { t } = useTranslation("dialogs");
   const panel = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -83,8 +85,8 @@ export default function Modal({
           {toolbar ?? <h2>{title}</h2>}
           <button
             className="icon-button"
-            aria-label="닫기"
-            title="닫기"
+            aria-label={t("common.close")}
+            title={t("common.close")}
             onClick={onClose}
           >
             <X size={20} aria-hidden="true" />

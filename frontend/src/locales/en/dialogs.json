@@ -1,0 +1,64 @@
+{
+  "common": {
+    "close": "Close",
+    "save": "Save",
+    "model": "Model",
+    "width": "Width",
+    "height": "Height",
+    "steps": "Steps",
+    "cfg": "Prompt guidance (CFG)",
+    "seed": "Seed",
+    "auto": "Auto",
+    "dimensions": "Width / Height"
+  },
+  "settings": {
+    "title": "Generation settings",
+    "modelHint": "Changing the model applies its recommended steps and CFG.",
+    "imageSize": "Image size",
+    "resolutionPreset": "Resolution preset",
+    "custom": "Custom",
+    "seedHint": "Leave the seed blank to choose one automatically each time.",
+    "advanced": "Advanced · Prompt LLM",
+    "contextSize": "Context size",
+    "maxTokens": "Output token limit",
+    "historyTurns": "Recent requests",
+    "historyHint": "Uses recent requests and the selected image prompts as context. Set to 0 to omit history. Older requests are removed first if space is limited.",
+    "thinking": "Enable reasoning",
+    "reasoningLevel": "Reasoning level",
+    "reasoningLow": "Low · 50% of reasoning budget",
+    "reasoningMedium": "Medium · 75% of reasoning budget",
+    "reasoningHigh": "High · 100% of reasoning budget",
+    "reasoningHint": "The reasoning budget is what remains after reserving 512 output tokens for the final prompt and a 128-token buffer. A higher output limit allows more reasoning. At 640 tokens or fewer, prompt writing starts without reasoning.",
+    "contextHint": "The context includes both input and output. The output limit also includes reasoning tokens. A larger context uses more GPU memory.",
+    "persistHint": "Changes apply to the next generation and are kept after restarting the app."
+  },
+  "models": {
+    "title": "Model setup",
+    "hint": "Download the required models or select files you already have.",
+    "ready": "Ready",
+    "notReady": "Setup required",
+    "noFile": "No file selected",
+    "progress": "{{model}} download progress",
+    "cancel": "Cancel",
+    "selectFile": "Select file",
+    "download": "Download",
+    "names": {
+      "prompt": "Prompt-writing model",
+      "text_encoder": "Text-understanding model",
+      "vae": "Image-decoding model"
+    }
+  },
+  "prompt": {
+    "title": "Prompt",
+    "actualPrompt": "Generation prompt",
+    "generate": "Generate with this prompt"
+  },
+  "lightbox": {
+    "title": "Image viewer",
+    "fit": "Fit to screen",
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "imageAlt": "Generated image in fullscreen",
+    "loading": "Loading image"
+  }
+}

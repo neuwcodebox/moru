@@ -1,6 +1,8 @@
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import type { GenerationDefaults, PromptSettings, Settings } from "./api";
 import Modal from "./Modal";
+import { errorMessage } from "./errorMessages";
 import { imageModelNames } from "./modelNames";
 import { Check } from "lucide-react";
 const resolutions = [
@@ -24,41 +26,36 @@ export default function SettingsDialog({
   onClose: () => void;
   onSave: (settings: Settings, promptSettings: PromptSettings) => Promise<void>;
 }) {
+  const { t } = useTranslation("dialogs");
   const [draft, setDraft] = useState(settings);
   const [promptDraft, setPromptDraft] = useState(promptSettings);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<unknown>(null);
   function number(field: "width" | "height" | "steps" | "cfg", value: string) {
     setDraft({ ...draft, [field]: value === "" ? Number.NaN : Number(value) });
   }
   return (
-    <Modal title="생성 설정" onClose={onClose}>
+    <Modal title={t("settings.title")} onClose={onClose}>
       <form
         onSubmit={async (event) => {
           event.preventDefault();
           setSaving(true);
-          setError("");
+          setError(null);
           try {
             if (promptDraft.max_tokens >= promptDraft.context_size) {
-              throw new Error(
-                "출력 토큰 한도는 컨텍스트 크기보다 작아야 합니다.",
-              );
+              throw { code: "OUTPUT_TOKENS_EXCEED_CONTEXT" };
             }
             await onSave(draft, promptDraft);
             onClose();
           } catch (error) {
-            setError(
-              error instanceof Error
-                ? error.message
-                : "설정을 저장할 수 없습니다.",
-            );
+            setError(error);
           } finally {
             setSaving(false);
           }
         }}
       >
         <label>
-          모델
+          {t("common.model")}
           <select
             value={draft.model_id}
             onChange={(event) =>
@@ -76,11 +73,11 @@ export default function SettingsDialog({
             ))}
           </select>
         </label>
-        <p className="hint">모델을 바꾸면 해당 모델의 권장 Steps와 CFG를 적용합니다.</p>
+        <p className="hint">{t("settings.modelHint")}</p>
         <label>
-          이미지 크기
+          {t("settings.imageSize")}
           <select
-            aria-label="해상도 프리셋"
+            aria-label={t("settings.resolutionPreset")}
             value={`${draft.width}x${draft.height}`}
             onChange={(event) => {
               if (event.target.value === "custom") return;
@@ -88,7 +85,7 @@ export default function SettingsDialog({
               setDraft({ ...draft, width, height });
             }}
           >
-            <option value="custom">직접 입력</option>
+            <option value="custom">{t("settings.custom")}</option>
             {resolutions.map(([w, h]) => (
               <option key={w} value={`${w}x${h}`}>
                 {w} × {h}
@@ -98,14 +95,14 @@ export default function SettingsDialog({
               ([w, h]) => w === draft.width && h === draft.height,
             ) && (
               <option value={`${draft.width}x${draft.height}`}>
-                직접 입력
+                {t("settings.custom")}
               </option>
             )}
           </select>
         </label>
         <div className="field-grid">
           <label>
-            Width
+            {t("common.width")}
             <input
               type="number"
               min={64}
@@ -117,7 +114,7 @@ export default function SettingsDialog({
             />
           </label>
           <label>
-            Height
+            {t("common.height")}
             <input
               type="number"
               min={64}
@@ -129,7 +126,7 @@ export default function SettingsDialog({
             />
           </label>
           <label>
-            Steps
+            {t("common.steps")}
             <input
               type="number"
               min={1}
@@ -140,7 +137,7 @@ export default function SettingsDialog({
             />
           </label>
           <label>
-            CFG
+            {t("common.cfg")}
             <input
               type="number"
               min={0}
@@ -153,23 +150,23 @@ export default function SettingsDialog({
           </label>
         </div>
         <label>
-          Seed
+          {t("common.seed")}
           <input
             inputMode="numeric"
             pattern="[0-9]*"
-            placeholder="Auto"
+            placeholder={t("common.auto")}
             value={draft.seed ?? ""}
             onChange={(event) =>
               setDraft({ ...draft, seed: event.target.value || null })
             }
           />
         </label>
-        <p className="hint">Seed를 비워 두면 매번 자동으로 결정합니다.</p>
+        <p className="hint">{t("settings.seedHint")}</p>
         <details className="advanced-settings">
-          <summary>고급 · 프롬프트 LLM</summary>
+          <summary>{t("settings.advanced")}</summary>
           <div className="field-grid">
             <label>
-              컨텍스트 크기
+              {t("settings.contextSize")}
               <input
                 type="number"
                 min={1024}
@@ -192,7 +189,7 @@ export default function SettingsDialog({
               />
             </label>
             <label>
-              출력 토큰 한도
+              {t("settings.maxTokens")}
               <input
                 type="number"
                 min={1}
@@ -216,7 +213,7 @@ export default function SettingsDialog({
             </label>
           </div>
           <label>
-            최근 요청 수
+            {t("settings.historyTurns")}
             <input
               type="number"
               min={0}
@@ -239,8 +236,7 @@ export default function SettingsDialog({
             />
           </label>
           <p className="hint">
-            최근 요청과 선택된 이미지의 프롬프트를 함께 참고합니다. 0이면 이력을
-            보내지 않으며, 공간이 부족하면 오래된 요청부터 제외합니다.
+            {t("settings.historyHint")}
           </p>
           <label className="checkbox-field">
             <input
@@ -253,10 +249,10 @@ export default function SettingsDialog({
                 })
               }
             />
-            Thinking 사용
+            {t("settings.thinking")}
           </label>
           <label>
-            추론 수준
+            {t("settings.reasoningLevel")}
             <select
               value={promptDraft.reasoning_level}
               disabled={!promptDraft.thinking}
@@ -267,31 +263,28 @@ export default function SettingsDialog({
                 })
               }
             >
-              <option value="low">낮음 · 추론 예산의 50%</option>
-              <option value="medium">보통 · 추론 예산의 75%</option>
-              <option value="high">높음 · 추론 예산의 100%</option>
+              <option value="low">{t("settings.reasoningLow")}</option>
+              <option value="medium">{t("settings.reasoningMedium")}</option>
+              <option value="high">{t("settings.reasoningHigh")}</option>
             </select>
           </label>
           <p className="hint">
-            출력 한도에서 최종 프롬프트용 512토큰과 여유 128토큰을 남긴 나머지가
-            추론 예산입니다. 출력 한도를 늘리면 더 오래 생각할 수 있습니다.
-            640토큰 이하에서는 추론 없이 프롬프트 작성을 시작합니다.
+            {t("settings.reasoningHint")}
           </p>
           <p className="hint">
-            컨텍스트는 입력과 출력을 합친 크기입니다. 출력 한도에는 thinking
-            토큰도 포함됩니다. 큰 컨텍스트는 GPU 메모리를 더 사용합니다.
+            {t("settings.contextHint")}
           </p>
           <p className="hint">
-            변경한 값은 다음 생성부터 적용되며 앱 재시작 후에도 유지됩니다.
+            {t("settings.persistHint")}
           </p>
         </details>
-        {error && <p role="alert">{error}</p>}
+        {error != null && <p role="alert">{errorMessage(error, "SAVE_SETTINGS_FAILED")}</p>}
         <div className="modal-actions">
           <button type="button" onClick={onClose}>
-            닫기
+            {t("common.close")}
           </button>
           <button className="primary" disabled={saving}>
-            <Check size={16} aria-hidden="true" /> 저장
+            <Check size={16} aria-hidden="true" /> {t("common.save")}
           </button>
         </div>
       </form>

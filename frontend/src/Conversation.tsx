@@ -1,3 +1,5 @@
+import { errorMessage } from "./errorMessages";
+import { useTranslation } from "react-i18next";
 import { useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import {
@@ -28,14 +30,15 @@ function VersionSelector({
   disabled: boolean;
   onSelect: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   if (versions.length < 2) return null;
   const index = versions.indexOf(selectedId);
   const move = (offset: number) =>
     onSelect(versions[(index + offset + versions.length) % versions.length]);
   return (
-    <div className="branch-selector" aria-label="이미지 버전 선택">
+    <div className="branch-selector" aria-label={t("versionSelector")} >
       <button
-        aria-label="이전 이미지"
+        aria-label={t("previousImage")}
         disabled={disabled}
         onClick={() => move(-1)}
       >
@@ -45,7 +48,7 @@ function VersionSelector({
         {index + 1} / {versions.length}
       </span>
       <button
-        aria-label="다음 이미지"
+        aria-label={t("nextImage")}
         disabled={disabled}
         onClick={() => move(1)}
       >
@@ -64,12 +67,13 @@ function RequestFailure({
   busy: boolean;
   onRetry: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   if (request.status === "pending") return null;
   return (
     <div className="request-error">
-      <span>{request.message}</span>
+      <span>{errorMessage(request)}</span>
       <button disabled={busy} onClick={() => onRetry(request.id)}>
-        <RotateCcw size={14} aria-hidden="true" /> 재시도
+        <RotateCcw size={14} aria-hidden="true" /> {t("retry")}
       </button>
     </div>
   );
@@ -110,8 +114,9 @@ export default function Conversation({
   onRetry: (id: string) => void;
   activeTurnId: string | null;
   onFocusImage: (turnId: string) => void;
-  onError: (message: string) => void;
+  onError: (error: unknown) => void;
 }) {
+  const { t } = useTranslation();
   const content = useRef<HTMLDivElement>(null);
   const previousProject = useRef<string | undefined>(undefined);
   const scrolledTurn = useRef<string | null>(null);
@@ -154,7 +159,7 @@ export default function Conversation({
       ref={scrollRef}
       className="conversation"
       inert={inactive}
-      aria-label="대화"
+      aria-label={t("conversation")}
       onScroll={(event) => {
         const element = event.currentTarget;
         followLatest.current =
@@ -166,13 +171,13 @@ export default function Conversation({
         {project && !job && !project.images.length && !ungrouped.length && (
           <div className="empty">
             <img className="empty-symbol" src={appIcon} alt="" />
-            <h1>어떤 장면을 그릴까요?</h1>
-            <p>원하는 이미지를 이야기하고, 대화로 다듬어 보세요.</p>
+            <h1>{t("emptyTitle")}</h1>
+            <p>{t("emptyHint")}</p>
           </div>
         )}
         {!project && (
           <p className="connecting" role="status">
-            데스크톱 앱에 연결하는 중…
+            {t("connecting")}
           </p>
         )}
         {project?.images.map((image) => (
@@ -211,15 +216,15 @@ export default function Conversation({
                     size={20}
                     aria-hidden="true"
                   />{" "}
-                  이미지를 불러오는 중…
+                  {t("imageLoading")}
                 </div>
               )}
               <div className="image-actions">
                 <button disabled={busy} onClick={() => onRegenerate(image.id)}>
-                  <RotateCcw size={15} aria-hidden="true" /> 다시
+                  <RotateCcw size={15} aria-hidden="true" /> {t("regenerate")}
                 </button>
                 <button disabled={busy} onClick={() => onShowPrompt(image.id)}>
-                  <Pencil size={15} aria-hidden="true" /> 수정
+                  <Pencil size={15} aria-hidden="true" /> {t("edit")}
                 </button>
                 <CopyButton
                   disabled={!sources[image.id] || (!!job && generatingTurn === image.turn_id)}
@@ -227,7 +232,7 @@ export default function Conversation({
                   onError={onError}
                 />
                 <button disabled={busy} onClick={() => onFork(image.id)}>
-                  <GitBranch size={15} aria-hidden="true" /> 분기
+                  <GitBranch size={15} aria-hidden="true" /> {t("fork")}
                 </button>
                 <VersionSelector
                   versions={image.versions}

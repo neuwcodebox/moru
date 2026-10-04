@@ -1066,3 +1066,14 @@ uv run --extra inference python scripts/smoke_portable.py <빌드된-Moru-폴더
 ```
 
 배포 ZIP은 release/Moru.zip이며 모델은 포함하지 않는다. 사용자 데이터와 모델은 빌드에 넣지 않는다.
+
+### 표시 언어
+
+React UI는 i18next와 react-i18next를 사용한다. 한국어/영어 텍스트는
+`frontend/src/locales/{ko,en}/`의 JSON 리소스로 분리하고 정적 빌드에 모두 포함한다.
+언어 선택에 네트워크 요청이나 런타임 번역 API를 사용하지 않는다.
+`useTranslation` 구독으로 UI와 접근성 이름을 갱신하며 날짜는 선택한 locale로 포맷한다.
+Python bootstrap의 `language`와 `set_language` bridge가 생성 설정과 별도로 표시 언어를
+저장한다. 저장 성공 후 UI 언어를 전환하고 문서의 `lang` 속성도 갱신한다.
+새 설치는 한국어, 지원하지 않는 저장값/누락된 번역은 영어를 사용한다.
+오류는 안정적인 error code를 번역하며 사용자 입력, 프롬프트와 파일 이름은 변경하지 않는다.
