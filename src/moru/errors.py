@@ -19,6 +19,7 @@ MESSAGES = {
     "IMAGE_SAVE_FAILED": "이미지를 저장할 수 없습니다. 저장 공간을 확인해 주세요.",
     "DATABASE_FAILED": "작업 기록을 저장하거나 불러올 수 없습니다.",
     "APP_CLOSED": "앱이 종료 중입니다.",
+    "APP_ALREADY_RUNNING": "이 폴더의 Moru가 이미 실행 중입니다. 기존 창을 사용해 주세요.",
     "MODEL_DOWNLOAD_FAILED": "모델 다운로드에 실패했습니다. 연결과 저장 공간을 확인해 주세요.",
     "MODEL_CHECKSUM_FAILED": "모델 파일 검증에 실패했습니다. 다시 다운로드해 주세요.",
     "MODEL_DOWNLOAD_CANCELLED": "모델 다운로드가 취소되었습니다.",

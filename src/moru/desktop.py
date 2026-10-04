@@ -9,10 +9,12 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from moru.api import Api
+from moru.application_lock import application_lock
 from moru.clipboard import copy_text
 from moru.config import ModelPaths, application_root
 from moru.diagnostics import PrivateTracebackFormatter
 from moru.downloads import ModelDownloads
+from moru.errors import MoruError
 from moru.prompting import LlamaPrompts
 from moru.repository import Repository
 from moru.service import Application
@@ -54,6 +56,32 @@ def main() -> None:
 
         run(root, comfy_root, arguments.parent_pid)
         return
+    log = logging.getLogger(__name__)
+    try:
+        with application_lock(root / "data"):
+            _run_desktop(root, comfy_root, arguments)
+    except Exception as exc:
+        log.exception("desktop startup failed")
+        if arguments.internal_smoke_report is not None:
+            import json
+
+            arguments.internal_smoke_report.write_text(
+                json.dumps({"ok": False, "error": "desktop startup failed"}), encoding="utf-8"
+            )
+        elif sys.platform == "win32":
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                str(exc)
+                if isinstance(exc, MoruError)
+                else "앱을 시작할 수 없습니다. 앱 파일과 WebView2 Runtime을 확인해 주세요.",
+                "Moru",
+                0x10,
+            )
+        else:
+            raise
+
+
+def _run_desktop(root, comfy_root, arguments):
     configure_logging(root)
     log = logging.getLogger(__name__)
     log.info("app started")
@@ -121,26 +149,11 @@ def main() -> None:
             debug=False,
             storage_path=str(root / "data/webview"),
         )
-    except Exception:
-        log.exception("desktop startup failed")
-        if arguments.internal_smoke_report is not None:
-            import json
-
-            arguments.internal_smoke_report.write_text(
-                json.dumps({"ok": False, "error": "desktop startup failed"}), encoding="utf-8"
-            )
-        elif sys.platform == "win32":
-            ctypes.windll.user32.MessageBoxW(
-                0,
-                "앱을 시작할 수 없습니다. 앱 파일과 WebView2 Runtime을 확인해 주세요.",
-                "Moru",
-                0x10,
-            )
-        else:
-            raise
     finally:
-        if downloads is not None:
-            downloads.close()
-        if application is not None:
-            application.close()
-        log.info("app stopped")
+        try:
+            if downloads is not None:
+                downloads.close()
+        finally:
+            if application is not None:
+                application.close()
+            log.info("app stopped")

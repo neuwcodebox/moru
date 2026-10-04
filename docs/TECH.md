@@ -936,6 +936,11 @@ Windows worker는 부모 PID 감시와 `KILL_ON_JOB_CLOSE` Job Object를 함께
 Python의 stdio 객체가 없으므로 상속받은 Windows pipe handle로 JSON Lines
 스트림을 복구한다.
 
+데스크톱 프로세스는 SQLite 복구 전에 `data/.instance.lock`의 OS 파일 잠금을 얻고,
+worker와 executor 종료까지 유지한다. 같은 저장 폴더의 두 번째 실행은 기존 요청을
+복구 대상으로 변경하지 않고 기존 창 사용을 안내한다. 프로세스가 종료되면 OS가
+잠금을 해제하므로 이전 실행의 lock 파일이 남아도 재시작할 수 있다.
+
 GPU 및 실제 WebView2 검증은 `scripts/smoke_*.py`에 분리되어 있으며
 일반 `uv run pytest`에서는 실행하지 않는다.
 
