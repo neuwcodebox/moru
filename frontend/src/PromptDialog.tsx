@@ -3,7 +3,8 @@ import { call } from "./api";
 import type { ImageDetails } from "./api";
 import Modal from "./Modal";
 import { imageModelNames } from "./modelNames";
-import { Copy, WandSparkles } from "lucide-react";
+import { WandSparkles } from "lucide-react";
+import CopyButton from "./CopyButton";
 
 export default function PromptDialog({
   details,
@@ -52,23 +53,16 @@ export default function PromptDialog({
           <dd>{s.seed}</dd>
         </div>
       </dl>
-      {message && <p role="status">{message}</p>}
+      {message && <p role="alert">{message}</p>}
       <div className="modal-actions">
         <button onClick={onClose}>닫기</button>
-        <button
-          onClick={async () => {
-            try {
-              await call("copy_prompt", prompt);
-              setMessage("복사했습니다.");
-            } catch {
-              setMessage(
-                "복사할 수 없습니다. 프롬프트를 선택해 복사해 주세요.",
-              );
-            }
+        <CopyButton
+          onCopy={async () => {
+            setMessage("");
+            await call("copy_prompt", prompt);
           }}
-        >
-          <Copy size={15} aria-hidden="true" /> 복사
-        </button>
+          onError={setMessage}
+        />
         <button
           className="primary"
           disabled={busy || !prompt.trim()}

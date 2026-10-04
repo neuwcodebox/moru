@@ -961,6 +961,26 @@ LLM의 최종 답변 형식은 한 문단의 영어 프롬프트다. thinking �
 
 HTML을 직접 로드한 WebView2에서는 브라우저 Clipboard API를 사용할 수 없으므로
 프롬프트 복사는 Python bridge로 전달하여 Windows UI thread의 클립보드 API를 사용한다.
+이미지 복사는 이미지 ID로 PNG를 조회하고 동일한 경로 검증을 거친 뒤 STA UI thread에서
+Bitmap과 PNG 클립보드 형식으로 저장한다. 클립보드 저장 실패는 CLIPBOARD_FAILED로 표시한다.
+두 복사 버튼은 CopyButton의 고정 크기 아이콘을 완료 시 체크로 전환하며 reduced-motion을 존중한다.
+
+이미지 hover는 해당 ID의 상세 정보를 필요할 때만 읽고 이미지가 바뀌면 다시 읽는다.
+반투명 blur 커버는 생성 placeholder와 같은 stream-label/텍스트 스타일을 사용한다.
+분기 성공 알림은 새 세션 반환 이후 표시하고 자동으로 닫으며 기존 레이아웃을 움직이지 않는다.
+
+App의 이미지 탐색 커서는 대화 행 ID다. 뷰어는 그 행에서 선택된 이미지의 source를 사용한다.
+상하 탐색은 화면 커서만 이동하고 좌우 탐색은 기존 select_version을 사용하여 선택을 저장한다.
+한 문서 키보드 이벤트에서 대화/뷰어 탐색을 처리하며 편집 중 입력, 다른 팝업, IME와 수정 키를 제외한다.
+중복된 버전 변경 요청을 막고 뷰어의 source/이미지 ID가 바뀌면 zoom/pan을 초기화한다.
+Modal의 선택적인 초점 복귀 callback으로 뷰어 종료 후 탐색한 이미지에 초점을 돌린다.
+
+화면 로고의 원본은 docs/ICON.png다. Vite에서 인라인하여 서버 없이 표시한다.
+같은 원본에서 만든 src/moru/assets/icon.ico를 pywebview 창 아이콘과 PyInstaller --icon에 사용한다.
+아이콘 원본을 교체할 때는 ICO의 16/24/32/48/64/128/256 크기도 함께 갱신한다.
+
+수정·검증 이력은 docs/reviews/YYYY-MM-DD-description.md에 보관한다.
+현재 요구사항과 기술 설계는 docs/SPEC.md와 docs/TECH.md로 유지하고 이력 문서와 구분한다.
 
 대화 스크롤은 맨 아래를 따라가는 상태에서만 자동 이동한다. ResizeObserver로 이미지와 텍스트의 크기 변화를 추적하며, 위로 스크롤하면 입력창 중앙 상단의 플로팅 버튼으로 맨 아래로 이동한다. 실시간 프롬프트와 thinking은 placeholder의 이미지 canvas 안에 표시한다.
 

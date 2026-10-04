@@ -1,13 +1,19 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Modal from "./Modal";
-import { Expand, ZoomIn, ZoomOut } from "lucide-react";
+import { Expand, LoaderCircle, ZoomIn, ZoomOut } from "lucide-react";
 
 export default function Lightbox({
   source,
   onClose,
+  imageId,
+  positionLabel,
+  onReturnFocus,
 }: {
-  source: string;
+  source: string | null;
+  imageId?: string;
+  positionLabel?: string;
   onClose: () => void;
+  onReturnFocus?: () => void;
 }) {
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -17,6 +23,11 @@ export default function Lightbox({
     startX: number;
     startY: number;
   } | null>(null);
+  useEffect(() => {
+    setZoom(1);
+    setPosition({ x: 0, y: 0 });
+    drag.current = null;
+  }, [imageId ?? source]);
   function changeZoom(value: number) {
     setZoom(Math.max(0.25, Math.min(8, value)));
   }
@@ -29,8 +40,10 @@ export default function Lightbox({
       title="이미지 보기"
       className="lightbox"
       onClose={onClose}
+      onReturnFocus={onReturnFocus}
       toolbar={
         <div className="viewer-toolbar">
+          {positionLabel && <span className="viewer-position" aria-live="polite">{positionLabel}</span>}
           <button
             className="icon-button"
             aria-label="화면 맞춤"
@@ -77,14 +90,14 @@ export default function Lightbox({
           drag.current = null;
         }}
       >
-        <img
+        {source ? <img
           alt="생성 이미지 전체 화면"
           src={source}
           draggable={false}
           style={{
             transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
           }}
-        />
+        /> : <LoaderCircle className="spinner" size={24} aria-label="이미지를 불러오는 중" />}
       </div>
     </Modal>
   );

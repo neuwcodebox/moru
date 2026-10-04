@@ -1,7 +1,7 @@
 """Stable boundary errors; engine details belong in logs, never the UI."""
 
 MESSAGES = {
-    "CLIPBOARD_FAILED": "프롬프트를 복사할 수 없습니다. 다시 시도해 주세요.",
+    "CLIPBOARD_FAILED": "클립보드에 복사할 수 없습니다. 다시 시도해 주세요.",
     "INVALID_SETTINGS": "생성 설정을 확인해 주세요.",
     "INVALID_REQUEST": "요청 내용을 입력해 주세요.",
     "NOT_FOUND": "작업 또는 이미지를 찾을 수 없습니다.",

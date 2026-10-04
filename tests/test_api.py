@@ -155,6 +155,46 @@ def test_prompt_copy_uses_native_clipboard_without_changing_image_history(app):
     assert copied == ["은발 소녀, 밤, rain"]
 
 
+def test_image_copy_writes_the_original_png_without_changing_history(app):
+    project = app.create_project()
+    image = generate(app, project.id)
+    before = app.repository.conversation(project.id)
+    copied = []
+    api = Api(app, copy_image_to_clipboard=copied.append)
+    assert api.copy_image(image.id)["ok"]
+    assert copied == [(app.data_dir / image.image_path).read_bytes()]
+    assert copied[0].startswith(b"\x89PNG")
+    assert app.repository.conversation(project.id) == before
+
+
+def test_image_clipboard_failure_is_explicit_and_missing_images_are_not_copied(app):
+    from unittest.mock import Mock
+
+    project = app.create_project()
+    image = generate(app, project.id)
+    writer = Mock(side_effect=RuntimeError("private clipboard detail"))
+    api = Api(app, copy_image_to_clipboard=writer)
+    result = api.copy_image(image.id)
+    assert result["error"]["code"] == "CLIPBOARD_FAILED"
+    assert "private" not in result["error"]["message"]
+    writer.reset_mock()
+    assert api.copy_image("missing")["error"]["code"] == "NOT_FOUND"
+    writer.assert_not_called()
+    assert Api(app).copy_image(image.id)["error"]["code"] == "CLIPBOARD_FAILED"
+
+
+def test_a_missing_png_is_reported_before_writing_the_clipboard(app):
+    from unittest.mock import Mock
+
+    project = app.create_project()
+    image = generate(app, project.id)
+    (app.data_dir / image.image_path).unlink()
+    writer = Mock()
+    result = Api(app, copy_image_to_clipboard=writer).copy_image(image.id)
+    assert result["error"]["code"] == "IMAGE_SAVE_FAILED"
+    writer.assert_not_called()
+
+
 def test_clipboard_failure_has_a_specific_error_and_does_not_expose_content(app):
     def unavailable(text):
         raise RuntimeError(text)

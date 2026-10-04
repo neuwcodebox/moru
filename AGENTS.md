@@ -118,6 +118,10 @@ For substantial architecture changes, explain the tradeoff before replacing an e
 
 ## Definition of done
 
+Keep change/review/verification history in `docs/reviews/YYYY-MM-DD-description.md`.
+Use an additional ordered suffix for separate records with the same date and topic.
+Keep the current requirements and architecture in `docs/SPEC.md` and `docs/TECH.md`.
+
 A change is done only when:
 
 - it satisfies the relevant `SPEC.md` behavior;

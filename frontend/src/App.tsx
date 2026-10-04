@@ -5,7 +5,7 @@ import {
   Box,
   Plus,
   Settings2,
-  Sparkles,
+  GitBranch,
   Square,
   X,
 } from "lucide-react";
@@ -26,6 +26,7 @@ import PromptDialog from "./PromptDialog";
 import SettingsDialog from "./SettingsDialog";
 import ModelsDialog from "./ModelsDialog";
 import Conversation from "./Conversation";
+import appIcon from "../../docs/ICON.png?inline";
 
 export default function App() {
   const [project, setProject] = useState<Project | null>(null);
@@ -46,13 +47,69 @@ export default function App() {
   const [models, setModels] = useState<ModelStatus[]>([]);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [details, setDetails] = useState<ImageDetails | null>(null);
-  const [viewer, setViewer] = useState<string | null>(null);
+  const [viewer, setViewer] = useState(false);
+  const [activeTurn, setActiveTurn] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ id: string; text: string } | null>(null);
   const [sources, setSources] = useState<Record<string, string>>({});
   const input = useRef<HTMLTextAreaElement>(null);
   const conversation = useRef<HTMLElement>(null);
   const followLatest = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
   const busy = acting || job !== null;
+  const activeImage =
+    project?.images.find((image) => image.turn_id === activeTurn) ?? project?.images.at(-1);
+  const actingNow = useRef(false);
+
+  useEffect(() => {
+    setActiveTurn(null);
+    setViewer(false);
+    setNotice((previous) => previous?.id === project?.id ? previous : null);
+  }, [project?.id]);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 3200);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  async function selectVersion(id: string) {
+    if (!project) return;
+    const image = project.images.find((image) => image.versions.includes(id));
+    if (image) setActiveTurn(image.turn_id);
+    await act(async () => {
+      setProject(await call<Project>("select_version", project.id, id));
+    });
+  }
+
+  useEffect(() => {
+    function navigate(event: KeyboardEvent) {
+      if (
+        !project || !activeImage || event.defaultPrevented || event.isComposing ||
+        event.keyCode === 229 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
+      ) return;
+      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const editable = target?.closest("input, textarea, select, [contenteditable]");
+      const emptyComposer =
+        editable instanceof HTMLTextAreaElement && editable === input.current && editable.value === "";
+      if ((editable && !emptyComposer) || (document.querySelector(".modal") && !viewer)) return;
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        const index = project.images.indexOf(activeImage);
+        const next = index + (event.key === "ArrowUp" ? -1 : 1);
+        event.preventDefault();
+        if (next < 0 || next >= project.images.length) return;
+        followLatest.current = false;
+        setActiveTurn(project.images[next].turn_id);
+      } else if (!busy && !actingNow.current && activeImage.versions.length > 1) {
+        event.preventDefault();
+        const versions = activeImage.versions;
+        const offset = event.key === "ArrowLeft" ? -1 : 1;
+        const next = (versions.indexOf(activeImage.id) + offset + versions.length) % versions.length;
+        void selectVersion(versions[next]);
+      }
+    }
+    document.addEventListener("keydown", navigate);
+    return () => document.removeEventListener("keydown", navigate);
+  }, [project, activeImage, busy, viewer]);
 
   useEffect(() => {
     let disposed = false;
@@ -158,6 +215,8 @@ export default function App() {
   }, [project]);
 
   async function act(action: () => Promise<void>) {
+    if (actingNow.current) return;
+    actingNow.current = true;
     setActing(true);
     setError("");
     try {
@@ -165,6 +224,7 @@ export default function App() {
     } catch (error) {
       setError(error instanceof Error ? error.message : "요청에 실패했습니다.");
     } finally {
+      actingNow.current = false;
       setActing(false);
     }
   }
@@ -200,8 +260,8 @@ export default function App() {
     <div className="app">
       <header>
         <span className="brand">
+          <img className="brand-icon" src={appIcon} alt="" />
           moru
-          <Sparkles className="brand-dot" size={18} aria-hidden="true" />
         </span>
         <div className="header-actions">
           <select
@@ -236,7 +296,13 @@ export default function App() {
         scrollRef={conversation}
         followLatest={followLatest}
         onBottomChange={setAtBottom}
-        onViewImage={setViewer}
+        activeTurnId={activeImage?.turn_id ?? null}
+        onFocusImage={setActiveTurn}
+        onError={setError}
+        onViewImage={(turnId) => {
+          setActiveTurn(turnId);
+          setViewer(true);
+        }}
         onShowPrompt={(id) =>
           void act(async () => {
             setDetails(await call<ImageDetails>("get_image_details", id));
@@ -245,18 +311,19 @@ export default function App() {
         onFork={(id) =>
           void act(async () => {
             if (!project) return;
-            setProject(await call<Project>("fork", project.id, id));
+            setNotice(null);
+            const forked = await call<Project>("fork", project.id, id);
+            setProject(forked);
+            setNotice({
+              id: forked.id,
+              text: "선택한 이미지까지 새 작업으로 분기했습니다.",
+            });
             setProjects(await call<ProjectInfo[]>("list_projects"));
             setText("");
             input.current?.focus();
           })
         }
-        onSelectVersion={(id) =>
-          void act(async () => {
-            if (project)
-              setProject(await call<Project>("select_version", project.id, id));
-          })
-        }
+        onSelectVersion={(id) => { void selectVersion(id); }}
         onRegenerate={(id) =>
           void act(async () => {
             await startGeneration("regenerate", id);
@@ -268,6 +335,15 @@ export default function App() {
           })
         }
       />
+      {notice && (
+        <div className="action-toast" key={notice.id} role="status" aria-live="polite">
+          <GitBranch size={17} aria-hidden="true" />
+          <span>{notice.text}</span>
+          <button aria-label="알림 닫기" onClick={() => setNotice(null)}>
+            <X size={14} aria-hidden="true" />
+          </button>
+        </div>
+      )}
       <footer>
         {!atBottom && (
           <button
@@ -392,7 +468,21 @@ export default function App() {
           }}
         />
       )}
-      {viewer && <Lightbox source={viewer} onClose={() => setViewer(null)} />}
+      {viewer && activeImage && (
+        <Lightbox
+          source={sources[activeImage.id] ?? null}
+          imageId={activeImage.id}
+          positionLabel={`${(project?.images.indexOf(activeImage) ?? 0) + 1} / ${project?.images.length} · 버전 ${activeImage.versions.indexOf(activeImage.id) + 1} / ${activeImage.versions.length}`}
+          onClose={() => setViewer(false)}
+          onReturnFocus={() => {
+            // The viewer may have moved away from the image that originally opened it.
+            const selected = conversation.current?.querySelector<HTMLButtonElement>(
+              ".turn.is-selected .image-button",
+            );
+            (selected ?? input.current)?.focus();
+          }}
+        />
+      )}
     </div>
   );
 }

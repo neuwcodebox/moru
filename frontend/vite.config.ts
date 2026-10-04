@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
 
 // Inline the two build assets so WebView can load HTML without an HTTP server.
 const inlineUi = {
@@ -32,6 +33,7 @@ const inlineUi = {
 };
 
 export default defineConfig({
+  server: { fs: { allow: [fileURLToPath(new URL("..", import.meta.url))] } },
   plugins: [react(), inlineUi],
   base: "./",
   build: {

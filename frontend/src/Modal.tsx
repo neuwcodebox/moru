@@ -8,16 +8,20 @@ export default function Modal({
   children,
   className = "",
   toolbar,
+  onReturnFocus,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   className?: string;
   toolbar?: ReactNode;
+  onReturnFocus?: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
+  const returnFocus = useRef(onReturnFocus);
+  returnFocus.current = onReturnFocus;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     panel.current?.focus();
@@ -56,7 +60,8 @@ export default function Modal({
     document.addEventListener("keydown", keydown);
     return () => {
       document.removeEventListener("keydown", keydown);
-      previous?.focus();
+      if (returnFocus.current) returnFocus.current();
+      else previous?.focus();
     };
   }, []);
   return (

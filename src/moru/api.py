@@ -50,12 +50,14 @@ class Api:
         downloads: ModelDownloads | None = None,
         choose_file=None,
         copy_to_clipboard=None,
+        copy_image_to_clipboard=None,
     ):
         self._app = application
         self._models = models
         self._downloads = downloads
         self._choose_file = choose_file
         self._copy_to_clipboard = copy_to_clipboard
+        self._copy_image_to_clipboard = copy_image_to_clipboard
 
     @endpoint
     def copy_prompt(self, text):
@@ -67,6 +69,17 @@ class Api:
             self._copy_to_clipboard(text)
         except Exception as exc:
             log.exception("prompt clipboard copy failed")
+            raise MoruError("CLIPBOARD_FAILED") from exc
+
+    @endpoint
+    def copy_image(self, image_id):
+        content = self._image_bytes(image_id)
+        if self._copy_image_to_clipboard is None:
+            raise MoruError("CLIPBOARD_FAILED")
+        try:
+            self._copy_image_to_clipboard(content)
+        except Exception as exc:
+            log.exception("image clipboard copy failed")
             raise MoruError("CLIPBOARD_FAILED") from exc
 
     @endpoint
@@ -246,6 +259,10 @@ class Api:
 
     @endpoint
     def get_image_source(self, image_id):
+        content = self._image_bytes(image_id)
+        return "data:image/png;base64," + base64.b64encode(content).decode("ascii")
+
+    def _image_bytes(self, image_id):
         image = self._app.repository.get_image(image_id)
         root = self._app.data_dir.resolve()
         path = (root / image.image_path).resolve()
@@ -255,4 +272,4 @@ class Api:
             content = path.read_bytes()
         except OSError as exc:
             raise MoruError("IMAGE_SAVE_FAILED") from exc
-        return "data:image/png;base64," + base64.b64encode(content).decode("ascii")
+        return content

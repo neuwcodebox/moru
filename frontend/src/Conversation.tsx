@@ -7,11 +7,14 @@ import {
   LoaderCircle,
   Pencil,
   RotateCcw,
-  Sparkles,
   User,
 } from "lucide-react";
 import type { Job, Project, UnfinishedRequest } from "./api";
 import GenerationProgress from "./GenerationProgress";
+import CopyButton from "./CopyButton";
+import ImagePreview from "./ImagePreview";
+import { call } from "./api";
+import appIcon from "../../docs/ICON.png?inline";
 
 function VersionSelector({
   versions,
@@ -85,6 +88,9 @@ export default function Conversation({
   onSelectVersion,
   onRegenerate,
   onRetry,
+  activeTurnId,
+  onFocusImage,
+  onError,
 }: {
   project: Project | null;
   sources: Record<string, string>;
@@ -93,12 +99,15 @@ export default function Conversation({
   scrollRef: RefObject<HTMLElement | null>;
   followLatest: RefObject<boolean>;
   onBottomChange: (bottom: boolean) => void;
-  onViewImage: (source: string) => void;
+  onViewImage: (turnId: string) => void;
   onShowPrompt: (id: string) => void;
   onFork: (id: string) => void;
   onSelectVersion: (id: string) => void;
   onRegenerate: (id: string) => void;
   onRetry: (id: string) => void;
+  activeTurnId: string | null;
+  onFocusImage: (turnId: string) => void;
+  onError: (message: string) => void;
 }) {
   const content = useRef<HTMLDivElement>(null);
   const previousProject = useRef<string | undefined>(undefined);
@@ -122,6 +131,11 @@ export default function Conversation({
     if (scrollRef.current) observer.observe(scrollRef.current);
     return () => observer.disconnect();
   }, []);
+  useLayoutEffect(() => {
+    content.current?.querySelector<HTMLElement>(".turn.is-selected")?.scrollIntoView?.({
+      block: "nearest", behavior: "instant",
+    });
+  }, [activeTurnId]);
   const pending = project?.unfinished_requests.find(
     (request) => request.id === job?.request_id,
   );
@@ -143,7 +157,7 @@ export default function Conversation({
       <div ref={content}>
         {project && !job && !project.images.length && !ungrouped.length && (
           <div className="empty">
-            <Sparkles className="empty-symbol" size={40} aria-hidden="true" />
+            <img className="empty-symbol" src={appIcon} alt="" />
             <h1>어떤 장면을 그릴까요?</h1>
             <p>원하는 이미지를 이야기하고, 대화로 다듬어 보세요.</p>
           </div>
@@ -154,7 +168,7 @@ export default function Conversation({
           </p>
         )}
         {project?.images.map((image) => (
-          <div className="turn" key={image.turn_id}>
+          <div className={`turn ${activeTurnId === image.turn_id ? "is-selected" : ""}`} key={image.turn_id}>
             {image.request_text && (
               <div className="user-row">
                 <div className="user-message">{image.request_text}</div>
@@ -163,21 +177,18 @@ export default function Conversation({
                 </span>
               </div>
             )}
-            <div className="image-result">
+            <div className="image-result" onFocusCapture={() => onFocusImage(image.turn_id)}>
               {job && generatingTurn === image.turn_id ? (
                 <GenerationProgress job={job} />
               ) : sources[image.id] ? (
-                <button
-                  className="image-button"
-                  aria-label="이미지 전체 화면 보기"
-                  onClick={() => onViewImage(sources[image.id])}
-                >
-                  <img
-                    src={sources[image.id]}
-                    alt="생성 이미지"
-                    onLoad={follow}
-                  />
-                </button>
+                <ImagePreview
+                  key={image.id}
+                  id={image.id}
+                  source={sources[image.id]}
+                  onOpen={() => onViewImage(image.turn_id)}
+                  onFocus={() => onFocusImage(image.turn_id)}
+                  onLoad={follow}
+                />
               ) : (
                 <div className="image-placeholder" role="status">
                   <LoaderCircle
@@ -195,6 +206,12 @@ export default function Conversation({
                 <button disabled={busy} onClick={() => onShowPrompt(image.id)}>
                   <Pencil size={15} aria-hidden="true" /> 수정
                 </button>
+                <CopyButton
+                  label="이미지 복사"
+                  disabled={!sources[image.id] || (!!job && generatingTurn === image.turn_id)}
+                  onCopy={async () => { await call("copy_image", image.id); }}
+                  onError={onError}
+                />
                 <button disabled={busy} onClick={() => onFork(image.id)}>
                   <GitBranch size={15} aria-hidden="true" /> 분기
                 </button>

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from moru.api import Api
 from moru.application_lock import application_lock
-from moru.clipboard import copy_text
+from moru.clipboard import copy_image, copy_text
 from moru.config import ModelPaths, application_root
 from moru.diagnostics import PrivateTracebackFormatter
 from moru.downloads import ModelDownloads
@@ -123,6 +123,7 @@ def _run_desktop(root, comfy_root, arguments):
                 downloads,
                 choose_file,
                 copy_to_clipboard=lambda text: copy_text(window, text),
+                copy_image_to_clipboard=lambda content: copy_image(window, content),
             ),
             width=1080,
             height=900,
@@ -148,6 +149,7 @@ def _run_desktop(root, comfy_root, arguments):
             http_server=False,
             debug=False,
             storage_path=str(root / "data/webview"),
+            icon=str(files("moru").joinpath("assets/icon.ico")),
         )
     finally:
         try:

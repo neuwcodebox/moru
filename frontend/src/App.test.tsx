@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
@@ -73,6 +73,7 @@ beforeEach(() => {
     ),
     cancel_job: vi.fn(() => success(undefined)),
     copy_prompt: vi.fn(() => success(undefined)),
+    copy_image: vi.fn(() => success(undefined)),
     fork: vi.fn((_id, base) => {
       current = { ...current, id: "p2", fork_image_id: null };
       return success(current);
@@ -119,6 +120,159 @@ beforeEach(() => {
 });
 
 describe("conversation", () => {
+  it("copies the selected image itself and confirms inside its button", async () => {
+    current = withImage;
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByAltText("생성 이미지");
+    await user.click(screen.getByRole("button", { name: "이미지 복사" }));
+    expect(api.copy_image).toHaveBeenCalledWith("i1");
+    expect(api.copy_prompt).not.toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: "이미지 복사 완료" })).toBeTruthy();
+  });
+
+  it("reveals a completed image's prompt on hover without fetching all prompts on startup", async () => {
+    current = withImage;
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByAltText("생성 이미지");
+    expect(api.get_image_details).not.toHaveBeenCalled();
+    const image = screen.getByRole("button", { name: "이미지 전체 화면 보기" });
+    await user.hover(image);
+    expect(await within(image).findByText("private actual prompt")).toBeTruthy();
+    expect(api.get_image_details).toHaveBeenCalledWith("i1");
+    await user.unhover(image);
+    expect(image.querySelector(".image-prompt-overlay")?.getAttribute("aria-hidden")).toBe("true");
+    await user.hover(image);
+    expect(api.get_image_details).toHaveBeenCalledOnce();
+    await user.click(image);
+    expect(screen.getByRole("dialog", { name: "이미지 보기" })).toBeTruthy();
+  });
+
+  it("shows a prompt-loading failure on the image cover", async () => {
+    current = withImage;
+    api.get_image_details.mockResolvedValue({ok: false, error: {code: "NOT_FOUND", message: "프롬프트 오류"}});
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByAltText("생성 이미지");
+    await user.hover(screen.getByRole("button", { name: "이미지 전체 화면 보기" }));
+    expect(await screen.findByText("프롬프트 오류")).toBeTruthy();
+  });
+
+  it("confirms successful branching into a new session and reports failures without success feedback", async () => {
+    current = withImage;
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByAltText("생성 이미지");
+    await user.click(screen.getByText("분기"));
+    expect(await screen.findByText("선택한 이미지까지 새 작업으로 분기했습니다.")).toBeTruthy();
+    await user.click(screen.getByLabelText("알림 닫기"));
+    api.fork.mockResolvedValue({ok: false, error: {code: "DATABASE_FAILED", message: "분기 오류"}});
+    await user.click(screen.getByText("분기"));
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("분기 오류"));
+    expect(screen.queryByText("선택한 이미지까지 새 작업으로 분기했습니다.")).toBeNull();
+  });
+
+  it("navigates history and versions with arrows in both the conversation and zoomed viewer", async () => {
+    current = {
+      ...empty, active_leaf_id: "i3",
+      images: [
+        {...image, id: "i1", turn_id: "r1", request_text: "첫 이미지", versions: ["i1", "i1b"]},
+        {...image, id: "i2", turn_id: "r2", request_text: "둘째 이미지", versions: ["i2", "i2b"]},
+        {...image, id: "i3", turn_id: "r3", request_text: "셋째 이미지", versions: ["i3"]},
+      ],
+    };
+    api.get_image_source.mockImplementation(async (id) => ({ok: true, value: `data:image/png;base64,${id}`}));
+    api.select_version.mockImplementation(async (_project, id) => {
+      current = {...current, active_leaf_id: id, images: current.images.map(image =>
+        image.versions.includes(id) ? {...image, id} : image)};
+      return {ok: true, value: current};
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findAllByAltText("생성 이미지");
+    const selectedText = () => document.querySelector(".turn.is-selected .user-message")?.textContent;
+    await user.keyboard("{ArrowUp}");
+    expect(selectedText()).toBe("둘째 이미지");
+    await user.keyboard("{ArrowRight}");
+    expect(api.select_version).toHaveBeenLastCalledWith("p1", "i2b");
+    const secondTurn = document.querySelectorAll<HTMLElement>(".turn")[1];
+    await waitFor(() => expect(secondTurn.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,i2b"));
+    await user.click(within(secondTurn).getByRole("button", {name: "이미지 전체 화면 보기"}));
+    await waitFor(() => expect(screen.getByAltText("생성 이미지 전체 화면").getAttribute("src")).toBe("data:image/png;base64,i2b"));
+    await user.click(screen.getByLabelText("확대"));
+    expect(screen.getByText("125%")).toBeTruthy();
+    expect(screen.getByAltText("생성 이미지 전체 화면").getAttribute("src")).toBe("data:image/png;base64,i2b");
+    await user.keyboard("{ArrowLeft}");
+    await waitFor(() => expect(screen.getByAltText("생성 이미지 전체 화면").getAttribute("src")).toBe("data:image/png;base64,i2"));
+    expect(screen.getByText("100%")).toBeTruthy();
+    await user.keyboard("{ArrowUp}");
+    expect(selectedText()).toBe("첫 이미지");
+    await user.keyboard("{ArrowUp}");
+    expect(selectedText()).toBe("첫 이미지");
+    await user.keyboard("{ArrowLeft}");
+    expect(api.select_version).toHaveBeenLastCalledWith("p1", "i1b");
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+    expect(selectedText()).toBe("셋째 이미지");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("preserves text editing and IME composition while supporting arrows in an empty composer", async () => {
+    current = {...withImage, images: [image, {...image, id: "i2", turn_id: "r2", versions: ["i2"]}]};
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findAllByAltText("생성 이미지");
+    const input = screen.getByLabelText("이미지 요청");
+    await user.type(input, "입력 중");
+    await user.keyboard("{ArrowUp}");
+    expect(document.querySelectorAll(".turn")[1].classList.contains("is-selected")).toBe(true);
+    await user.clear(input);
+    fireEvent.keyDown(input, {key: "ArrowUp", isComposing: true});
+    expect(document.querySelectorAll(".turn")[1].classList.contains("is-selected")).toBe(true);
+    await user.keyboard("{ArrowUp}");
+    expect(document.querySelectorAll(".turn")[0].classList.contains("is-selected")).toBe(true);
+  });
+
+  it("returns focus to the image reached in the viewer when closing it", async () => {
+    current = {...withImage, images: [image, {...image, id: "i2", turn_id: "r2", versions: ["i2"]}]};
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findAllByAltText("생성 이미지");
+    await user.click(screen.getAllByRole("button", {name: "이미지 전체 화면 보기"})[0]);
+    await user.keyboard("{ArrowDown}{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const second = document.querySelectorAll(".turn")[1];
+    expect(second.classList.contains("is-selected")).toBe(true);
+    expect(document.activeElement).toBe(within(second as HTMLElement).getByRole("button", {name: "이미지 전체 화면 보기"}));
+  });
+
+  it("keeps image navigation inactive in settings dialogs", async () => {
+    current = {...withImage, images: [image, {...image, id: "i2", turn_id: "r2", versions: ["i2", "i2b"]}]};
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findAllByAltText("생성 이미지");
+    await user.click(screen.getByLabelText("생성 설정"));
+    fireEvent.keyDown(screen.getByRole("dialog"), {key: "ArrowUp"});
+    fireEvent.keyDown(screen.getByRole("dialog"), {key: "ArrowRight"});
+    expect(document.querySelectorAll(".turn")[1].classList.contains("is-selected")).toBe(true);
+    expect(api.select_version).not.toHaveBeenCalled();
+  });
+
+  it("does not change image versions while generation is running", async () => {
+    current = {...withImage, images: [{...image, versions: ["i1", "i1b"]}]};
+    api.get_job.mockResolvedValue({ok: true, value: {
+      id: "j1", project_id: "p1", request_id: "r2", turn_id: "r1", state: "generating",
+    }});
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByAltText("생성 이미지");
+    await user.click(screen.getByRole("button", {name: "다시"}));
+    await screen.findByRole("region", {name: "생성 진행"});
+    fireEvent.keyDown(document, {key: "ArrowRight"});
+    expect(api.select_version).not.toHaveBeenCalled();
+  });
+
   it("keeps the reading position when generation updates arrive above the composer", async () => {
     current = withImage;
     api.get_job.mockResolvedValue({
