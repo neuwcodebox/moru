@@ -63,7 +63,7 @@ def main():
             "max_tokens": 1024,
             "thinking": True,
             "history_turns": 4,
-            "reasoning_level": "low",
+            "reasoning_level": "medium",
         }
         if options.ui_only:
             assert report["clipboard_copied"]

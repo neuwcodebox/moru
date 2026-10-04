@@ -49,13 +49,13 @@ def test_resolving_seed_preserves_explicit_seed():
     assert GenerationSettings(seed=9).resolve_seed(42).seed == 9
 
 
-def test_prompt_defaults_enable_low_reasoning_with_compact_context_and_output():
+def test_prompt_defaults_enable_medium_reasoning_with_compact_context_and_output():
     settings = PromptSettings()
     assert settings.context_size == 2048
     assert settings.max_tokens == 1024
     assert settings.thinking is True
-    assert settings.reasoning_level == "low"
-    assert settings.thinking_budget == 192
+    assert settings.reasoning_level == "medium"
+    assert settings.thinking_budget == 288
 
 
 def test_aesthetic_defaults_use_full_sampling_and_preserve_explicit_settings():
@@ -178,6 +178,14 @@ def test_prompt_settings_are_restored_after_application_restart(app, tmp_path):
             {"context_size": 4096, "max_tokens": 1536, "thinking": True},
             PromptSettings(context_size=4096, max_tokens=1536, thinking=True),
         ),
+        (
+            {"context_size": 8192, "max_tokens": 4096, "thinking": True, "reasoning_level": "low"},
+            PromptSettings(context_size=8192, max_tokens=4096, reasoning_level="low"),
+        ),
+        (
+            {"context_size": 8192, "max_tokens": 4096, "thinking": True, "reasoning_level": "high"},
+            PromptSettings(context_size=8192, max_tokens=4096, reasoning_level="high"),
+        ),
     ],
 )
 def test_stored_prompt_settings_are_preserved_without_default_migrations(
@@ -196,7 +204,9 @@ def test_stored_prompt_settings_are_preserved_without_default_migrations(
     )
     assert application.get_prompt_settings() == expected
     assert repository.get_preference("prompt_defaults_version") is None
-    explicit_old_values = PromptSettings(context_size=8192, max_tokens=4096, thinking=True)
+    explicit_old_values = PromptSettings(
+        context_size=8192, max_tokens=4096, thinking=True, reasoning_level="low"
+    )
     application.update_settings(application.get_settings(), explicit_old_values)
     application.close()
     restored = Application(

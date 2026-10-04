@@ -24,7 +24,7 @@ class PromptSettings:
     max_tokens: int = 1024
     thinking: bool = True
     history_turns: int = 4
-    reasoning_level: Literal["low", "medium", "high"] = "low"
+    reasoning_level: Literal["low", "medium", "high"] = "medium"
 
     def __post_init__(self):
         if type(self.context_size) is not int or not 1024 <= self.context_size <= 32768:

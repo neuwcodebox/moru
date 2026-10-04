@@ -19,7 +19,7 @@ const promptSettings: PromptSettings = {
   max_tokens: 1024,
   thinking: true,
   history_turns: 4,
-  reasoning_level: "low",
+  reasoning_level: "medium",
 };
 const empty: Project = {
   id: "p1",
@@ -756,7 +756,7 @@ describe("conversation", () => {
       max_tokens: 2048,
       thinking: false,
       history_turns: 4,
-      reasoning_level: "low",
+      reasoning_level: "medium",
     });
     await user.click(screen.getByLabelText("생성 설정"));
     await user.click(screen.getByText("고급 · 프롬프트 LLM"));
@@ -789,13 +789,13 @@ describe("conversation", () => {
     expect((screen.getByLabelText("CFG") as HTMLInputElement).value).toBe("1");
   });
 
-  it("defaults to low reasoning and persists the chosen level while disabling it with thinking", async () => {
+  it("defaults to medium reasoning and persists the chosen level while disabling it with thinking", async () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByText("어떤 장면을 그릴까요?");
     await user.click(screen.getByLabelText("생성 설정"));
     await user.click(screen.getByText("고급 · 프롬프트 LLM"));
-    expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).value).toBe("low");
+    expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).value).toBe("medium");
     expect(screen.getByRole("option", { name: "높음 · 추론 예산의 100%" })).toBeTruthy();
     await user.selectOptions(screen.getByLabelText("추론 수준"), "high");
     await user.click(screen.getByLabelText("Thinking 사용"));

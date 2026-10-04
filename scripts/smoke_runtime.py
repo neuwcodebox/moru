@@ -21,7 +21,11 @@ def main():
     parser.add_argument("--context-size", type=int, default=2048)
     parser.add_argument("--max-tokens", type=int, default=1024)
     parser.add_argument("--thinking", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--reasoning-level", choices=("low", "medium", "high"), default="low")
+    parser.add_argument(
+        "--reasoning-level",
+        choices=("low", "medium", "high"),
+        default=PromptSettings().reasoning_level,
+    )
     parser.add_argument("--cancel-prompt", action="store_true")
     parser.add_argument("--image", choices=("turbo", "aesthetic"))
     parser.add_argument("--width", type=int, default=512)

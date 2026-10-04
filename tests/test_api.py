@@ -100,7 +100,7 @@ def test_bootstrap_exposes_prompt_defaults_and_restores_saved_values(app):
         "max_tokens": 1024,
         "thinking": True,
         "history_turns": 4,
-        "reasoning_level": "low",
+        "reasoning_level": "medium",
     }
     values = {
         "context_size": 4096, "max_tokens": 2048, "thinking": False,
