@@ -11,8 +11,8 @@
 사용자 경험:
 
 ```text
-Anima.zip 압축 해제
-→ Anima.exe 실행
+Moru.zip 압축 해제
+→ Moru.exe 실행
 → 앱 창
 → 자연어 입력
 → 이미지 생성
@@ -114,7 +114,7 @@ ComfyUI는 일반 pip dependency로 느슨하게 따라가지 않고 검증한 c
 
 ```text
 ┌──────────────────────────────────┐
-│            Anima.exe             │
+│            Moru.exe             │
 │                                  │
 │  Python Main Process             │
 │  ├─ pywebview                    │
@@ -354,13 +354,13 @@ ComfyUI inference는 메인 UI process에서 분리한다.
 
 별도 사용자가 실행하는 프로그램을 만들지 않는다.
 
-패키징된 `Anima.exe`가 자기 자신을 내부 worker mode로 실행한다.
+패키징된 `Moru.exe`가 자기 자신을 내부 worker mode로 실행한다.
 
 예:
 
 ```text
-Anima.exe
-Anima.exe --internal-image-worker
+Moru.exe
+Moru.exe --internal-image-worker
 ```
 
 두 번째 모드는 앱이 자동으로 숨겨서 실행한다.
@@ -512,8 +512,8 @@ SQLite + PNG를 사용한다.
 portable 기본값:
 
 ```text
-Anima/
-├─ Anima.exe
+Moru/
+├─ Moru.exe
 ├─ runtime/
 ├─ models/
 └─ data/
@@ -661,7 +661,7 @@ class GenerationSettings:
 ```text
 ZIP 다운로드
 → 압축 해제
-→ Anima.exe 더블클릭
+→ Moru.exe 더블클릭
 ```
 
 ### 22.2 방식
@@ -694,8 +694,8 @@ ZIP 다운로드
 예:
 
 ```text
-Anima/
-├─ Anima.exe
+Moru/
+├─ Moru.exe
 ├─ runtime/
 │  └─ ...
 ├─ models/
@@ -705,7 +705,7 @@ Anima/
 
 `runtime` 내부 구조는 사용자 API가 아니며 변경 가능하다.
 
-사용자가 직접 실행해야 하는 파일은 `Anima.exe` 하나다.
+사용자가 직접 실행해야 하는 파일은 `Moru.exe` 하나다.
 
 ---
 
@@ -731,7 +731,7 @@ Windows WebView2 Runtime이 없는 환경은 별도 고려한다.
 앱 시작:
 
 ```text
-Anima.exe
+Moru.exe
 → DB open
 → pywebview
 → Prompt LLM lazy
@@ -905,4 +905,4 @@ Mock LLM + Mock Image Worker:
 - 사용자가 서버/스크립트/콘솔을 실행하게 하지 않는다.
 - 이미지 결과는 불변이며 수정은 항상 Fork다.
 - release 사용자는 Python/Node/ComfyUI를 설치하지 않는다.
-- release는 portable ZIP이며 실행 진입점은 `Anima.exe` 하나다.
+- release는 portable ZIP이며 실행 진입점은 `Moru.exe` 하나다.
