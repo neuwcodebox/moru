@@ -5,10 +5,10 @@ import gc
 import importlib.util
 import logging
 import os
-import re
 import sys
+from contextlib import closing
 from pathlib import Path
-from threading import RLock
+from threading import Event, RLock
 
 from moru.config import ModelPaths
 from moru.domain import PromptSettings
@@ -39,6 +39,36 @@ def prompt_messages(text: str, base_prompt: str | None = None) -> list[dict[str,
             "content": f"Existing image prompt:\n{base_prompt}\n\nChange request:\n{text}",
         },
     ]
+
+
+def final_prompt(content: str) -> str:
+    # Templates may prefill the opening tag outside the generated content.
+    prompt = content.rsplit("</think>", 1)[-1].strip()
+    if not prompt or "<think>" in prompt or prompt.startswith("Thinking Process:"):
+        raise MoruError("PROMPT_LLM_FAILED")
+    return prompt
+
+
+def check_cancelled(cancelled: Event):
+    if cancelled.is_set():
+        raise MoruError("GENERATION_CANCELLED")
+
+
+def read_completion(chunks, cancelled: Event) -> str:
+    content = []
+    finished = False
+    with closing(chunks):
+        for chunk in chunks:
+            check_cancelled(cancelled)
+            choice = chunk["choices"][0]
+            if choice.get("finish_reason") == "length":
+                raise MoruError("PROMPT_LLM_FAILED")
+            finished = choice.get("finish_reason") == "stop"
+            content.append(choice["delta"].get("content") or "")
+        check_cancelled(cancelled)
+    if not finished:
+        raise MoruError("PROMPT_LLM_FAILED")
+    return final_prompt("".join(content))
 
 
 class LlamaPrompts:
@@ -121,10 +151,12 @@ class LlamaPrompts:
             self._thinking_handlers[enabled] = formatter.to_chat_handler()
         llm.chat_handler = self._thinking_handlers[enabled]
 
-    def _complete(self, messages, settings: PromptSettings) -> str:
+    def _complete(self, messages, settings: PromptSettings, cancelled: Event) -> str:
         with self._lock:
+            check_cancelled(cancelled)
             llm = self._load(settings)
             try:
+                check_cancelled(cancelled)
                 self._configure_thinking(llm, settings.thinking)
                 response = llm.create_chat_completion(
                     messages=messages,
@@ -133,28 +165,31 @@ class LlamaPrompts:
                     top_k=20,
                     min_p=0.0,
                     max_tokens=settings.max_tokens,
+                    stream=True,
                 )
-                choice = response["choices"][0]
-                if choice.get("finish_reason") == "length":
-                    raise MoruError("PROMPT_LLM_FAILED")
-                prompt = choice["message"]["content"]
-                # A template may prefill the opening tag outside the generated content.
-                if "</think>" in prompt:
-                    prompt = prompt.rsplit("</think>", 1)[1]
-                prompt = re.sub(r"<think>.*?</think>", "", prompt, flags=re.DOTALL).strip()
-                if not prompt or "<think>" in prompt:
-                    raise MoruError("PROMPT_LLM_FAILED")
-                return prompt
+                return read_completion(response, cancelled)
             except MoruError:
                 raise
             except Exception as exc:
                 raise MoruError("PROMPT_LLM_FAILED") from exc
 
-    def create(self, text: str, settings: PromptSettings | None = None) -> str:
-        return self._complete(prompt_messages(text), settings or PromptSettings())
+    def create(
+        self, text: str, settings: PromptSettings | None = None, cancelled: Event | None = None
+    ) -> str:
+        return self._complete(
+            prompt_messages(text), settings or PromptSettings(), cancelled or Event()
+        )
 
-    def refine(self, prompt: str, text: str, settings: PromptSettings | None = None) -> str:
-        return self._complete(prompt_messages(text, prompt), settings or PromptSettings())
+    def refine(
+        self,
+        prompt: str,
+        text: str,
+        settings: PromptSettings | None = None,
+        cancelled: Event | None = None,
+    ) -> str:
+        return self._complete(
+            prompt_messages(text, prompt), settings or PromptSettings(), cancelled or Event()
+        )
 
     def unload(self):
         with self._lock:

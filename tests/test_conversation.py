@@ -131,6 +131,66 @@ def test_explicit_seed_and_settings_are_snapshotted_when_request_is_submitted(ap
     assert image.settings.steps == 8
 
 
+def test_fixed_seed_does_not_require_a_random_seed_source(tmp_path):
+    from unittest.mock import Mock
+
+    from conftest import FakeImages, FakePrompts, ManualExecutor
+
+    from moru.repository import Repository
+    from moru.service import Application
+
+    executor = ManualExecutor()
+    random_seed = Mock(side_effect=RuntimeError("random source unavailable"))
+    application = Application(
+        Repository(tmp_path / "test.db"),
+        FakePrompts(),
+        FakeImages(),
+        tmp_path,
+        executor=executor,
+        new_seed=random_seed,
+    )
+    try:
+        application.update_settings(GenerationSettings(seed=123))
+        project = application.create_project()
+        job = application.submit_request(project.id, "girl")
+        executor.run_next()
+        assert application.get_job(job.id).state == "completed"
+        random_seed.assert_not_called()
+    finally:
+        application.close()
+
+
+def test_an_existing_image_file_is_preserved_when_a_generated_id_collides(tmp_path):
+    from conftest import FakeImages, FakePrompts, ManualExecutor
+
+    from moru.repository import Repository
+    from moru.service import Application
+
+    executor = ManualExecutor()
+    ids = iter(["project", "request", "job", "existing"])
+    images = FakeImages()
+    original = tmp_path / "images/existing.png"
+    original.parent.mkdir()
+    original.write_bytes(b"existing immutable image")
+    application = Application(
+        Repository(tmp_path / "test.db"),
+        FakePrompts(),
+        images,
+        tmp_path,
+        executor=executor,
+        new_id=lambda: next(ids),
+    )
+    try:
+        project = application.create_project()
+        job = application.submit_request(project.id, "girl")
+        executor.run_next()
+        assert application.get_job(job.id).error_code == "IMAGE_SAVE_FAILED"
+        assert original.read_bytes() == b"existing immutable image"
+        assert images.inputs == []
+    finally:
+        application.close()
+
+
 def test_cancelling_queued_generation_preserves_history_and_allows_retry(app):
     project = app.create_project()
     job = app.submit_request(project.id, "風景")

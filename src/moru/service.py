@@ -202,21 +202,15 @@ class Application:
         try:
             log.info("generation started id=%s", job_id)
             self._check_cancelled(cancelled)
-            if request.kind == "manual":
-                prompt = request.text
-            else:
-                self._progress(job_id, "prompting")
-                if request.base_image_id:
-                    base = self.repository.get_image(request.base_image_id)
-                    prompt = self.prompts.refine(base.prompt, request.text, prompt_settings)
-                else:
-                    prompt = self.prompts.create(request.text, prompt_settings)
-                if not isinstance(prompt, str) or not prompt.strip():
-                    raise MoruError("PROMPT_LLM_FAILED")
+            prompt = self._prepare_prompt(job_id, request, prompt_settings, cancelled)
             self._check_cancelled(cancelled)
-            settings = request.settings.resolve_seed(self._new_seed())
+            settings = request.settings
+            if settings.seed is None:
+                settings = settings.resolve_seed(self._new_seed())
             image_id = self._new_id()
             relative_path = Path("images") / f"{image_id}.png"
+            if (self.data_dir / relative_path).exists():
+                raise MoruError("IMAGE_SAVE_FAILED")
             output_path = self.data_dir / relative_path
             output_path.parent.mkdir(parents=True, exist_ok=True)
             self._progress(job_id, "loading_model")
@@ -224,23 +218,8 @@ class Application:
             def progress(state, step=None, total=None):
                 self._progress(job_id, state, step, total)
 
-            try:
-                self.images.generate(prompt, settings, output_path, progress, cancelled)
-            except MoruError as exc:
-                if exc.code != "CUDA_OOM":
-                    raise
-                self._check_cancelled(cancelled)
-                log.info("releasing prompt model for image generation id=%s", job_id)
-                self.prompts.unload()
-                self.images.generate(prompt, settings, output_path, progress, cancelled)
+            self._write_image(prompt, settings, output_path, progress, cancelled)
             self._check_cancelled(cancelled)
-            try:
-                with PngImage.open(output_path) as png:
-                    if png.format != "PNG" or png.size != (settings.width, settings.height):
-                        raise MoruError("IMAGE_SAVE_FAILED")
-                    png.verify()
-            except (OSError, UnidentifiedImageError, SyntaxError) as exc:
-                raise MoruError("IMAGE_SAVE_FAILED") from exc
             image = Image(
                 image_id,
                 request.project_id,
@@ -280,6 +259,38 @@ class Application:
                     log.exception("incomplete generation file cleanup failed id=%s", job_id)
             with self._lock:
                 self._active_job = None
+
+    def _prepare_prompt(self, job_id, request, settings, cancelled) -> str:
+        if request.kind == "manual":
+            return request.text
+        self._progress(job_id, "prompting")
+        if request.base_image_id:
+            base = self.repository.get_image(request.base_image_id)
+            prompt = self.prompts.refine(base.prompt, request.text, settings, cancelled)
+        else:
+            prompt = self.prompts.create(request.text, settings, cancelled)
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise MoruError("PROMPT_LLM_FAILED")
+        return prompt
+
+    def _write_image(self, prompt, settings, output_path, progress, cancelled):
+        try:
+            self.images.generate(prompt, settings, output_path, progress, cancelled)
+        except MoruError as exc:
+            if exc.code != "CUDA_OOM":
+                raise
+            self._check_cancelled(cancelled)
+            log.info("releasing prompt model for image generation")
+            self.prompts.unload()
+            self.images.generate(prompt, settings, output_path, progress, cancelled)
+        self._check_cancelled(cancelled)
+        try:
+            with PngImage.open(output_path) as png:
+                if png.format != "PNG" or png.size != (settings.width, settings.height):
+                    raise MoruError("IMAGE_SAVE_FAILED")
+                png.verify()
+        except (OSError, UnidentifiedImageError, SyntaxError) as exc:
+            raise MoruError("IMAGE_SAVE_FAILED") from exc
 
     def close(self):
         with self._lock:

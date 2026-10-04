@@ -3,7 +3,7 @@
 import argparse
 import time
 import uuid
-from threading import Event
+from threading import Event, Timer
 
 from PIL import Image
 
@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--context-size", type=int, default=8192)
     parser.add_argument("--max-tokens", type=int, default=4096)
     parser.add_argument("--no-thinking", action="store_true")
+    parser.add_argument("--cancel-prompt", action="store_true")
     parser.add_argument("--image", choices=("turbo", "aesthetic"))
     parser.add_argument("--width", type=int, default=512)
     parser.add_argument("--height", type=int, default=512)
@@ -49,6 +50,24 @@ def main():
             if not prompt.strip() or "Thinking Process:" in prompt or "<think>" in prompt:
                 raise AssertionError("refine did not return a finished image prompt")
             print("prompt_refine_ok", flush=True)
+        if options.cancel_prompt:
+            # Warm the model so cancellation is exercised during generation, not loading.
+            prompts.create("검은 고양이를 그려줘", PromptSettings(thinking=False))
+            cancelled = Event()
+            timer = Timer(0.5, cancelled.set)
+            timer.start()
+            try:
+                prompts.create("별이 가득한 밤하늘 아래 검은 고양이", cancelled=cancelled)
+            except MoruError as exc:
+                assert exc.code == "GENERATION_CANCELLED", exc.code
+                print("prompt_cancel_ok", flush=True)
+            else:
+                raise AssertionError("prompt generation was not cancelled")
+            finally:
+                timer.cancel()
+                timer.join()
+            assert prompts.create("검은 고양이", PromptSettings(thinking=False)).strip()
+            print("prompt_retry_after_cancel_ok", flush=True)
         if options.image:
             settings = GenerationSettings(
                 model_id=f"anima-{options.image}-v1.1",

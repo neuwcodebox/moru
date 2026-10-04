@@ -13,7 +13,7 @@ from threading import Event, RLock, Thread
 
 from moru.config import ModelPaths
 from moru.domain import GenerationSettings
-from moru.errors import MoruError
+from moru.errors import MESSAGES, MoruError
 from moru.ports import Progress
 from moru.windows_job import WindowsJob
 
@@ -65,6 +65,7 @@ class ImageWorker:
                 raise MoruError("GENERATION_CANCELLED")
             if self._process is not None and self._process.poll() is None:
                 return self._process, self._messages
+            self._stop()
             logs = self._paths.root / "data/logs"
             logs.mkdir(parents=True, exist_ok=True)
             process_job = WindowsJob() if sys.platform == "win32" else None
@@ -180,8 +181,6 @@ class ImageWorker:
                     )
                 elif message["type"] == "error":
                     code = details.get("code")
-                    from moru.errors import MESSAGES
-
                     raise MoruError(code if code in MESSAGES else "GENERATION_FAILED")
                 else:
                     if (
@@ -190,20 +189,23 @@ class ImageWorker:
                     ):
                         raise MoruError("GENERATION_FAILED")
                     return
-        except (OSError, ValueError) as exc:
-            self._stop()
+        except Exception as exc:
             code = (
-                "GENERATION_CANCELLED"
-                if cancelled.is_set() or self._closed
-                else "GENERATION_FAILED"
+                exc.code
+                if isinstance(exc, MoruError)
+                else (
+                    "GENERATION_CANCELLED"
+                    if cancelled.is_set() or self._closed
+                    else "GENERATION_FAILED"
+                )
             )
-            raise MoruError(code) from exc
-        except MoruError as exc:
-            if exc.code != "CUDA_OOM":
+            if code != "CUDA_OOM":
                 self._stop()
-            if exc.code == "GENERATION_CANCELLED":
+            if code == "GENERATION_CANCELLED":
                 output_path.unlink(missing_ok=True)
-            raise
+            if isinstance(exc, MoruError):
+                raise
+            raise MoruError(code) from exc
         finally:
             output_path.with_suffix(".png.part").unlink(missing_ok=True)
 

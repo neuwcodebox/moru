@@ -77,6 +77,7 @@ uv run --extra inference python scripts/smoke_runtime.py --image aesthetic --wid
 uv run --extra inference python scripts/smoke_desktop.py
 uv run --extra inference python scripts/smoke_application.py
 uv run --extra inference python scripts/smoke_runtime.py --image turbo --cancel-restart
+uv run --extra inference python scripts/smoke_runtime.py --cancel-prompt
 ```
 
 패키지 실행 검증은 `scripts/smoke_portable.py <빌드된 Moru 폴더>`로 실행합니다.

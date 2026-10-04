@@ -39,12 +39,12 @@ class FakePrompts:
         self.unloads = 0
         self.settings = []
 
-    def create(self, text, settings):
+    def create(self, text, settings, cancelled):
         self.settings.append(settings)
         self.inputs.append(("create", text))
         return "silver-haired girl, daytime"
 
-    def refine(self, prompt, text, settings):
+    def refine(self, prompt, text, settings, cancelled):
         self.settings.append(settings)
         self.inputs.append(("refine", prompt, text))
         return "silver-haired girl, nighttime"

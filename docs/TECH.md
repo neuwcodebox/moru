@@ -952,5 +952,9 @@ thinking과 최종 답변의 토큰 여유를 위해 기본 context는 8192, 출
 `enable_thinking`을 명시하여 기존 템플릿의 thinking 분기를 선택한다.
 해당 기능이 없는 템플릿에 thinking 끄기를 요청하면 명시적 오류를 반환한다.
 
+LLM 응답은 내부에서 스트리밍으로 소비하며 토큰마다 취소 여부를 확인한다.
+취소 시 completion generator를 닫고 이미지 생성으로 넘어가지 않는다.
+스트림은 UI에 전달하지 않으며, 정상 종료된 전체 응답에서 최종 프롬프트만 추출한다.
+
 HTML을 직접 로드한 WebView2에서는 브라우저 Clipboard API를 사용할 수 없으므로
 프롬프트 복사는 Python bridge로 전달하여 Windows UI thread의 클립보드 API를 사용한다.
