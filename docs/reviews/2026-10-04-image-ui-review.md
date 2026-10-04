@@ -66,4 +66,8 @@
 개발용 Python/Node/CUDA 경로를 제거한 환경에서 실제 실행파일을 시작하여 기본 설정, 변경한 LLM 설정의 저장, 네이티브 텍스트 복사를 확인했다.
 결과: `build/smoke-ab6659cd/report.json`.
 
+배포 ZIP `release/Moru.zip`도 갱신했다. 파일 **6,366개 항목**의 CRC 검증과 배포 폴더 구성 비교를 통과했다.
+ZIP의 실행파일·HTML·ICO가 검증한 빌드와 같고, 모델 가중치나 사용자 데이터는 포함되지 않는다.
+크기: **3,330,070,710 bytes**. 결과: `build/release-verification-report.json`.
+
 검증 산출물과 생성 이미지, DB, 모델, 배포 빌드는 Git에 포함하지 않는다.
