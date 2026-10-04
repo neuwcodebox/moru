@@ -947,6 +947,10 @@ Job에 임시 텍스트를 저장하고 기존 polling bridge로 placeholder를 
 사용자가 저장한 설정의 자동 전환 코드는 두지 않는다.
 프롬프트 샘플링은 thinking 시 temperature 0.6/top_p 0.95, 비활성 시 0.7/0.8을
 사용한다. 품질 태그의 반복을 줄이기 위해 repeat_penalty 1.1을 적용한다.
+LLM의 최종 답변 형식은 한 문단의 영어 프롬프트다. thinking 및 제어 구분자가 끝나고
+실제 답변이 시작된 뒤 문단 경계에서 EOS를 생성하여 분석을 다시 시작하지 않도록 한다.
+같은 토큰에 문단 경계와 후속 분석이 포함되어도 첫 문단만 표시하고 이미지 엔진에 전달한다.
+수동 프롬프트 입력은 이 LLM 응답 형식 제한을 거치지 않는다.
 
 추론 설정 근거: [이미지 모델 권장값](https://huggingface.co/circlestone-labs/Anima),
 [프롬프트 LLM 샘플링 권장값](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive).

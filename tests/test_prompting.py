@@ -10,6 +10,7 @@ from moru.prompting import (
     CREATE_SYSTEM,
     REFINE_SYSTEM,
     LlamaPrompts,
+    PromptParagraph,
     ThinkingBudget,
     fit_messages,
     prompt_messages,
@@ -314,6 +315,9 @@ class Scores(list):
     def __setitem__(self, key, value):
         super().__setitem__(key, [value] * len(self) if isinstance(key, slice) else value)
 
+    def argmax(self):
+        return max(range(len(self)), key=self.__getitem__)
+
 
 def test_reasoning_budget_closes_thinking_and_leaves_final_prompt_tokens_unrestricted():
     processor = ThinkingBudget([3], 2)
@@ -359,6 +363,45 @@ def test_final_answer_cue_is_removed_from_both_live_text_and_the_image_prompt():
     assert result == "black cat, moonlight"
     assert snapshots[:2] == [("reasoning", ""), ("reasoning", "")]
     assert snapshots[-1] == ("reasoning", result)
+
+
+def test_paragraph_boundary_does_not_end_thinking_or_the_prefilled_final_answer_cue():
+    tokens = {1: b"<think>notes\n\n", 2: b"</think>", 3: b"Final image prompt:\n", 4: b"\n"}
+    def decoder(ids, **kwargs):
+        return b"".join(tokens.get(token, b"") for token in ids)
+
+    processor = PromptParagraph(decoder, 0, True)
+    scores = Scores([0.0, 0.0, 0.0, 0.0, 1.0])
+    processor([9], scores)
+    assert processor([9, 1], scores) == [0.0, 0.0, 0.0, 0.0, 1.0]
+    assert processor([9, 1, 2, 3], scores) == [0.0, 0.0, 0.0, 0.0, 1.0]
+
+
+@pytest.mark.parametrize("thinking", [True, False])
+def test_a_complete_answer_ends_at_its_paragraph_boundary(thinking):
+    tokens = {1: b"notes</think>", 2: b"black cat, moonlight", 3: b"\n\nWait"}
+    def decoder(ids, **kwargs):
+        return b"".join(tokens.get(token, b"") for token in ids)
+
+    processor = PromptParagraph(decoder, 0, thinking)
+    processor([9], Scores([0.0, 0.0, 0.0, 1.0]))
+    generated = [9, 1, 2] if thinking else [9, 2]
+    assert processor(generated, Scores([0.0, 0.0, 0.0, 1.0])) == [
+        0.0, float("-inf"), float("-inf"), float("-inf")
+    ]
+
+
+@pytest.mark.parametrize("thinking", [True, False])
+def test_analysis_after_a_completed_prompt_is_not_displayed_or_forwarded(thinking):
+    snapshots = []
+    content = ("notes</think>" if thinking else "") + (
+        "Final image prompt:\nblack cat, moonlight\n\nWait"
+    )
+    prompt = read_completion(
+        completion(content), Event(), thinking, lambda *text: snapshots.append(text),
+    )
+    assert prompt == "black cat, moonlight"
+    assert snapshots[-1] == ("notes" if thinking else "", "black cat, moonlight")
 
 
 def test_reasoning_level_changes_the_completion_budget_without_reloading_the_model(tmp_path):

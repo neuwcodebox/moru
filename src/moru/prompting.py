@@ -20,16 +20,16 @@ log = logging.getLogger(__name__)
 CREATE_SYSTEM = (
     "Convert the user's visual request into one complete English positive image prompt. "
     "Include only requested subjects; never add people to an animal-only scene. "
-    "Output only the prompt, without explanations, markdown, quotes or negative prompts. "
+    "Output only one paragraph of prompt text, without explanations, markdown, quotes, "
+    "command flags or negative prompts. "
     "Keep thinking brief: identify visual subjects and changes, without restating instructions. "
     "The existing prompt is the current visual state. The latest request takes priority; "
     "use history only to resolve references. Preserve requested details and each subject's "
     "appearance, actions and position. Do not invent unrelated subjects or styles. "
     "Combine short visual sentences with relevant comma-separated booru tags. "
     "Use lowercase tags with spaces, except score_* tags. "
-    "Order tags: optional quality, subject count, requested character/series/artist, general. "
-    "Human-count tags apply only to requested people. "
-    "Prefix requested artist tags with @. Add rating tags only when requested. "
+    "Use human-count tags only for requested people; prefix requested artist tags with @. "
+    "Add rating tags only when requested. Do not include field labels or metadata. "
     "Never repeat tags or stack quality tags."
 )
 REFINE_SYSTEM = (
@@ -74,12 +74,19 @@ def fit_messages(messages, count_tokens, input_limit):
 
 def final_prompt(content: str) -> str:
     # Templates may prefill the opening tag outside the generated content.
-    prompt = content.rsplit("</think>", 1)[-1].strip().removeprefix(PROMPT_PREFIX).strip()
+    prompt = answer_text(content.rsplit("</think>", 1)[-1]).partition("\n")[0]
     if not prompt or "<think>" in prompt or prompt.startswith("Thinking Process:"):
         raise MoruError("PROMPT_LLM_FAILED")
     if any(char.isalpha() and "LATIN" not in unicodedata.name(char, "") for char in prompt):
         raise MoruError("PROMPT_LLM_FAILED")
     return prompt
+
+
+def answer_text(content: str) -> str:
+    content = content.strip()
+    if PROMPT_PREFIX.startswith(content):
+        return ""
+    return content.removeprefix(PROMPT_PREFIX).strip()
 
 
 def check_cancelled(cancelled: Event):
@@ -117,15 +124,37 @@ class ThinkingBudget:
         return scores
 
 
+class PromptParagraph:
+    """Finish at the answer's paragraph boundary before the model resumes explaining."""
+
+    def __init__(self, detokenize, eos: int, thinking: bool):
+        self._detokenize = detokenize
+        self._eos = eos
+        self._thinking = thinking
+        self._input_length: int | None = None
+
+    def __call__(self, input_ids, scores):
+        if self._input_length is None:
+            self._input_length = len(input_ids)
+        generated = list(input_ids[self._input_length :])
+        content = self._detokenize(generated, special=True).decode("utf-8", errors="ignore")
+        _, marker, answer = content.partition("</think>")
+        prompt = answer_text(answer if marker else content) if marker or not self._thinking else ""
+        if prompt and (
+            "\n" in prompt
+            or b"\n" in self._detokenize([int(scores.argmax())], special=True)
+        ):
+            scores[:] = float("-inf")
+            scores[self._eos] = 0.0
+        return scores
+
+
 def stream_text(content: str, thinking: bool) -> tuple[str, str]:
     reasoning, marker, prompt = content.partition("</think>")
     if marker:
-        prompt = prompt.strip()
-        if PROMPT_PREFIX.startswith(prompt):
-            prompt = ""
         return (
             reasoning.removeprefix("<think>").strip(),
-            prompt.removeprefix(PROMPT_PREFIX).strip(),
+            answer_text(prompt).partition("\n")[0],
         )
     # Keep incomplete control tags out of the live text when a tag spans tokens.
     for tag in ("<think>", "</think>"):
@@ -135,7 +164,7 @@ def stream_text(content: str, thinking: bool) -> tuple[str, str]:
                 break
     if thinking or content.startswith("<think>"):
         return content.removeprefix("<think>").strip(), ""
-    return "", content.strip()
+    return "", answer_text(content).partition("\n")[0]
 
 
 def read_completion(
@@ -281,6 +310,11 @@ class LlamaPrompts:
                             max(0, settings.thinking_budget - len(end_tokens) - len(suffix_tokens)),
                             suffix_tokens,
                         )
+                    ]
+                eos = llm.token_eos()
+                if isinstance(eos, int) and eos >= 0:
+                    processors = (processors or []) + [
+                        PromptParagraph(llm.detokenize, eos, settings.thinking)
                     ]
                 response = llm.create_chat_completion(
                     messages=messages,
