@@ -46,8 +46,10 @@ beforeEach(() => {
   current = structuredClone(empty);
   const success = (value: unknown) => Promise.resolve({ ok: true, value });
   api = {
+    get_language: vi.fn(() => success("ko")),
     bootstrap: vi.fn(() =>
       success({
+        language: "ko",
         project: current,
         projects: [empty],
         settings,
@@ -983,9 +985,31 @@ it("does not allow a language change before the saved language has loaded", asyn
   api.bootstrap.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
   render(<App />);
   expect((screen.getByRole("combobox", { name: "언어" }) as HTMLSelectElement).disabled).toBe(true);
+  await waitFor(() => expect(api.bootstrap).toHaveBeenCalled());
   await act(async () => finish({ ok: true, value: {
     language: "en", project: empty, projects: [empty], settings,
     generation_defaults: {}, prompt_settings: promptSettings,
   } }));
   expect((screen.getByRole("combobox", { name: "Language" }) as HTMLSelectElement).disabled).toBe(false);
+});
+
+it.each([
+  ["en", "Could not load the model."],
+  ["ko", "모델을 불러올 수 없습니다."],
+])("uses saved %s for an error even when bootstrap fails", async (language, message) => {
+  api.get_language.mockResolvedValue({ ok: true, value: language });
+  api.bootstrap.mockResolvedValue({ ok: false, error: { code: "MODEL_LOAD_FAILED", message: "stale Korean error" } });
+  render(<App />);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", message);
+  expect(document.documentElement.lang).toBe(language);
+});
+
+it.each(["unreadable", "unsupported"])("uses English when the saved preference is %s and bootstrap fails", async (failure) => {
+  api.get_language.mockResolvedValue(failure === "unreadable"
+    ? { ok: false, error: { code: "DATABASE_FAILED", message: "private details" } }
+    : { ok: true, value: "fr" });
+  api.bootstrap.mockResolvedValue({ ok: false, error: { code: "DATABASE_FAILED", message: "Korean message" } });
+  render(<App />);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Could not save or load the project history.");
+  expect(document.documentElement.lang).toBe("en");
 });

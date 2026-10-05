@@ -13,7 +13,8 @@ void i18n.use(initReactI18next).init({
     ko: { translation: ko, dialogs: koDialogs, errors: koErrors },
     en: { translation: en, dialogs: enDialogs, errors: enErrors },
   },
-  lng: "ko",
+  // Until the saved preference is available, failures must remain readable in English.
+  lng: "en",
   fallbackLng: "en",
   supportedLngs: ["ko", "en"],
   defaultNS: "translation",
@@ -24,6 +25,6 @@ void i18n.use(initReactI18next).init({
 i18n.on("languageChanged", (language) => {
   document.documentElement.lang = language;
 });
-document.documentElement.lang = i18n.resolvedLanguage ?? "ko";
+document.documentElement.lang = i18n.resolvedLanguage ?? "en";
 
 export default i18n;

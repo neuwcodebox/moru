@@ -84,7 +84,7 @@ def test_unreadable_startup_preference_still_provides_a_safe_default(tmp_path, c
     data = tmp_path / "data"
     data.mkdir()
     (data / "anima.db").write_text("not a database")
-    assert startup_language(tmp_path) == "ko"
+    assert startup_language(tmp_path) == "en"
     assert "startup language preference could not be read" in caplog.text
 
 
@@ -121,3 +121,25 @@ def test_both_frontend_languages_cover_every_backend_error_code():
     assert MESSAGES.keys() <= english.keys()
     assert all(isinstance(value, str) and value.strip() for value in english.values())
     assert all(isinstance(value, str) and value.strip() for value in korean.values())
+
+
+@pytest.mark.parametrize("language", ["en", "ko"])
+def test_saved_language_is_available_even_when_model_status_prevents_bootstrap(app, language):
+    class UnavailableModels:
+        def status(self):
+            raise MoruError("MODEL_LOAD_FAILED")
+
+    app.set_language(language)
+    api = Api(app, downloads=UnavailableModels())
+    assert api.get_language() == {"ok": True, "value": language}
+    assert api.bootstrap()["ok"] is False
+
+
+def test_inaccessible_startup_database_uses_english_without_hiding_the_error_dialog(
+    tmp_path, monkeypatch,
+):
+    def inaccessible(self):
+        raise PermissionError("database inaccessible")
+
+    monkeypatch.setattr(Path, "is_file", inaccessible)
+    assert startup_language(tmp_path) == "en"

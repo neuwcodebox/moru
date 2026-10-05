@@ -118,10 +118,20 @@ export default function App() {
   useEffect(() => {
     let disposed = false;
     async function bootstrap() {
+      let language = "en";
+      try {
+        const saved = await call<string>("get_language");
+        if (saved === "ko" || saved === "en") language = saved;
+      } catch {
+        // Preference access can fail too; use English for the remaining startup path.
+      }
+      if (disposed) return;
+      await i18n.changeLanguage(language);
+      if (disposed) return;
       try {
         const result = await call<Bootstrap>("bootstrap");
         if (disposed) return;
-        await i18n.changeLanguage(result.language ?? "ko");
+        await i18n.changeLanguage(result.language === "ko" ? "ko" : "en");
         if (disposed) return;
         setProject(result.project);
         setProjects(result.projects);
@@ -269,7 +279,7 @@ export default function App() {
           <select
             className="language-select"
             aria-label={t("language")}
-            value={i18n.resolvedLanguage ?? "ko"}
+            value={i18n.resolvedLanguage ?? "en"}
             disabled={acting || !project}
             onChange={(event) => {
               const language = event.target.value;

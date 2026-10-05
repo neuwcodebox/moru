@@ -83,6 +83,10 @@ class Api:
             raise MoruError("CLIPBOARD_FAILED") from exc
 
     @endpoint
+    def get_language(self):
+        return self._app.get_language()
+
+    @endpoint
     def bootstrap(self):
         project = self._app.current_project()
         return {

@@ -1073,7 +1073,9 @@ React UI는 i18next와 react-i18next를 사용한다. 한국어/영어 텍스트
 `frontend/src/locales/{ko,en}/`의 JSON 리소스로 분리하고 정적 빌드에 모두 포함한다.
 언어 선택에 네트워크 요청이나 런타임 번역 API를 사용하지 않는다.
 `useTranslation` 구독으로 UI와 접근성 이름을 갱신하며 날짜는 선택한 locale로 포맷한다.
-Python bootstrap의 `language`와 `set_language` bridge가 생성 설정과 별도로 표시 언어를
-저장한다. 저장 성공 후 UI 언어를 전환하고 문서의 `lang` 속성도 갱신한다.
-새 설치는 한국어, 지원하지 않는 저장값/누락된 번역은 영어를 사용한다.
+Python `get_language` bridge로 저장 언어를 먼저 읽고 나서 전체 bootstrap을 실행한다.
+모델 상태 등의 초기화 실패가 언어 복원을 막지 않도록 분리한다. `set_language` bridge는
+생성 설정과 별도로 표시 언어를 저장한다. 저장 성공 후 UI 언어를 전환하고 문서의 `lang` 속성도 갱신한다.
+새 설치의 저장 기본값은 한국어이며, 지원하지 않는 저장값/누락된 번역은 영어를 사용한다.
+저장 언어를 아직 읽지 못한 UI와 네이티브 시작 오류에서 설정 읽기 실패 시에도 영어를 사용한다.
 오류는 안정적인 error code를 번역하며 사용자 입력, 프롬프트와 파일 이름은 변경하지 않는다.

@@ -31,16 +31,16 @@ def saved_language(value: object = "ko") -> str:
 def startup_language(root: Path) -> str:
     """Read the preference without opening the repository or recovering another instance's jobs."""
     database = root / "data/anima.db"
-    if not database.is_file():
-        return "ko"
     try:
+        if not database.is_file():
+            return "ko"
         with closing(sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True)) as db:
             row = db.execute("SELECT value FROM preferences WHERE key='language'").fetchone()
         return saved_language(json.loads(row[0])) if row else "ko"
     except (OSError, sqlite3.Error, ValueError):
         # This is only the emergency startup dialog; never prevent it with a second failure.
         logging.getLogger(__name__).warning("startup language preference could not be read")
-        return "ko"
+        return "en"
 
 
 def startup_message(error: Exception, language: str) -> str:
