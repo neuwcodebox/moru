@@ -5,6 +5,8 @@ import type { RefObject } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  CircleAlert,
+  CirclePause,
   GitBranch,
   LoaderCircle,
   Pencil,
@@ -69,13 +71,23 @@ function RequestFailure({
 }) {
   const { t } = useTranslation();
   if (request.status === "pending") return null;
+  const cancelled = request.status === "cancelled";
   return (
-    <div className="request-error">
-      <span>{errorMessage(request)}</span>
-      <button disabled={busy} onClick={() => onRetry(request.id)}>
-        <RotateCcw size={14} aria-hidden="true" /> {t("retry")}
-      </button>
-    </div>
+    <section
+      className={`generation-placeholder request-failure${cancelled ? " is-cancelled" : ""}`}
+      aria-label={t(cancelled ? "generationCancelled" : "generationFailure")}
+      style={imageFrameStyle(request.width, request.height)}
+    >
+      <div className="failure-content">
+        <div className="failure-symbol" aria-hidden="true">
+          {cancelled ? <CirclePause size={28} /> : <CircleAlert size={28} />}
+        </div>
+        <p role={cancelled ? "status" : "alert"}>{errorMessage(request)}</p>
+        <button disabled={busy} onClick={() => onRetry(request.id)}>
+          <RotateCcw size={15} aria-hidden="true" /> {t("retry")}
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -242,7 +254,7 @@ export default function Conversation({
                 />
               </div>
               {project.unfinished_requests
-                .filter((request) => request.turn_id === image.turn_id)
+                .filter((request) => request.turn_id === image.turn_id && request.id !== job?.request_id)
                 .map((request) => (
                   <RequestFailure
                     key={request.id}
@@ -261,8 +273,11 @@ export default function Conversation({
                 <div className="user-message">{request.text}</div>
               </div>
             )}
-            {job?.request_id === request.id && <GenerationProgress job={job} />}
-            <RequestFailure request={request} busy={busy} onRetry={onRetry} />
+            {job?.request_id === request.id ? (
+              <GenerationProgress job={job} />
+            ) : (
+              <RequestFailure request={request} busy={busy} onRetry={onRetry} />
+            )}
           </div>
         ))}
         {job && !generatingTurn && !pending && <GenerationProgress job={job} />}

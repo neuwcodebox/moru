@@ -31,6 +31,8 @@
   "loadingModel": "Loading the image model…",
   "generating": "Generating image…",
   "generationProgress": "Generation progress",
+  "generationFailure": "Generation failed",
+  "generationCancelled": "Generation stopped",
   "preparingScene": "Preparing your scene",
   "imageComing": "Your image will appear here soon",
   "generationSteps": "Image generation steps",

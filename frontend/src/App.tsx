@@ -185,7 +185,6 @@ export default function App() {
           setProject(refreshed);
           setJob(null);
           setStopping(false);
-          if (result.error_code || result.message) setError(result);
           input.current?.focus();
           return;
         }

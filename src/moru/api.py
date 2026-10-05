@@ -180,6 +180,8 @@ class Api:
         unfinished = [
             {
                 "id": request.id,
+                "width": request.settings.width,
+                "height": request.settings.height,
                 "turn_id": request.turn_id,
                 "text": request.text if request.kind != "manual" else None,
                 "status": request.status,

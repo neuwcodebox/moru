@@ -561,6 +561,8 @@ describe("conversation", () => {
           error_code: "GENERATION_FAILED",
           message: "이미지 생성에 실패했습니다.",
           turn_id: null,
+          width: 832,
+          height: 1216,
         },
       ],
     };
@@ -570,12 +572,117 @@ describe("conversation", () => {
     });
     const user = userEvent.setup();
     render(<App />);
-    await screen.findByText("이미지 생성에 실패했습니다. 다시 시도해 주세요.");
-    await user.click(screen.getByText("재시도"));
+    const failure = await screen.findByRole("region", { name: "생성 실패" });
+    expect(failure.style.aspectRatio).toBe("832 / 1216");
+    expect(within(failure).getByRole("alert").textContent).toBe("이미지 생성에 실패했습니다. 다시 시도해 주세요.");
+    await user.click(within(failure).getByRole("button", { name: "재시도" }));
     await screen.findByText("프롬프트 작성 중…");
     expect(screen.queryByText("이미지 생성에 실패했습니다. 다시 시도해 주세요.")).toBeNull();
     expect(api.retry_request).toHaveBeenCalledWith("r1");
   });
+  it.each([
+    ["PROMPT_LLM_FAILED", "프롬프트 준비에 실패했습니다. 다시 시도해 주세요."],
+    ["GENERATION_FAILED", "이미지 생성에 실패했습니다. 다시 시도해 주세요."],
+  ])("shows %s inside the image placeholder without a footer error", async (code, message) => {
+    api.submit_request.mockImplementation(() => {
+      current = { ...empty, unfinished_requests: [{
+        id: "r1", text: "밤 풍경", status: "failed", error_code: code,
+        message: null, turn_id: null, width: 1216, height: 832,
+      }] };
+      return Promise.resolve({ ok: true, value: {
+        id: "j1", project_id: "p1", request_id: "r1", state: "queued",
+        width: 1216, height: 832,
+      } });
+    });
+    api.get_job.mockResolvedValue({ ok: true, value: {
+      id: "j1", project_id: "p1", request_id: "r1", state: "failed",
+      width: 1216, height: 832, error_code: code,
+    } });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("어떤 장면을 그릴까요?");
+    await user.type(screen.getByLabelText("이미지 요청"), "밤 풍경{Enter}");
+    const failure = await screen.findByRole("region", { name: "생성 실패" });
+    expect(failure.style.aspectRatio).toBe("1216 / 832");
+    expect(within(failure).getByRole("alert").textContent).toBe(message);
+    expect(within(failure).getByRole("button", { name: "재시도" })).toBeTruthy();
+    expect(screen.getAllByText(message)).toHaveLength(1);
+    expect(document.querySelector("footer .error-banner")).toBeNull();
+  });
+
+  it("keeps stopped requests neutral and disables their retry while another job runs", async () => {
+    current = { ...empty, unfinished_requests: [{
+      id: "stopped", text: "중지한 풍경", status: "cancelled", error_code: "GENERATION_CANCELLED",
+      message: null, turn_id: null, width: 832, height: 1216,
+    }] };
+    api.submit_request.mockResolvedValue({ ok: true, value: {
+      id: "j1", project_id: "p1", request_id: "other", state: "queued",
+      width: 1024, height: 1024,
+    } });
+    api.get_job.mockResolvedValue({ ok: true, value: {
+      id: "j1", project_id: "p1", request_id: "other", state: "prompting",
+      width: 1024, height: 1024,
+    } });
+    const user = userEvent.setup();
+    render(<App />);
+    const stopped = await screen.findByRole("region", { name: "생성 중지" });
+    expect(stopped.classList.contains("is-cancelled")).toBe(true);
+    expect(within(stopped).getByRole("status").textContent).toBe("생성이 취소되었습니다.");
+    expect(within(stopped).queryByRole("alert")).toBeNull();
+    await user.type(screen.getByLabelText("이미지 요청"), "다른 풍경{Enter}");
+    await screen.findByRole("region", { name: "생성 진행" });
+    expect((within(stopped).getByRole("button", { name: "재시도" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it.each(["regenerate", "generate_from_prompt"])(
+    "keeps the previous image and puts a failed %s in a placeholder in the same turn",
+    async (method) => {
+      current = withImage;
+      api[method].mockImplementation(() => {
+        current = { ...withImage, unfinished_requests: [{
+          id: "r2", text: null, status: "failed", error_code: "GENERATION_FAILED",
+          message: null, turn_id: "r1", width: 832, height: 1216,
+        }] };
+        return Promise.resolve({ ok: true, value: {
+          id: "j1", project_id: "p1", request_id: "r2", turn_id: "r1",
+          state: "queued", width: 832, height: 1216,
+        } });
+      });
+      api.get_job.mockResolvedValue({ ok: true, value: {
+        id: "j1", project_id: "p1", request_id: "r2", turn_id: "r1",
+        state: "failed", width: 832, height: 1216, error_code: "GENERATION_FAILED",
+      } });
+      const user = userEvent.setup();
+      render(<App />);
+      await screen.findByAltText("생성 이미지");
+      if (method === "generate_from_prompt") {
+        await user.click(screen.getByRole("button", { name: "수정" }));
+        await user.click(await screen.findByRole("button", { name: "이 프롬프트로 생성" }));
+      } else {
+        await user.click(screen.getByRole("button", { name: "다시" }));
+      }
+      const failure = await screen.findByRole("region", { name: "생성 실패" });
+      expect(failure.closest(".turn")).toBeTruthy();
+      expect(failure.style.aspectRatio).toBe("832 / 1216");
+      expect(screen.getByAltText("생성 이미지")).toBeTruthy();
+      expect(document.querySelectorAll(".turn")).toHaveLength(1);
+      expect(document.querySelector("footer .error-banner")).toBeNull();
+
+      api.get_job.mockResolvedValue({ ok: true, value: {
+        id: "j2", project_id: "p1", request_id: "r2", turn_id: "r1",
+        state: "generating", width: 832, height: 1216,
+      } });
+      // A refresh can still contain the old failure after the retry was accepted.
+      api.retry_request.mockResolvedValue({ ok: true, value: {
+        id: "j2", project_id: "p1", request_id: "r2", turn_id: "r1",
+        state: "queued", width: 832, height: 1216,
+      } });
+      await user.click(within(failure).getByRole("button", { name: "재시도" }));
+      expect(api.retry_request).toHaveBeenCalledWith("r2");
+      expect(await screen.findByRole("region", { name: "생성 진행" })).toBeTruthy();
+      expect(screen.queryByRole("region", { name: "생성 실패" })).toBeNull();
+    },
+  );
   it("copies the edited prompt through the desktop clipboard bridge", async () => {
     current = withImage;
     const user = userEvent.setup();
@@ -943,6 +1050,7 @@ describe("display language", () => {
   it("localizes settings and persisted failures without translating user content", async () => {
     current = { ...withImage, unfinished_requests: [{
       id: "failed", text: "한국어 user request", status: "failed", turn_id: null,
+      width: 1024, height: 1024,
       error_code: "CUDA_OOM", message: "old Korean diagnostic",
     }] };
     api.set_language = vi.fn(async (language) => ({ ok: true, value: language }));

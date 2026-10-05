@@ -59,6 +59,30 @@ def test_generation_job_keeps_the_requested_image_size_when_settings_change(app)
     assert (completed["width"], completed["height"]) == (832, 1216)
 
 
+@pytest.mark.parametrize("failure_stage", ["prompt", "image"])
+def test_failed_placeholder_keeps_original_request_dimensions(app, failure_stage):
+    from moru.errors import MoruError
+
+    api = Api(app)
+    project = app.create_project()
+    app.update_settings(GenerationSettings(width=832, height=1216))
+    if failure_stage == "prompt":
+        def fail_prompt(*args, **kwargs):
+            raise MoruError("PROMPT_LLM_FAILED")
+
+        app.prompts.create = fail_prompt
+    else:
+        app.images.failures = ["GENERATION_FAILED"]
+    job = app.submit_request(project.id, "portrait")
+    app.scheduler.run_next()
+    app.update_settings(GenerationSettings(width=1216, height=832))
+
+    request = api.get_project(project.id)["value"]["unfinished_requests"][0]
+    assert request["id"] == job.request_id
+    assert request["status"] == "failed"
+    assert (request["width"], request["height"]) == (832, 1216)
+
+
 def test_manual_prompt_stays_in_details_instead_of_appearing_as_user_chat(app):
     api = Api(app)
     project = app.create_project()

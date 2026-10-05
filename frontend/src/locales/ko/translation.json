@@ -31,6 +31,8 @@
   "loadingModel": "이미지 모델을 불러오는 중…",
   "generating": "이미지 생성 중…",
   "generationProgress": "생성 진행",
+  "generationFailure": "생성 실패",
+  "generationCancelled": "생성 중지",
   "preparingScene": "장면을 준비하고 있어요",
   "imageComing": "곧 이미지가 여기에 나타나요",
   "generationSteps": "이미지 생성 단계",

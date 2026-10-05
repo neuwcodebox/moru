@@ -32,6 +32,8 @@ export type ImageItem = {
 };
 export type UnfinishedRequest = {
   id: string;
+  width: number;
+  height: number;
   text: string | null;
   status: string;
   error_code: string | null;

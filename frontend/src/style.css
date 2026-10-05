@@ -554,14 +554,73 @@ footer {
 .unfinished {
   margin-bottom: 20px;
 }
-.request-error {
+.request-failure {
+  border-color: #754149;
+  background: radial-gradient(ellipse at center, #482b34, #291f27 80%);
+  color: #f3c2c5;
+}
+.image-result .request-failure {
+  margin-top: 16px;
+}
+.failure-content {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 15px;
+  gap: 18px;
+  padding: 24px;
+  text-align: center;
   font-size: 13px;
 }
-.request-error button {
-  font-size: 12px;
+.failure-symbol {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-top: auto;
+  color: #f1a3ad;
+}
+.failure-content p {
+  flex-shrink: 0;
+  max-width: 320px;
+  margin: 0;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.failure-content button {
+  flex-shrink: 0;
+  margin-bottom: auto;
+  padding: 9px 16px;
+  border-color: #a55f6b;
+  border-radius: 10px;
+  background: #643743;
+  color: #ffe5e8;
+  font-size: 13px;
+}
+.failure-content button:hover:not(:disabled) {
+  border-color: #d68a96;
+  background: #794451;
+}
+.request-failure.is-cancelled {
+  border-color: #394451;
+  background: radial-gradient(ellipse at center, #2a3545, #1b2129 75%);
+  color: #c5d1e2;
+}
+.is-cancelled .failure-symbol {
+  color: #b5c3d6;
+}
+.is-cancelled .failure-content button {
+  border-color: #61718b;
+  background: #354255;
+  color: #e0e8f3;
+}
+.is-cancelled .failure-content button:hover:not(:disabled) {
+  border-color: #899aaf;
+  background: #43536a;
 }
 .overlay {
   position: fixed;
