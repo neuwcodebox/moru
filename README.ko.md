@@ -70,6 +70,8 @@ Windows, NVIDIA GPU와 드라이버, Windows WebView2 Runtime이 필요합니다
 
 ### 포터블 ZIP
 
+[Moru.zip 다운로드 (Google Drive)](https://drive.google.com/file/d/1Y_aYECQ6VqFdV51_GoDl_Uy2-r51NWwW/view?usp=sharing)
+
 1. `Moru.zip` 전체를 압축 해제하고 `Moru.exe`를 실행합니다.
 2. **모델 설정**에서 필요한 모델을 다운로드하거나 이미 가진 로컬 파일을 선택합니다.
 3. 입력창에 원하는 장면을 적어 전송하고, 이미지가 나오면 수정 요청을 이어갑니다.
@@ -77,6 +79,24 @@ Windows, NVIDIA GPU와 드라이버, Windows WebView2 Runtime이 필요합니다
 포터블 배포본에는 앱 실행에 필요한 런타임이 포함되므로 Python, Node.js, ComfyUI를
 별도로 설치할 필요가 없습니다. 모델은 따로 준비하며 각 배포자의 라이선스를 따릅니다.
 모델을 다운로드할 때는 인터넷 연결이 필요합니다.
+
+### 모델 수동 다운로드
+
+앱에서 다운로드가 안 되면 해당 모델의 **모델 설정 → 직접 다운로드 하기**를 열거나
+아래 파일 페이지 링크를 이용하세요. Hugging Face의 다운로드 버튼으로 파일을 받은 뒤,
+Moru의 해당 모델에서 **파일 선택**을 눌러 받은 파일을 지정합니다.
+파일 이름을 바꿀 필요 없이 원하는 폴더에 저장할 수 있습니다.
+
+프롬프트 작성·문장 이해·이미지 복원 모델은 두 Anima 버전에 공통으로 필요합니다.
+Anima는 사용할 버전만 받으면 됩니다. 두 버전을 모두 사용하려면 둘 다 받으세요.
+
+| 모델 | 받을 파일 |
+| --- | --- |
+| 프롬프트 작성 모델 | [Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive/blob/c09cdbcdb1fefad6d335809d445621b5f5ba0c6e/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf) |
+| 문장 이해 모델 | [qwen_3_06b_base.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/text_encoders/qwen_3_06b_base.safetensors) |
+| 이미지 복원 모델 | [qwen_image_vae.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/vae/qwen_image_vae.safetensors) |
+| Anima Turbo | [anima-turbo-v1.1.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/diffusion_models/anima-turbo-v1.1.safetensors) |
+| Anima Aesthetic | [anima-aesthetic-v1.1.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/diffusion_models/anima-aesthetic-v1.1.safetensors) |
 
 ### 소스에서 실행
 

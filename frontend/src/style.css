@@ -861,6 +861,21 @@ footer {
   margin: 10px 0 0;
   font-size: 12px;
 }
+.manual-download {
+  margin-top: 12px;
+  font-size: 12px;
+}
+.manual-download summary {
+  cursor: pointer;
+  color: #a8b5c7;
+}
+.manual-download .hint {
+  margin: 10px 0;
+}
+.manual-download a {
+  color: #b8d6ff;
+  text-underline-offset: 3px;
+}
 
 .brand-group {
   display: flex;

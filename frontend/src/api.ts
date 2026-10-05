@@ -65,6 +65,7 @@ export type ModelStatus = {
   id: string;
   available: boolean;
   filename?: string | null;
+  manual_download?: { url: string; filename: string } | null;
   download?: {
     model_id: string;
     state: string;

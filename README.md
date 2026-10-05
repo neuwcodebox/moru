@@ -70,6 +70,8 @@ You need Windows, an NVIDIA GPU with its drivers, and the Windows WebView2 Runti
 
 ### Portable ZIP
 
+[Download Moru.zip (Google Drive)](https://drive.google.com/file/d/1Y_aYECQ6VqFdV51_GoDl_Uy2-r51NWwW/view?usp=sharing)
+
 1. Extract the entire `Moru.zip` archive and run `Moru.exe`.
 2. Open **Model setup** to download the required models or select local files you already have.
 3. Describe a scene in the input box and send it. Continue with changes after the image appears.
@@ -77,6 +79,24 @@ You need Windows, an NVIDIA GPU with its drivers, and the Windows WebView2 Runti
 The portable build includes the application runtimes, so you do not need to install Python,
 Node.js, or ComfyUI separately. Models are downloaded separately; their use is governed
 by their distributors' licenses. Downloading models requires an internet connection.
+
+### Manual model download
+
+If downloading in the app fails, open **Model setup → Manual download** for the model,
+or use the file-page links below. Click the download button on Hugging Face, then use
+**Select file** for the matching model in Moru to choose the downloaded file.
+You can keep the original filename and save it anywhere.
+
+The prompt-writing, text-understanding and image-decoding models are required for both
+Anima versions. Download the Anima version you want to use; download both to use both.
+
+| Model | File to download |
+| --- | --- |
+| Prompt-writing model | [Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive/blob/c09cdbcdb1fefad6d335809d445621b5f5ba0c6e/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf) |
+| Text-understanding model | [qwen_3_06b_base.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/text_encoders/qwen_3_06b_base.safetensors) |
+| Image-decoding model | [qwen_image_vae.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/vae/qwen_image_vae.safetensors) |
+| Anima Turbo | [anima-turbo-v1.1.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/diffusion_models/anima-turbo-v1.1.safetensors) |
+| Anima Aesthetic | [anima-aesthetic-v1.1.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/diffusion_models/anima-aesthetic-v1.1.safetensors) |
 
 ### Run from source
 

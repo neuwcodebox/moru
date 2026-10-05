@@ -2,7 +2,59 @@ import pytest
 from test_conversation import generate
 
 from moru.api import Api
+from moru.config import ModelPaths
 from moru.domain import GenerationSettings, PromptSettings
+from moru.downloads import ModelDownloads
+
+
+@pytest.mark.parametrize(
+    "model_id, page_url, filename",
+    [
+        (
+            "prompt",
+            "https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive/"
+            "blob/c09cdbcdb1fefad6d335809d445621b5f5ba0c6e/"
+            "Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
+            "Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
+        ),
+        *[
+            (
+                model_id,
+                "https://huggingface.co/circlestone-labs/Anima/"
+                f"blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/{relative_path}",
+                filename,
+            )
+            for model_id, relative_path, filename in [
+                (
+                    "anima-turbo-v1.1",
+                    "diffusion_models/anima-turbo-v1.1.safetensors",
+                    "anima-turbo-v1.1.safetensors",
+                ),
+                (
+                    "anima-aesthetic-v1.1",
+                    "diffusion_models/anima-aesthetic-v1.1.safetensors",
+                    "anima-aesthetic-v1.1.safetensors",
+                ),
+                (
+                    "text_encoder",
+                    "text_encoders/qwen_3_06b_base.safetensors",
+                    "qwen_3_06b_base.safetensors",
+                ),
+                ("vae", "vae/qwen_image_vae.safetensors", "qwen_image_vae.safetensors"),
+            ]
+        ],
+    ],
+)
+def test_model_setup_provides_exact_file_pages_and_names_without_network_access(
+    app, tmp_path, model_id, page_url, filename
+):
+    downloads = ModelDownloads(ModelPaths(tmp_path), executor=app.scheduler)
+    api = Api(app, downloads=downloads)
+
+    for models in (api.bootstrap()["value"]["models"], api.get_model_status()["value"]):
+        model = next(item for item in models if item["id"] == model_id)
+        assert model["manual_download"] == {"url": page_url, "filename": filename}
+        assert model["filename"] is None
 
 
 def test_main_conversation_view_hides_prompt_and_generation_metadata(app):

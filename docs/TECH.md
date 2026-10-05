@@ -483,7 +483,13 @@ models/
 
 첫 실행 시 필요한 모델이 없으면 앱 UI 안에서 다운로드한다.
 
-사용자에게 내부 파일명이나 Hugging Face 구조를 노출할 필요는 없다.
+기본 흐름은 모델 역할과 준비 상태를 안내한다. 수동 다운로드가 필요한 사용자는
+모델 설정의 접힌 안내에서 정확한 원본 파일 이름과 Hugging Face 파일 페이지를 확인한다.
+`ModelDownloads.status`가 manifest의 고정 revision URL에서 `/resolve/`를 `/blob/`으로
+바꾼 파일 페이지 URL과 원본 파일 이름을 `manual_download`로 제공한다.
+React에 모델 URL 목록을 따로 두지 않는다. 다운로드 실패 시 안내를 펼치고,
+`target="_blank"` 링크는 pywebview의 기본 외부 브라우저 열기 동작을 사용한다.
+받은 파일은 기존 `select_local_model` 흐름으로 연결한다.
 
 모델 manifest 예:
 

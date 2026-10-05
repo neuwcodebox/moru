@@ -3,6 +3,49 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import ModelsDialog from "./ModelsDialog";
 
+it.each([
+  ["ko", false], ["ko", true], ["en", false], ["en", true],
+] as const)("offers browser download and local selection in %s (failed: %s)", async (language, failed) => {
+  const { default: i18n } = await import("./i18n");
+  await i18n.changeLanguage(language);
+  const user = userEvent.setup();
+  const filename = "Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf";
+  const url = `https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive/blob/c09cdbcdb1fefad6d335809d445621b5f5ba0c6e/${filename}`;
+  let models = [{
+    id: "prompt", available: false, filename: null as string | null,
+    manual_download: { url, filename },
+    download: failed ? {
+      model_id: "prompt", state: "failed", received: 0, total: 100,
+      error_code: "MODEL_DOWNLOAD_FAILED",
+    } : null,
+  }];
+  const select = vi.fn(async () => {
+    models = [{ ...models[0], available: true, filename, download: null }];
+    return { ok: true as const, value: models };
+  });
+  window.pywebview = { api: {
+    get_model_status: vi.fn(async () => ({ ok: true as const, value: models })),
+    select_local_model: select,
+  } };
+  render(<ModelsDialog initial={models} onUpdate={vi.fn()} onClose={vi.fn()} />);
+  const summary = screen.getByText(language === "ko" ? "직접 다운로드 하기" : "Manual download");
+  const details = summary.closest("details")!;
+  expect(details.open).toBe(failed);
+  if (!failed) await user.click(summary);
+  const link = screen.getByRole("link", { name: language === "ko" ? "Hugging Face에서 파일 받기" : "Download file on Hugging Face" });
+  expect(link.getAttribute("href")).toBe(url);
+  expect(link.getAttribute("target")).toBe("_blank");
+  expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  expect(screen.getByText(filename)).toBeTruthy();
+  expect(screen.getByText(language === "ko"
+    ? "파일 페이지의 다운로드 버튼으로 아래 파일을 받으세요. 다운로드가 끝나면 이 모델의 ‘파일 선택’에서 받은 파일을 선택하세요."
+    : "Use the download button on the file page to save the file below. Then use this model’s ‘Select file’ button to choose the downloaded file.")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: language === "ko" ? "파일 선택" : "Select file" }));
+  expect(select).toHaveBeenCalledWith("prompt");
+  expect(await screen.findByText(language === "ko" ? "준비됨" : "Ready")).toBeTruthy();
+  expect(screen.queryByRole("link")).toBeNull();
+});
+
 it("offers local selection and download for a missing model without exposing backend paths", async () => {
   const user = userEvent.setup();
   const models = [{ id: "prompt", available: false }];

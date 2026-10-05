@@ -102,6 +102,24 @@ def test_bundled_manifest_covers_all_runtime_models_with_fixed_revisions_and_sha
         assert len(item.sha256) == 64
 
 
+def test_manual_download_guidance_remains_available_after_network_failure(tmp_path):
+    executor = ManualExecutor()
+    downloads = ModelDownloads(
+        ModelPaths(tmp_path),
+        executor=executor,
+        open_url=Mock(side_effect=OSError("network down")),
+    )
+    before = next(item for item in downloads.status() if item["id"] == "prompt")
+    downloads.start("prompt")
+    executor.run_next()
+
+    failed = next(item for item in downloads.status() if item["id"] == "prompt")
+    assert failed["download"]["state"] == "failed"
+    assert failed["download"]["error_code"] == "MODEL_DOWNLOAD_FAILED"
+    assert failed["manual_download"] == before["manual_download"]
+    assert failed["manual_download"]["filename"].endswith("Q4_K_M.gguf")
+
+
 def test_default_generation_settings_match_requested_cfg_and_steps():
     from moru.domain import GenerationSettings
 

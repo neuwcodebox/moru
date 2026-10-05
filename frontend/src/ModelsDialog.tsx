@@ -61,6 +61,7 @@ export default function ModelsDialog({
       <p className="hint">
         {t("models.hint")}
       </p>
+      <p className="hint">{t("models.requiredHint")}</p>
       <div className="model-list">
         {models.map((model) => {
           const name = imageModelNames[model.id] ?? t(`models.names.${model.id}`, { defaultValue: model.id });
@@ -119,6 +120,16 @@ export default function ModelsDialog({
                 </div>
               )}
               {(d?.message || d?.error_code) && <p role="alert">{errorMessage(d)}</p>}
+              {!model.available && model.manual_download && (
+                <details className="manual-download" open={d?.state === "failed"}>
+                  <summary>{t("models.manualDownload")}</summary>
+                  <p className="hint">{t("models.manualInstructions")}</p>
+                  <p className="model-filename">{model.manual_download.filename}</p>
+                  <a href={model.manual_download.url} target="_blank" rel="noopener noreferrer">
+                    {t("models.filePage")}
+                  </a>
+                </details>
+              )}
             </div>
           );
         })}

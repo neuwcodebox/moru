@@ -105,15 +105,19 @@ class ModelDownloads:
 
     def status(self) -> list[dict]:
         with self._lock:
-            return [
-                {
+            result = []
+            for item in self._paths.status():
+                asset = self._manifest.get(item["id"])
+                download = self._downloads.get(item["id"])
+                result.append({
                     **item,
-                    "download": asdict(self._downloads[item["id"]])
-                    if item["id"] in self._downloads
-                    else None,
-                }
-                for item in self._paths.status()
-            ]
+                    "manual_download": {
+                        "url": asset.url.replace("/resolve/", "/blob/", 1),
+                        "filename": asset.url.rsplit("/", 1)[1],
+                    } if asset else None,
+                    "download": asdict(download) if download else None,
+                })
+            return result
 
     def start(self, model_id: str) -> Download:
         with self._lock:
