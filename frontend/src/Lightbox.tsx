@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 import Modal from "./Modal";
 import { Expand, LoaderCircle, ZoomIn, ZoomOut } from "lucide-react";
@@ -29,6 +30,7 @@ export default function Lightbox({
   onClose: () => void;
   onReturnFocus?: () => void;
 }) {
+  const { t } = useTranslation("dialogs");
   const [view, setView] = useState<ViewerTransform>({ zoom: 1, x: 0, y: 0 });
   const drag = useRef<{
     x: number;
@@ -66,7 +68,7 @@ export default function Lightbox({
   }
   return (
     <Modal
-      title="이미지 보기"
+      title={t("lightbox.title")}
       className="lightbox"
       onClose={onClose}
       onReturnFocus={onReturnFocus}
@@ -75,17 +77,17 @@ export default function Lightbox({
           {positionLabel && <span className="viewer-position" aria-live="polite">{positionLabel}</span>}
           <button
             className="icon-button"
-            aria-label="화면 맞춤"
-            title="화면 맞춤"
+            aria-label={t("lightbox.fit")}
+            title={t("lightbox.fit")}
             onClick={fit}
           >
             <Expand size={18} aria-hidden="true" />
           </button>
-          <button aria-label="축소" onClick={() => changeZoom(1 / 1.25)}>
+          <button aria-label={t("lightbox.zoomOut")} onClick={() => changeZoom(1 / 1.25)}>
             <ZoomOut size={18} aria-hidden="true" />
           </button>
           <span>{Math.round(view.zoom * 100)}%</span>
-          <button aria-label="확대" onClick={() => changeZoom(1.25)}>
+          <button aria-label={t("lightbox.zoomIn")} onClick={() => changeZoom(1.25)}>
             <ZoomIn size={18} aria-hidden="true" />
           </button>
         </div>
@@ -116,13 +118,13 @@ export default function Lightbox({
         }}
       >
         {source ? <img
-          alt="생성 이미지 전체 화면"
+          alt={t("lightbox.imageAlt")}
           src={source}
           draggable={false}
           style={{
             transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`,
           }}
-        /> : <LoaderCircle className="spinner" size={24} aria-label="이미지를 불러오는 중" />}
+        /> : <LoaderCircle className="spinner" size={24} aria-label={t("lightbox.loading")} />}
       </div>
     </Modal>
   );

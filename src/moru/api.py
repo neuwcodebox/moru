@@ -83,9 +83,14 @@ class Api:
             raise MoruError("CLIPBOARD_FAILED") from exc
 
     @endpoint
+    def get_language(self):
+        return self._app.get_language()
+
+    @endpoint
     def bootstrap(self):
         project = self._app.current_project()
         return {
+            "language": self._app.get_language(),
             "project": self._project_view(project.id),
             "projects": self._projects_view(),
             "settings": settings_to_wire(self._app.get_settings()),
@@ -229,6 +234,10 @@ class Api:
     @endpoint
     def get_prompt_settings(self):
         return asdict(self._app.get_prompt_settings())
+
+    @endpoint
+    def set_language(self, language):
+        return self._app.set_language(language)
 
     @endpoint
     def update_settings(self, values, prompt_values=None):

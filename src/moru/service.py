@@ -15,6 +15,7 @@ from PIL import UnidentifiedImageError
 
 from moru.domain import GenerationSettings, Image, Project, PromptSettings, PromptTurn, Request
 from moru.errors import MoruError
+from moru.language import SUPPORTED_LANGUAGES, saved_language
 from moru.ports import ImageGenerator, PromptGenerator
 from moru.repository import Repository
 
@@ -106,6 +107,18 @@ class Application:
 
     def get_prompt_settings(self) -> PromptSettings:
         return PromptSettings(**self.repository.get_preference("prompt_settings", {}))
+
+    def get_language(self) -> str:
+        return saved_language(self.repository.get_preference("language", "ko"))
+
+    def set_language(self, language: str) -> str:
+        with self._lock:
+            if self._closed:
+                raise MoruError("APP_CLOSED")
+            if not isinstance(language, str) or language not in SUPPORTED_LANGUAGES:
+                raise MoruError("INVALID_SETTINGS")
+            self.repository.set_preference("language", language)
+            return language
 
     def update_settings(
         self, settings: GenerationSettings, prompt_settings: PromptSettings | None = None

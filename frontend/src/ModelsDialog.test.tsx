@@ -58,3 +58,25 @@ it("displays byte progress and supports cancellation of an active download", asy
   await user.click(screen.getByText("취소"));
   expect(cancel).toHaveBeenCalledWith("prompt");
 });
+
+it("shows English model roles, progress and download errors without changing filenames", async () => {
+  const { default: i18n } = await import("./i18n");
+  await i18n.changeLanguage("en");
+  const models = [
+    { id: "prompt", available: false, filename: "사용자-model.gguf", download: {
+      model_id: "prompt", state: "downloading", received: 50, total: 100, error_code: null,
+    } },
+    { id: "vae", available: false, download: {
+      model_id: "vae", state: "failed", received: 0, total: 100,
+      error_code: "MODEL_CHECKSUM_FAILED", message: "이전 언어 메시지",
+    } },
+  ];
+  window.pywebview = { api: { get_model_status: vi.fn(async () => ({ ok: true as const, value: models })) } };
+  render(<ModelsDialog initial={models} onUpdate={vi.fn()} onClose={vi.fn()} />);
+  expect(screen.getByRole("dialog", { name: "Model setup" })).toBeTruthy();
+  expect(screen.getByRole("progressbar", { name: "Prompt-writing model download progress" })).toBeTruthy();
+  expect(screen.getByText("사용자-model.gguf")).toBeTruthy();
+  expect(screen.getByText("Image-decoding model")).toBeTruthy();
+  expect(screen.getByRole("alert").textContent).toContain("verification");
+  expect(screen.queryByText("이전 언어 메시지")).toBeNull();
+});

@@ -46,8 +46,10 @@ beforeEach(() => {
   current = structuredClone(empty);
   const success = (value: unknown) => Promise.resolve({ ok: true, value });
   api = {
+    get_language: vi.fn(() => success("ko")),
     bootstrap: vi.fn(() =>
       success({
+        language: "ko",
         project: current,
         projects: [empty],
         settings,
@@ -159,7 +161,7 @@ describe("conversation", () => {
     render(<App />);
     await screen.findByAltText("생성 이미지");
     await user.hover(screen.getByRole("button", { name: "이미지 전체 화면 보기" }));
-    expect(await screen.findByText("프롬프트 오류")).toBeTruthy();
+    expect(await screen.findByText("작업 또는 이미지를 찾을 수 없습니다.")).toBeTruthy();
   });
 
   it.each([
@@ -228,7 +230,7 @@ describe("conversation", () => {
     await user.click(screen.getByLabelText("알림 닫기"));
     api.fork.mockResolvedValue({ok: false, error: {code: "DATABASE_FAILED", message: "분기 오류"}});
     await user.click(screen.getByText("분기"));
-    expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("분기 오류"));
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("작업 기록을 저장하거나 불러올 수 없습니다."));
     expect(screen.queryByText("선택한 이미지까지 새 작업으로 분기했습니다.")).toBeNull();
   });
 
@@ -521,7 +523,7 @@ describe("conversation", () => {
     await user.type(screen.getByLabelText("이미지 요청"), "풍경{Enter}");
     await user.click(screen.getByRole("button", { name: "중지" }));
     expect((await screen.findByRole("alert")).textContent).toContain(
-      "중지 요청 실패",
+      "데스크톱 앱과 통신할 수 없습니다. 다시 시도해 주세요.",
     );
     expect(
       (screen.getByRole("button", { name: "중지" }) as HTMLButtonElement)
@@ -545,7 +547,7 @@ describe("conversation", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(api.generate_from_prompt).toHaveBeenCalledOnce();
     expect(screen.getByRole("alert").textContent).toContain(
-      "대화를 불러올 수 없습니다.",
+      "데스크톱 앱과 통신할 수 없습니다. 다시 시도해 주세요.",
     );
   });
   it("clears a failed request status as soon as its retry is accepted", async () => {
@@ -568,10 +570,10 @@ describe("conversation", () => {
     });
     const user = userEvent.setup();
     render(<App />);
-    await screen.findByText("이미지 생성에 실패했습니다.");
+    await screen.findByText("이미지 생성에 실패했습니다. 다시 시도해 주세요.");
     await user.click(screen.getByText("재시도"));
     await screen.findByText("프롬프트 작성 중…");
-    expect(screen.queryByText("이미지 생성에 실패했습니다.")).toBeNull();
+    expect(screen.queryByText("이미지 생성에 실패했습니다. 다시 시도해 주세요.")).toBeNull();
     expect(api.retry_request).toHaveBeenCalledWith("r1");
   });
   it("copies the edited prompt through the desktop clipboard bridge", async () => {
@@ -720,7 +722,7 @@ describe("conversation", () => {
       screen.getByLabelText("해상도 프리셋"),
       "832x1216",
     );
-    await user.type(screen.getByLabelText("Seed"), "9223372036854775807");
+    await user.type(screen.getByLabelText("시드"), "9223372036854775807");
     await user.click(screen.getByText("저장"));
     expect(api.update_settings).toHaveBeenCalledWith(
       {
@@ -741,7 +743,7 @@ describe("conversation", () => {
     await user.click(screen.getByText("고급 · 프롬프트 LLM"));
     const context = screen.getByLabelText("컨텍스트 크기");
     const output = screen.getByLabelText("출력 토큰 한도");
-    const thinking = screen.getByLabelText("Thinking 사용") as HTMLInputElement;
+    const thinking = screen.getByLabelText("추론 사용") as HTMLInputElement;
     expect((context as HTMLInputElement).value).toBe("4096");
     expect((output as HTMLInputElement).value).toBe("2048");
     expect(thinking.checked).toBe(true);
@@ -764,7 +766,7 @@ describe("conversation", () => {
       (screen.getByLabelText("컨텍스트 크기") as HTMLInputElement).value,
     ).toBe("8192");
     expect(
-      (screen.getByLabelText("Thinking 사용") as HTMLInputElement).checked,
+      (screen.getByLabelText("추론 사용") as HTMLInputElement).checked,
     ).toBe(false);
   });
 
@@ -774,10 +776,10 @@ describe("conversation", () => {
     await screen.findByText("어떤 장면을 그릴까요?");
     await user.click(screen.getByLabelText("생성 설정"));
     await user.selectOptions(screen.getByLabelText("모델"), "anima-aesthetic-v1.1");
-    expect((screen.getByLabelText("Steps") as HTMLInputElement).value).toBe("40");
-    expect((screen.getByLabelText("CFG") as HTMLInputElement).value).toBe("4.5");
-    await user.clear(screen.getByLabelText("Steps"));
-    await user.type(screen.getByLabelText("Steps"), "35");
+    expect((screen.getByLabelText("생성 단계") as HTMLInputElement).value).toBe("40");
+    expect((screen.getByLabelText("프롬프트 반영 강도 (CFG)") as HTMLInputElement).value).toBe("4.5");
+    await user.clear(screen.getByLabelText("생성 단계"));
+    await user.type(screen.getByLabelText("생성 단계"), "35");
     await user.click(screen.getByText("저장"));
     expect(api.update_settings).toHaveBeenCalledWith(
       { ...settings, model_id: "anima-aesthetic-v1.1", steps: 35, cfg: 4.5 },
@@ -785,8 +787,8 @@ describe("conversation", () => {
     );
     await user.click(screen.getByLabelText("생성 설정"));
     await user.selectOptions(screen.getByLabelText("모델"), "anima-turbo-v1.1");
-    expect((screen.getByLabelText("Steps") as HTMLInputElement).value).toBe("10");
-    expect((screen.getByLabelText("CFG") as HTMLInputElement).value).toBe("1");
+    expect((screen.getByLabelText("생성 단계") as HTMLInputElement).value).toBe("10");
+    expect((screen.getByLabelText("프롬프트 반영 강도 (CFG)") as HTMLInputElement).value).toBe("1");
   });
 
   it("defaults to medium reasoning and persists the chosen level while disabling it with thinking", async () => {
@@ -798,7 +800,7 @@ describe("conversation", () => {
     expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).value).toBe("medium");
     expect(screen.getByRole("option", { name: "높음 · 추론 예산의 100%" })).toBeTruthy();
     await user.selectOptions(screen.getByLabelText("추론 수준"), "high");
-    await user.click(screen.getByLabelText("Thinking 사용"));
+    await user.click(screen.getByLabelText("추론 사용"));
     expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).disabled).toBe(true);
     await user.click(screen.getByText("저장"));
     expect(api.update_settings).toHaveBeenCalledWith(settings, {
@@ -806,7 +808,7 @@ describe("conversation", () => {
     });
     await user.click(screen.getByLabelText("생성 설정"));
     await user.click(screen.getByText("고급 · 프롬프트 LLM"));
-    await user.click(screen.getByLabelText("Thinking 사용"));
+    await user.click(screen.getByLabelText("추론 사용"));
     expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).value).toBe("high");
     expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).disabled).toBe(false);
   });
@@ -894,4 +896,120 @@ it("waits for the pywebview ready event before loading state", async () => {
   window.pywebview = bridge;
   await act(async () => window.dispatchEvent(new Event("pywebviewready")));
   expect(await screen.findByText("어떤 장면을 그릴까요?")).toBeTruthy();
+});
+
+describe("display language", () => {
+  it("switches beside the logo without changing a draft or project, and restores the saved language", async () => {
+    let language = "ko";
+    api.bootstrap.mockImplementation(() => Promise.resolve({ ok: true, value: {
+      language, project: current, projects: [empty], settings,
+      generation_defaults: {}, prompt_settings: promptSettings,
+    }}));
+    api.set_language = vi.fn(async (next) => {
+      language = next as string;
+      return { ok: true, value: language };
+    });
+    const user = userEvent.setup();
+    const app = render(<App />);
+    await screen.findByText("어떤 장면을 그릴까요?");
+    await user.type(screen.getByRole("textbox", { name: "이미지 요청" }), "고양이 by the sea");
+    const languageSelector = screen.getByRole("combobox", { name: "언어" });
+    expect(languageSelector.closest("header")?.textContent).toContain("moru");
+    await user.selectOptions(languageSelector, "en");
+    expect(await screen.findByText("What scene shall we draw?")).toBeTruthy();
+    expect((screen.getByRole("textbox", { name: "Image request" }) as HTMLTextAreaElement).value).toBe("고양이 by the sea");
+    expect(document.documentElement.lang).toBe("en");
+    expect(api.submit_request).not.toHaveBeenCalled();
+    expect(api.create_project).not.toHaveBeenCalled();
+    app.unmount();
+    render(<App />);
+    expect(await screen.findByText("What scene shall we draw?")).toBeTruthy();
+    expect((screen.getByRole("combobox", { name: "Language" }) as HTMLSelectElement).value).toBe("en");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Language" }), "ko");
+    expect(await screen.findByText("어떤 장면을 그릴까요?")).toBeTruthy();
+    expect(document.documentElement.lang).toBe("ko");
+  });
+
+  it("keeps the current language and reports an error when saving the selection fails", async () => {
+    api.set_language = vi.fn(async () => ({ ok: false, error: { code: "DATABASE_FAILED", message: "internal details" } }));
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("어떤 장면을 그릴까요?");
+    await user.selectOptions(screen.getByRole("combobox", { name: "언어" }), "en");
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "작업 기록을 저장하거나 불러올 수 없습니다.");
+    expect((screen.getByRole("combobox", { name: "언어" }) as HTMLSelectElement).value).toBe("ko");
+  });
+
+  it("localizes settings and persisted failures without translating user content", async () => {
+    current = { ...withImage, unfinished_requests: [{
+      id: "failed", text: "한국어 user request", status: "failed", turn_id: null,
+      error_code: "CUDA_OOM", message: "old Korean diagnostic",
+    }] };
+    api.set_language = vi.fn(async (language) => ({ ok: true, value: language }));
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByAltText("생성 이미지");
+    await user.selectOptions(screen.getByRole("combobox", { name: "언어" }), "en");
+    expect(await screen.findByText("There is not enough GPU memory. Please reduce the image size.")).toBeTruthy();
+    expect(screen.getByText("한국어 user request")).toBeTruthy();
+    expect(screen.getByText("소녀를 그려줘")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Generation settings" }));
+    expect(screen.getByRole("dialog", { name: "Generation settings" })).toBeTruthy();
+    expect(screen.getByLabelText("Width")).toBeTruthy();
+    expect(screen.getByLabelText("Context size")).toBeTruthy();
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    expect(await screen.findByRole("dialog", { name: "Prompt" })).toBeTruthy();
+    expect((within(screen.getByRole("dialog", { name: "Prompt" })).getByRole("textbox") as HTMLTextAreaElement).value).toBe("private actual prompt");
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "View image full screen" }));
+    expect(screen.getByRole("dialog", { name: "Image viewer" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Fit to screen" })).toBeTruthy();
+  });
+});
+
+it("retranslates an existing error banner when changing the display language", async () => {
+  api.set_language = vi.fn(async (language) => ({ ok: true, value: language }));
+  api.create_project.mockResolvedValue({ ok: false, error: { code: "DATABASE_FAILED", message: "old message" } });
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  await user.click(screen.getByRole("button", { name: "새 작업" }));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "작업 기록을 저장하거나 불러올 수 없습니다.");
+  await user.selectOptions(screen.getByRole("combobox", { name: "언어" }), "en");
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Could not save or load the project history."));
+});
+
+it("does not allow a language change before the saved language has loaded", async () => {
+  let finish!: (value: unknown) => void;
+  api.bootstrap.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+  render(<App />);
+  expect((screen.getByRole("combobox", { name: "언어" }) as HTMLSelectElement).disabled).toBe(true);
+  await waitFor(() => expect(api.bootstrap).toHaveBeenCalled());
+  await act(async () => finish({ ok: true, value: {
+    language: "en", project: empty, projects: [empty], settings,
+    generation_defaults: {}, prompt_settings: promptSettings,
+  } }));
+  expect((screen.getByRole("combobox", { name: "Language" }) as HTMLSelectElement).disabled).toBe(false);
+});
+
+it.each([
+  ["en", "Could not load the model."],
+  ["ko", "모델을 불러올 수 없습니다."],
+])("uses saved %s for an error even when bootstrap fails", async (language, message) => {
+  api.get_language.mockResolvedValue({ ok: true, value: language });
+  api.bootstrap.mockResolvedValue({ ok: false, error: { code: "MODEL_LOAD_FAILED", message: "stale Korean error" } });
+  render(<App />);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", message);
+  expect(document.documentElement.lang).toBe(language);
+});
+
+it.each(["unreadable", "unsupported"])("uses English when the saved preference is %s and bootstrap fails", async (failure) => {
+  api.get_language.mockResolvedValue(failure === "unreadable"
+    ? { ok: false, error: { code: "DATABASE_FAILED", message: "private details" } }
+    : { ok: true, value: "fr" });
+  api.bootstrap.mockResolvedValue({ ok: false, error: { code: "DATABASE_FAILED", message: "Korean message" } });
+  render(<App />);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Could not save or load the project history.");
+  expect(document.documentElement.lang).toBe("en");
 });

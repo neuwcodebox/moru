@@ -1,3 +1,5 @@
+import { errorMessage } from "./errorMessages";
+import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { call } from "./api";
@@ -24,9 +26,10 @@ export default function ImagePreview({
   onFocus: () => void;
   onLoad: () => void;
 }) {
+  const { t } = useTranslation();
   const [revealed, setRevealed] = useState(false);
   const [prompt, setPrompt] = useState<string | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<unknown>(null);
   const suppressReveal = useRef(false);
   useEffect(() => {
     if (inactive) {
@@ -43,13 +46,13 @@ export default function ImagePreview({
   useEffect(() => {
     if (!revealed || prompt !== null) return;
     let current = true;
-    setError("");
+    setError(null);
     call<ImageDetails>("get_image_details", id)
       .then((details) => {
         if (current) setPrompt(details.prompt);
       })
       .catch((error) => {
-        if (current) setError(error instanceof Error ? error.message : "프롬프트를 불러올 수 없습니다.");
+        if (current) setError(error ?? { code: "PROMPT_LOAD_FAILED" });
       });
     return () => { current = false; };
   }, [id, revealed, prompt]);
@@ -57,7 +60,7 @@ export default function ImagePreview({
     <button
       className="image-button"
       style={imageFrameStyle(width, height)}
-      aria-label="이미지 전체 화면 보기"
+      aria-label={t("viewFullscreen")}
       onClick={() => {
         suppressReveal.current = true;
         setRevealed(false);
@@ -78,10 +81,10 @@ export default function ImagePreview({
       }}
       onBlur={() => setRevealed(false)}
     >
-      <img src={source} alt="생성 이미지" onLoad={onLoad} />
+      <img src={source} alt={t("generatedImage")}  onLoad={onLoad} />
       <span className={`image-prompt-overlay ${revealed ? "revealed" : ""}`} aria-hidden={!revealed}>
         <PromptText>
-          {error || prompt || <LoaderCircle className="spinner" size={18} />}
+          {error ? errorMessage(error) : prompt || <LoaderCircle className="spinner" size={18} />}
         </PromptText>
       </span>
     </button>

@@ -73,6 +73,7 @@ export type ModelStatus = {
   } | null;
 };
 export type Bootstrap = {
+  language: "ko" | "en";
   project: Project;
   projects: ProjectInfo[];
   settings: Settings;
@@ -87,6 +88,14 @@ export type Bridge = Record<
   string,
   (...args: unknown[]) => Promise<Result<unknown>>
 >;
+
+// Keep the boundary code, rather than freezing the display language at rejection time.
+export class BridgeError extends Error {
+  constructor(public readonly code: string) {
+    super(code);
+    this.name = "BridgeError";
+  }
+}
 declare global {
   interface Window {
     pywebview?: { api: Bridge };
@@ -94,9 +103,20 @@ declare global {
 }
 
 export async function call<T>(method: string, ...args: unknown[]): Promise<T> {
-  if (!window.pywebview?.api)
-    throw new Error("데스크톱 앱 연결을 기다리고 있습니다.");
-  const result = (await window.pywebview.api[method](...args)) as Result<T>;
-  if (!result.ok) throw new Error(result.error.message);
+  const bridge = window.pywebview?.api;
+  if (!bridge) throw new BridgeError("DESKTOP_UNAVAILABLE");
+  let result: Result<T>;
+  try {
+    result = (await bridge[method](...args)) as Result<T>;
+  } catch {
+    // Raw bridge failures can contain implementation details and local paths.
+    throw new BridgeError("BRIDGE_FAILED");
+  }
+  if (!result || typeof result.ok !== "boolean") throw new BridgeError("BRIDGE_FAILED");
+  if (!result.ok) {
+    if (!result.error || typeof result.error.code !== "string")
+      throw new BridgeError("BRIDGE_FAILED");
+    throw new BridgeError(result.error.code);
+  }
   return result.value;
 }

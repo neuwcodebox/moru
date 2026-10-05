@@ -14,7 +14,7 @@ from moru.clipboard import copy_image, copy_text
 from moru.config import ModelPaths, application_root
 from moru.diagnostics import PrivateTracebackFormatter
 from moru.downloads import ModelDownloads
-from moru.errors import MoruError
+from moru.language import model_file_filter, startup_language, startup_message
 from moru.prompting import LlamaPrompts
 from moru.repository import Repository
 from moru.service import Application
@@ -71,9 +71,7 @@ def main() -> None:
         elif sys.platform == "win32":
             ctypes.windll.user32.MessageBoxW(
                 0,
-                str(exc)
-                if isinstance(exc, MoruError)
-                else "앱을 시작할 수 없습니다. 앱 파일과 WebView2 Runtime을 확인해 주세요.",
+                startup_message(exc, startup_language(root)),
                 "Moru",
                 0x10,
             )
@@ -108,9 +106,7 @@ def _run_desktop(root, comfy_root, arguments):
         def choose_file(model_id):
             selected = window.create_file_dialog(
                 webview.FileDialog.OPEN,
-                file_types=(
-                    "모델 파일 (*.gguf)" if model_id == "prompt" else "모델 파일 (*.safetensors)",
-                ),
+                file_types=(model_file_filter(model_id, application.get_language()),),
             )
             return selected[0] if selected else None
 
