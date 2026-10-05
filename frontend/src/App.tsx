@@ -28,7 +28,6 @@ import PromptDialog from "./PromptDialog";
 import SettingsDialog from "./SettingsDialog";
 import ModelsDialog from "./ModelsDialog";
 import Conversation from "./Conversation";
-import appIcon from "../../docs/ICON.png?inline";
 
 export default function App() {
   const { t, i18n } = useTranslation();
@@ -271,10 +270,7 @@ export default function App() {
     <div className="app">
       <header inert={modalOpen}>
         <div className="brand-group">
-          <span className="brand">
-            <img className="brand-icon" src={appIcon} alt="" />
-            moru
-          </span>
+          <span className="brand">moru</span>
           <select
             className="language-select"
             aria-label={t("language")}

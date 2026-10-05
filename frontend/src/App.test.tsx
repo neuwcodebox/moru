@@ -124,6 +124,15 @@ beforeEach(() => {
   window.pywebview = { api };
 });
 
+it("shows only the moru wordmark beside the language selector in the header", async () => {
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  const header = screen.getByRole("banner");
+  expect(within(header).getByText("moru")).toBeTruthy();
+  expect(header.querySelector("img")).toBeNull();
+  expect(within(header).getByRole("combobox", { name: "언어" })).toBeTruthy();
+});
+
 describe("conversation", () => {
   it("copies the selected image itself and confirms inside its button", async () => {
     current = withImage;
