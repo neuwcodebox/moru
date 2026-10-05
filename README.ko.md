@@ -1,6 +1,6 @@
 # Moru
 
-[English](README.md) | [한국어](README.ko.md)
+[English](README.md)
 
 **말로 그리고, 대화로 다듬는 로컬 이미지 생성 앱.**
 
