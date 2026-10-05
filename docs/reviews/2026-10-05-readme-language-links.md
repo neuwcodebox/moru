@@ -1,6 +1,6 @@
 # README language links
 
-README.md is English and links only to README.ko.md with the label 한국어.
+README.md is English and links only to README.ko.md with the label Korean.
 README.ko.md is Korean and links only to README.md with the label English.
 Each link is the first content immediately under its H1. The README bodies are unchanged.
 

@@ -1,6 +1,6 @@
 # Moru
 
-[한국어](README.ko.md)
+[Korean](README.ko.md)
 
 **A local image-generation app: create with words, refine through conversation.**
 
