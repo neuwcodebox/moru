@@ -119,7 +119,13 @@ For substantial architecture changes, explain the tradeoff before replacing an e
 ## Definition of done
 
 Keep change/review/verification history in `docs/reviews/YYYY-MM-DD-description.md`.
-Use an additional ordered suffix for separate records with the same date and topic.
+Keep documentation proportional to the change:
+
+- Reuse one concise review record per topic; update it for follow-up work instead of creating a file for each iteration or review.
+- Summarize the final change, relevant validation, and material limitations in a short paragraph or a few bullets. Omit conversation history, discarded approaches, and step-by-step investigation logs.
+- Do not create separate research reports, candidate lists, raw exports, or measurement files unless explicitly requested or needed to maintain the feature.
+- Document each fact in its appropriate existing document and link to it instead of duplicating details across files.
+
 Keep the current requirements and architecture in `docs/SPEC.md` and `docs/TECH.md`.
 Keep `README.md` at the level of product introduction, main workflows, and getting started.
 Put detailed UI operations and individual change notes in the specification or review records.
