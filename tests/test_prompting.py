@@ -98,7 +98,7 @@ def test_truncated_llm_output_is_not_used_as_a_complete_image_prompt(tmp_path):
         LlamaPrompts(paths, load_llama=Mock(return_value=llm)).create(
             "girl", PromptSettings(thinking=True)
         )
-    assert error.value.code == "PROMPT_LLM_FAILED"
+    assert error.value.code == "PROMPT_OUTPUT_TOO_LONG"
 
 
 def test_context_change_reloads_the_model_but_output_limit_change_reuses_it(tmp_path):
@@ -223,7 +223,7 @@ def test_a_stream_without_a_normal_end_is_not_used_as_a_finished_prompt(tmp_path
         LlamaPrompts(paths, load_llama=Mock(return_value=llm)).create(
             "girl", PromptSettings(thinking=True)
         )
-    assert error.value.code == "PROMPT_LLM_FAILED"
+    assert error.value.code == "PROMPT_RESPONSE_INTERRUPTED"
 
 
 def test_live_thinking_and_prompt_are_separated_when_control_tags_span_tokens():
@@ -305,8 +305,23 @@ def test_oversized_current_state_fails_explicitly_instead_of_being_truncated():
 
 @pytest.mark.parametrize("content", ["은발 소녀, night", "少女, night", "девушка"])
 def test_non_english_script_is_not_forwarded_to_the_image_model(content):
-    with pytest.raises(MoruError):
+    with pytest.raises(MoruError) as error:
         read_completion(completion(content), Event())
+    assert error.value.code == "PROMPT_NON_ENGLISH_RESPONSE"
+
+
+@pytest.mark.parametrize("content", ["", "   ", "notes</think>", "Final image prompt:"])
+def test_missing_final_prompt_reports_an_empty_response(content):
+    with pytest.raises(MoruError) as error:
+        read_completion(completion(content), Event())
+    assert error.value.code == "PROMPT_EMPTY_RESPONSE"
+
+
+@pytest.mark.parametrize("content", ["<think>private notes", "Thinking Process: private notes"])
+def test_reasoning_without_a_final_prompt_reports_an_invalid_response(content):
+    with pytest.raises(MoruError) as error:
+        read_completion(completion(content), Event())
+    assert error.value.code == "PROMPT_INVALID_RESPONSE"
 
 
 class Scores(list):

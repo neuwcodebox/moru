@@ -341,7 +341,7 @@ class Application:
                 **context,
             )
         if not isinstance(prompt, str) or not prompt.strip():
-            raise MoruError("PROMPT_LLM_FAILED")
+            raise MoruError("PROMPT_EMPTY_RESPONSE")
         self._prompt_progress(job_id, prompt)
         return prompt
 

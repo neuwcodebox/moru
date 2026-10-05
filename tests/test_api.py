@@ -83,6 +83,58 @@ def test_failed_placeholder_keeps_original_request_dimensions(app, failure_stage
     assert (request["width"], request["height"]) == (832, 1216)
 
 
+@pytest.mark.parametrize("code", [
+    "PROMPT_EMPTY_RESPONSE",
+    "PROMPT_INVALID_RESPONSE",
+    "PROMPT_NON_ENGLISH_RESPONSE",
+    "PROMPT_OUTPUT_TOO_LONG",
+    "PROMPT_RESPONSE_INTERRUPTED",
+])
+def test_prompt_failure_cause_is_preserved_and_the_same_request_can_be_retried(app, code):
+    from moru.errors import MESSAGES, MoruError
+
+    api = Api(app)
+    project = app.create_project()
+    original_create = app.prompts.create
+
+    def fail_prompt(text, settings, cancelled, progress, **context):
+        progress("private reasoning", "partial prompt")
+        raise MoruError(code)
+
+    app.prompts.create = fail_prompt
+    job = app.submit_request(project.id, "portrait")
+    app.scheduler.run_next()
+
+    failed = api.get_job(job.id)["value"]
+    assert failed["error_code"] == code
+    assert failed["message"] == MESSAGES[code]
+    assert failed["prompt_text"] == ""
+    request = api.get_project(project.id)["value"]["unfinished_requests"][0]
+    assert request["error_code"] == code
+    assert request["message"] == MESSAGES[code]
+    assert app.images.inputs == []
+
+    app.prompts.create = original_create
+    retry = app.retry_request(job.request_id)
+    app.scheduler.run_next()
+    assert retry.request_id == job.request_id
+    assert api.get_job(retry.id)["value"]["state"] == "completed"
+    assert api.get_project(project.id)["value"]["unfinished_requests"] == []
+
+
+@pytest.mark.parametrize("response", [None, "", "   "])
+def test_missing_prompt_from_the_engine_reports_an_empty_response(app, response):
+    api = Api(app)
+    project = app.create_project()
+    app.prompts.create = lambda *args, **kwargs: response
+
+    job = app.submit_request(project.id, "portrait")
+    app.scheduler.run_next()
+
+    assert api.get_job(job.id)["value"]["error_code"] == "PROMPT_EMPTY_RESPONSE"
+    assert app.images.inputs == []
+
+
 def test_manual_prompt_stays_in_details_instead_of_appearing_as_user_chat(app):
     api = Api(app)
     project = app.create_project()

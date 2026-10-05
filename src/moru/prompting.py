@@ -56,10 +56,12 @@ def fit_messages(messages, count_tokens, input_limit):
 def final_prompt(content: str) -> str:
     # Templates may prefill the opening tag outside the generated content.
     prompt = answer_text(content.rsplit("</think>", 1)[-1]).partition("\n")[0]
-    if not prompt or "<think>" in prompt or prompt.startswith("Thinking Process:"):
-        raise MoruError("PROMPT_LLM_FAILED")
+    if not prompt:
+        raise MoruError("PROMPT_EMPTY_RESPONSE")
+    if "<think>" in prompt or prompt.startswith("Thinking Process:"):
+        raise MoruError("PROMPT_INVALID_RESPONSE")
     if any(char.isalpha() and "LATIN" not in unicodedata.name(char, "") for char in prompt):
-        raise MoruError("PROMPT_LLM_FAILED")
+        raise MoruError("PROMPT_NON_ENGLISH_RESPONSE")
     return prompt
 
 
@@ -158,14 +160,14 @@ def read_completion(
             check_cancelled(cancelled)
             choice = chunk["choices"][0]
             if choice.get("finish_reason") == "length":
-                raise MoruError("PROMPT_LLM_FAILED")
+                raise MoruError("PROMPT_OUTPUT_TOO_LONG")
             finished = choice.get("finish_reason") == "stop"
             content += choice["delta"].get("content") or ""
             if progress is not None:
                 progress(*stream_text(content, thinking))
         check_cancelled(cancelled)
     if not finished:
-        raise MoruError("PROMPT_LLM_FAILED")
+        raise MoruError("PROMPT_RESPONSE_INTERRUPTED")
     return final_prompt(content)
 
 

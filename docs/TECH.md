@@ -921,6 +921,11 @@ GPU 및 실제 WebView2 검증은 `scripts/smoke_*.py`에 분리되어 있으며
 프롬프트 LLM의 thinking은 기본적으로 켠다. 사고 과정은 생성용 프롬프트에서 제외하고
 완성된 최종 프롬프트만 Anima에 전달한다. `prompting` 상태는 대화의 생성 placeholder에
 표시하며, 토큰 제한 때문에 잘린 응답은 오류로 처리한다.
+프롬프트 검증·완료 오류는 `PROMPT_EMPTY_RESPONSE`, `PROMPT_INVALID_RESPONSE`,
+`PROMPT_NON_ENGLISH_RESPONSE`, `PROMPT_OUTPUT_TOO_LONG`, `PROMPT_RESPONSE_INTERRUPTED`로
+구분한다. 원인 코드는 요청에 저장해 bridge와 한국어·영어 오류 번역에 전달한다.
+분류되지 않은 추론 예외는 `PROMPT_LLM_FAILED`로 처리한다. 응답 원문과 사고 내용은
+오류 메시지나 로그에 추가하지 않는다.
 기본 프롬프트 모델은 HauhauCS Qwen3.5-4B Uncensored Aggressive Q4_K_M이다.
 기본 context는 4096, 출력 한도는 2048 tokens로 설정한다.
 프롬프트 작성 지침은 CUDA 추론 코드와 분리한 `prompt_instructions.py`에서 관리한다.

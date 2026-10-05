@@ -591,6 +591,11 @@ describe("conversation", () => {
   });
   it.each([
     ["PROMPT_LLM_FAILED", "프롬프트 준비에 실패했습니다. 다시 시도해 주세요."],
+    ["PROMPT_EMPTY_RESPONSE", "프롬프트 모델이 최종 프롬프트를 반환하지 않았습니다. 다시 시도해 주세요."],
+    ["PROMPT_INVALID_RESPONSE", "프롬프트 모델이 최종 프롬프트 대신 사고 과정을 반환했습니다. 다시 시도해 주세요."],
+    ["PROMPT_NON_ENGLISH_RESPONSE", "생성된 프롬프트에 영어 외 문자가 포함되었습니다. 다시 시도해 주세요."],
+    ["PROMPT_OUTPUT_TOO_LONG", "출력 토큰 한도에 도달해 프롬프트가 중단되었습니다. 재시도하거나 고급 설정에서 출력 한도를 늘리거나 추론 수준을 낮춰 주세요."],
+    ["PROMPT_RESPONSE_INTERRUPTED", "프롬프트 모델의 응답이 완료되기 전에 중단되었습니다. 다시 시도해 주세요."],
     ["GENERATION_FAILED", "이미지 생성에 실패했습니다. 다시 시도해 주세요."],
   ])("shows %s inside the image placeholder without a footer error", async (code, message) => {
     api.submit_request.mockImplementation(() => {
