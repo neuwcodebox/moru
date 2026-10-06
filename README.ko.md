@@ -68,11 +68,11 @@ Moru는 현재 이미지의 실제 프롬프트와 최근 요청을 참고해 �
 
 Windows, NVIDIA GPU와 드라이버, Windows WebView2 Runtime이 필요합니다.
 
-### 포터블 ZIP
+### 포터블 7z
 
-[Moru.zip 다운로드 (Google Drive)](https://drive.google.com/file/d/1Y_aYECQ6VqFdV51_GoDl_Uy2-r51NWwW/view?usp=sharing)
+[포터블 배포본 다운로드 (Google Drive)](https://drive.google.com/file/d/1Y_aYECQ6VqFdV51_GoDl_Uy2-r51NWwW/view?usp=sharing)
 
-1. `Moru.zip` 전체를 압축 해제하고 `Moru.exe`를 실행합니다.
+1. `Moru.7z` 전체를 압축 해제하고 `Moru.exe`를 실행합니다.
 2. **모델 준비**에서 필요한 모델을 다운로드하거나 이미 가진 로컬 파일을 선택합니다.
 3. 입력창에 원하는 장면을 적어 전송하고, 이미지가 나오면 수정 요청을 이어갑니다.
 

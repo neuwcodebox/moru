@@ -68,11 +68,11 @@ Projects, images, and settings live in the app's `data/` folder; downloaded mode
 
 You need Windows, an NVIDIA GPU with its drivers, and the Windows WebView2 Runtime.
 
-### Portable ZIP
+### Portable 7z
 
-[Download Moru.zip (Google Drive)](https://drive.google.com/file/d/1Y_aYECQ6VqFdV51_GoDl_Uy2-r51NWwW/view?usp=sharing)
+[Download portable build (Google Drive)](https://drive.google.com/file/d/1Y_aYECQ6VqFdV51_GoDl_Uy2-r51NWwW/view?usp=sharing)
 
-1. Extract the entire `Moru.zip` archive and run `Moru.exe`.
+1. Extract the entire `Moru.7z` archive and run `Moru.exe`.
 2. Open **Model setup** to download the required models or select local files you already have.
 3. Describe a scene in the input box and send it. Continue with changes after the image appears.
 

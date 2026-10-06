@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import sys
 import uuid
-import zipfile
 from pathlib import Path
 
 from moru.config import application_root
@@ -42,29 +41,46 @@ def copy_licenses(destination: Path, root: Path):
         shutil.copy2(python_license, destination / "Python-LICENSE.txt")
 
 
+def seven_zip() -> str:
+    executable = shutil.which("7z")
+    if executable:
+        return executable
+    installed = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "7-Zip/7z.exe"
+    if installed.is_file():
+        return str(installed)
+    raise FileNotFoundError("Install Windows 7-Zip or add 7z.exe to PATH before archiving")
+
+
 def archive_release(application: Path, release: Path):
+    application, release = application.resolve(), release.resolve()
     if not (application / "Moru.exe").is_file():
-        raise FileNotFoundError("Build Moru.exe before creating its ZIP")
+        raise FileNotFoundError("Build Moru.exe before creating its 7z archive")
+    executable = seven_zip()
     release.mkdir(exist_ok=True)
-    temporary_zip = release / "Moru.zip.part"
-    with zipfile.ZipFile(
-        temporary_zip, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True
-    ) as archive:
-        for path in application.rglob("*"):
-            archive.write(path, path.relative_to(application.parent))
-    os.replace(temporary_zip, release / "Moru.zip")
+    temporary = release / "Moru.7z.part"
+    archive = release / "Moru.7z"
+    temporary.unlink(missing_ok=True)
+    try:
+        subprocess.run(
+            [executable, "a", "-t7z", "-mx=5", "-mmt=4", "-bsp0", str(temporary), application.name],
+            cwd=application.parent, check=True,
+        )
+        subprocess.run([executable, "t", "-bsp0", str(temporary)], check=True)
+        os.replace(temporary, archive)
+    finally:
+        temporary.unlink(missing_ok=True)
     (release / "last-build.json").write_text(
-        json.dumps({"application": str(application), "zip": str(release / "Moru.zip")}),
+        json.dumps({"application": str(application), "archive": str(archive)}),
         encoding="utf-8",
     )
-    print(f"Portable ZIP: {release / 'Moru.zip'}")
+    print(f"Portable 7z: {archive}")
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--reuse-staging", type=Path)
-    parser.add_argument("--skip-zip", action="store_true")
-    parser.add_argument("--zip-only", action="store_true")
+    parser.add_argument("--skip-archive", action="store_true")
+    parser.add_argument("--archive-only", action="store_true")
     options = parser.parse_args()
     if sys.platform != "win32":
         raise RuntimeError("Build Windows portable releases on Windows")
@@ -73,11 +89,13 @@ def main():
     staging = staging.resolve()
     if not staging.is_relative_to((root / "build").resolve()) or staging == root / "build":
         raise ValueError("Build staging must be a subdirectory of the project build folder")
-    if options.zip_only:
+    if options.archive_only:
         if options.reuse_staging is None:
-            parser.error("--zip-only requires --reuse-staging")
+            parser.error("--archive-only requires --reuse-staging")
         archive_release(staging / "dist/Moru", root / "release")
         return
+    if not options.skip_archive:
+        seven_zip()
     subprocess.run([sys.executable, str(root / "scripts/setup_comfyui.py")], check=True)
     subprocess.run(["npm.cmd", "run", "build"], cwd=root / "frontend", check=True)
     staging.mkdir(parents=True, exist_ok=True)
@@ -158,7 +176,7 @@ def main():
         (application / directory).mkdir(exist_ok=True)
     copy_licenses(application / "licenses", root)
     (application / "README.txt").write_text(
-        "Moru\n\nZIP 전체를 압축 해제한 뒤 Moru.exe를 실행하세요.\n"
+        "Moru\n\n7z 전체를 압축 해제한 뒤 Moru.exe를 실행하세요.\n"
         "모델 준비 창에서 모델을 다운로드하거나 로컬 파일을 선택합니다.\n"
         "모델 준비 후에는 오프라인으로 사용할 수 있습니다.\n"
         "작업은 data 폴더에 저장됩니다. 앱을 이동할 때 data와 models도 함께 옮기세요.\n"
@@ -168,7 +186,7 @@ def main():
     )
     release = root / "release"
     release.mkdir(exist_ok=True)
-    if options.skip_zip:
+    if options.skip_archive:
         print(f"Portable application: {application}")
         return
     archive_release(application, release)

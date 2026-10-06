@@ -11,7 +11,7 @@
 사용자 경험:
 
 ```text
-Moru.zip 압축 해제
+Moru.7z 압축 해제
 → Moru.exe 실행
 → 앱 창
 → 자연어 입력
@@ -533,7 +533,7 @@ App의 시작 검사도 카탈로그의 선택 모델과 prompt asset만 요구�
 
 ## 14. 모델 다운로드
 
-기본 portable ZIP은 모델을 제외할 수 있다.
+기본 portable 7z는 모델을 제외할 수 있다.
 
 첫 실행 시 필요한 모델이 없으면 앱 UI 안에서 다운로드한다.
 
@@ -565,7 +565,7 @@ React에 모델 URL 목록을 따로 두지 않는다. 다운로드 실패 시 �
 - SHA-256 검증
 - 완료 후 atomic rename
 
-선택적으로 모델 포함 Full ZIP도 만들 수 있다.
+선택적으로 모델 포함 Full 7z도 만들 수 있다.
 
 ---
 
@@ -695,7 +695,7 @@ Python의 MODEL_DEFAULTS를 bootstrap에서 UI에 전달한다. 모델 전환 �
 일반 사용자는 다음만 수행한다.
 
 ```text
-ZIP 다운로드
+7z 다운로드
 → 압축 해제
 → Moru.exe 더블클릭
 ```
@@ -706,7 +706,7 @@ ZIP 다운로드
 
 - PyInstaller `onedir`
 - `windowed/noconsole`
-- 결과 폴더 전체를 ZIP으로 배포
+- 결과 폴더 전체를 7z로 배포
 
 `onefile`은 사용하지 않는다.
 
@@ -923,7 +923,7 @@ Mock LLM + Mock Image Worker:
 - model downloader
 - PyInstaller onedir
 - no-console worker spawning
-- portable ZIP
+- portable 7z
 - clean Windows machine smoke test
 
 ---
@@ -942,7 +942,7 @@ Mock LLM + Mock Image Worker:
 - 사용자가 서버/스크립트/콘솔을 실행하게 하지 않는다.
 - 이미지 결과는 불변이며 재생성은 같은 행의 새 버전, 분기는 독립 세션 복사다.
 - release 사용자는 Python/Node/ComfyUI를 설치하지 않는다.
-- release는 portable ZIP이며 실행 진입점은 `Moru.exe` 하나다.
+- release는 portable 7z이며 실행 진입점은 `Moru.exe` 하나다.
 
 ## 31. 구현 및 고정 런타임
 
@@ -1153,7 +1153,12 @@ uv run --extra inference python scripts/build_portable.py
 uv run --extra inference python scripts/smoke_portable.py <빌드된-Moru-폴더> --ui-only
 ```
 
-배포 ZIP은 release/Moru.zip이며 모델은 포함하지 않는다. 사용자 데이터와 모델은 빌드에 넣지 않는다.
+배포 파일은 `release/Moru.7z`이며 모델과 사용자 데이터는 포함하지 않는다.
+압축에는 Windows용 7-Zip을 사용한다. PATH의 `7z` 또는 `%ProgramFiles%/7-Zip/7z.exe`를 찾는다.
+빌드 전에 설치하려면 `winget install --id 7zip.7zip --exact --source winget`을 실행한다.
+임시 압축 파일의 무결성 검사에 성공한 뒤 기존 배포 파일을 교체한다.
+`--skip-archive`는 폴더만 빌드하며, `--archive-only --reuse-staging <빌드-폴더>`는
+기존 `dist/Moru`를 다시 압축한다.
 
 ### 표시 언어
 
