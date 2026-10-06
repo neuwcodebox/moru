@@ -20,7 +20,7 @@ import type {
   Project,
   ProjectInfo,
   PromptSettings,
-  GenerationDefaults,
+  ImageModel,
   Settings,
 } from "./api";
 import Lightbox from "./Lightbox";
@@ -34,9 +34,7 @@ export default function App() {
   const [project, setProject] = useState<Project | null>(null);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [generationDefaults, setGenerationDefaults] = useState<GenerationDefaults>(
-    {},
-  );
+  const [imageModels, setImageModels] = useState<ImageModel[]>([]);
   const [promptSettings, setPromptSettings] = useState<PromptSettings | null>(
     null,
   );
@@ -135,20 +133,14 @@ export default function App() {
         setProject(result.project);
         setProjects(result.projects);
         setSettings(result.settings);
-        setGenerationDefaults(result.generation_defaults);
+        setImageModels(result.image_models);
         setPromptSettings(result.prompt_settings);
         setError("");
         setModels(result.models ?? []);
-        const required = [
-          "prompt",
-          result.settings.model_id,
-          "text_encoder",
-          "vae",
-        ];
+        const selected = result.image_models.find((model) => model.id === result.settings.model_id);
+        const required = ["prompt", ...(selected?.asset_ids ?? [])];
         if (
-          result.models?.some(
-            (model) => required.includes(model.id) && !model.available,
-          )
+          result.models && required.some((id) => !result.models?.find((model) => model.id === id)?.available)
         )
           setModelsOpen(true);
       } catch (error) {
@@ -467,7 +459,7 @@ export default function App() {
       {settingsOpen && settings && promptSettings && (
         <SettingsDialog
           settings={settings}
-          generationDefaults={generationDefaults}
+          imageModels={imageModels}
           promptSettings={promptSettings}
           onClose={() => setSettingsOpen(false)}
           onSave={async (draft, promptDraft) => {
@@ -478,9 +470,11 @@ export default function App() {
           }}
         />
       )}
-      {modelsOpen && (
+      {modelsOpen && settings && (
         <ModelsDialog
           initial={models}
+          imageModels={imageModels}
+          initialModelId={settings.model_id}
           onUpdate={setModels}
           onClose={() => setModelsOpen(false)}
         />

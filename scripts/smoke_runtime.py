@@ -34,6 +34,7 @@ def main():
     parser.add_argument("--cfg", type=float)
     parser.add_argument("--cancel-restart", action="store_true")
     options = parser.parse_args()
+    model_id = f"anima-{options.image or 'turbo'}-v1.1"
     root = application_root()
     configure_logging(root)
     paths = ModelPaths(root)
@@ -49,11 +50,15 @@ def main():
                 thinking=options.thinking,
                 reasoning_level=options.reasoning_level,
             )
-            prompt = prompts.create("은발 소녀가 편의점 앞에서 컵라면을 먹는 장면", prompt_settings)
+            prompt = prompts.create(
+                "은발 소녀가 편의점 앞에서 컵라면을 먹는 장면", prompt_settings, model_id=model_id
+            )
             if not prompt.strip() or "Thinking Process:" in prompt or "<think>" in prompt:
                 raise AssertionError("create did not return a finished image prompt")
             print("prompt_create_ok", flush=True)
-            prompt = prompts.refine(prompt, "밤으로 바꾸고 비가 조금 오게 해줘", prompt_settings)
+            prompt = prompts.refine(
+                prompt, "밤으로 바꾸고 비가 조금 오게 해줘", prompt_settings, model_id=model_id
+            )
             if not prompt.strip() or "Thinking Process:" in prompt or "<think>" in prompt:
                 raise AssertionError("refine did not return a finished image prompt")
             print("prompt_refine_ok", flush=True)
@@ -81,7 +86,7 @@ def main():
             print("prompt_retry_after_cancel_ok", flush=True)
         if options.image:
             settings = GenerationSettings(
-                model_id=f"anima-{options.image}-v1.1",
+                model_id=model_id,
                 width=options.width,
                 height=options.height,
                 steps=options.steps,

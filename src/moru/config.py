@@ -6,27 +6,7 @@ import sys
 from pathlib import Path
 
 from moru.errors import MoruError
-
-DEFAULT_MODEL_FILES = {
-    "prompt": (
-        "prompt/prompt-model.gguf",
-        "prompt/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
-        "prompt/Qwen3.5-4B-Q4_K_M.gguf",
-    ),
-    "anima-turbo-v1.1": (
-        "anima/diffusion_models/anima-turbo-v1.1.safetensors",
-        "anima/anima_turboV11.safetensors",
-    ),
-    "anima-aesthetic-v1.1": (
-        "anima/diffusion_models/anima-aesthetic-v1.1.safetensors",
-        "anima/anima-aesthetic-v1.1.safetensors",
-    ),
-    "text_encoder": (
-        "anima/text_encoders/qwen_3_06b_base.safetensors",
-        "anima/qwen_3_600m.safetensors",
-    ),
-    "vae": ("anima/vae/qwen_image_vae.safetensors", "anima/qwen_image_vae.safetensors"),
-}
+from moru.models import DEFAULT_MODEL_FILES, RETIRED_MODELS, image_model
 
 
 def application_root() -> Path:
@@ -46,11 +26,12 @@ class ModelPaths:
         try:
             overrides = json.loads(self.config_path.read_text(encoding="utf-8"))
             if not isinstance(overrides, dict) or any(
-                key not in DEFAULT_MODEL_FILES or not isinstance(value, str)
+                (key not in DEFAULT_MODEL_FILES and key not in RETIRED_MODELS)
+                or not isinstance(value, str)
                 for key, value in overrides.items()
             ):
                 raise ValueError("invalid model path configuration")
-            return overrides
+            return {key: value for key, value in overrides.items() if key in DEFAULT_MODEL_FILES}
         except (ValueError, OSError) as exc:
             raise MoruError("MODEL_LOAD_FAILED") from exc
 
@@ -89,18 +70,14 @@ class ModelPaths:
         result = []
         for key in DEFAULT_MODEL_FILES:
             path = self.get(key)
-            available = path.is_file()
+            available = path.is_file() and path.stat().st_size > 0
             result.append(
                 {"id": key, "available": available, "filename": path.name if available else None}
             )
         return result
 
     def image_payload(self, model_id: str) -> dict[str, str]:
-        paths = {
-            "diffusion": self.get(model_id),
-            "text_encoder": self.get("text_encoder"),
-            "vae": self.get("vae"),
-        }
-        if any(not path.is_file() for path in paths.values()):
+        paths = {role: self.get(asset_id) for role, asset_id in image_model(model_id).files}
+        if any(not path.is_file() or path.stat().st_size == 0 for path in paths.values()):
             raise MoruError("IMAGE_MODEL_NOT_FOUND")
         return {key: str(path) for key, path in paths.items()}

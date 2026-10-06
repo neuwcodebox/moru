@@ -47,8 +47,8 @@ Reopen a project later and continue where you left off.
 
 - **Edit the actual prompt.** Inspect or copy the prompt behind an image, change it yourself,
   and generate another version directly.
-- **Choose how to generate.** Use Anima Turbo for quick iterations or Anima Aesthetic for
-  generation with more sampling steps. Adjust image dimensions, Steps, CFG, and Seed.
+- **Choose how to generate.** Choose Anima Turbo or Anima Aesthetic.
+  Adjust image dimensions, Steps, CFG, and Seed.
 - **Tune the prompt LLM.** Adjust thinking, reasoning level, context and output limits,
   and how much recent conversation it uses.
 - **Inspect and share results.** Open images in the full-screen viewer, zoom and pan,
@@ -87,8 +87,10 @@ or use the file-page links below. Click the download button on Hugging Face, the
 **Select file** for the matching model in Moru to choose the downloaded file.
 You can keep the original filename and save it anywhere.
 
-The prompt-writing, text-understanding and image-decoding models are required for both
-Anima versions. Download the Anima version you want to use; download both to use both.
+The prompt-writing model is required for both Anima versions. Choose the family and
+version in **Model setup**, then prepare its listed files. Choose the active model separately
+in **Generation settings**. Anima needs one version plus the
+shared text-understanding and image-decoding models.
 
 | Model | File to download |
 | --- | --- |

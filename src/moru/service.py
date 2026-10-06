@@ -16,6 +16,7 @@ from PIL import UnidentifiedImageError
 from moru.domain import GenerationSettings, Image, Project, PromptSettings, PromptTurn, Request
 from moru.errors import MoruError
 from moru.language import SUPPORTED_LANGUAGES, saved_language
+from moru.models import image_model
 from moru.ports import ImageGenerator, PromptGenerator
 from moru.repository import Repository
 
@@ -126,6 +127,7 @@ class Application:
         with self._lock:
             if self._closed:
                 raise MoruError("APP_CLOSED")
+            image_model(settings.model_id)
             values = {"settings": asdict(settings)}
             if prompt_settings is not None:
                 values["prompt_settings"] = asdict(prompt_settings)
@@ -179,6 +181,7 @@ class Application:
             request = self.repository.get_request(request_id)
             if request.status not in ("failed", "cancelled"):
                 raise MoruError("INVALID_REQUEST")
+            image_model(request.settings.model_id)
             self.repository.set_request_status(request_id, "pending")
             return self._enqueue(replace(request, status="pending", error_code=None))
 

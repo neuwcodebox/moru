@@ -14,6 +14,15 @@ export type PromptSettings = {
   reasoning_level: "low" | "medium" | "high";
 };
 export type GenerationDefaults = Record<string, Pick<Settings, "steps" | "cfg">>;
+export type ImageModel = {
+  id: string;
+  name: string;
+  family: string;
+  family_name: string;
+  variant_name: string;
+  asset_ids: string[];
+  defaults: Pick<Settings, "steps" | "cfg">;
+};
 export type ProjectInfo = {
   id: string;
   created_at: string;
@@ -44,7 +53,7 @@ export type Project = ProjectInfo & {
   images: ImageItem[];
   unfinished_requests: UnfinishedRequest[];
 };
-export type ImageDetails = { id: string; prompt: string; settings: Settings };
+export type ImageDetails = { id: string; prompt: string; settings: Settings; model_name: string };
 export type Job = {
   id: string;
   width: number;
@@ -81,6 +90,7 @@ export type Bootstrap = {
   projects: ProjectInfo[];
   settings: Settings;
   generation_defaults: GenerationDefaults;
+  image_models: ImageModel[];
   prompt_settings: PromptSettings;
   models?: ModelStatus[];
 };

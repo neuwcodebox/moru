@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 import App from "./App";
+import { imageModels } from "./modelFixtures";
 import Lightbox from "./Lightbox";
 import type { Project, PromptSettings, Settings } from "./api";
 
@@ -53,6 +54,7 @@ beforeEach(() => {
         project: current,
         projects: [empty],
         settings,
+        image_models: imageModels,
         generation_defaults: {
           "anima-turbo-v1.1": { steps: 10, cfg: 1 },
           "anima-aesthetic-v1.1": { steps: 40, cfg: 4.5 },
@@ -87,6 +89,7 @@ beforeEach(() => {
       success({
         id: "i1",
         prompt: "private actual prompt",
+        model_name: "Anima Turbo",
         settings: { ...settings, seed: "42" },
       }),
     ),
@@ -122,6 +125,86 @@ beforeEach(() => {
     ),
   };
   window.pywebview = { api };
+});
+
+it("prepares an inactive variant's file without changing the generation model", async () => {
+  const user = userEvent.setup();
+  let models = ["prompt", "anima-turbo-v1.1", "text_encoder", "vae"].map((id) => ({
+    id, available: true, filename: id + ".safetensors",
+  }));
+  api.get_model_status.mockImplementation(async () => ({ ok: true, value: models }));
+  api.select_local_model = vi.fn(async (id) => {
+    models = [...models, { id, available: true, filename: "custom-aesthetic.safetensors" }];
+    return { ok: true, value: models };
+  });
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  await user.click(screen.getByRole("button", { name: "모델 준비" }));
+  await user.selectOptions(screen.getByLabelText("버전"), "anima-aesthetic-v1.1");
+  const weights = within(screen.getByRole("group", { name: "Anima Aesthetic" }));
+  await user.click(weights.getByRole("button", { name: "파일 선택" }));
+  expect(api.select_local_model).toHaveBeenCalledWith("anima-aesthetic-v1.1");
+  expect(await weights.findByText("custom-aesthetic.safetensors")).toBeTruthy();
+  expect(api.update_settings).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "저장" })).toBeNull();
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByLabelText("생성 설정"));
+  expect((screen.getByLabelText("버전") as HTMLSelectElement).value).toBe("anima-turbo-v1.1");
+  expect((screen.getByLabelText("생성 단계") as HTMLInputElement).value).toBe("10");
+  expect((screen.getByLabelText("프롬프트 반영 강도 (CFG)") as HTMLInputElement).value).toBe("1");
+});
+
+it("changes the active model only when generation settings are saved", async () => {
+  const bootstrap = await api.bootstrap();
+  const saved = { ...settings, steps: 12, cfg: 2, width: 832, height: 1216, seed: "42" };
+  api.bootstrap.mockResolvedValue({ ...bootstrap, value: { ...bootstrap.value, settings: saved } });
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  await user.click(screen.getByRole("button", { name: "모델 준비" }));
+  await user.selectOptions(screen.getByLabelText("버전"), "anima-aesthetic-v1.1");
+  await user.keyboard("{Escape}");
+  expect(api.update_settings).not.toHaveBeenCalled();
+  await user.click(screen.getByLabelText("생성 설정"));
+  expect((screen.getByLabelText("버전") as HTMLSelectElement).value).toBe(saved.model_id);
+  expect((screen.getByLabelText("생성 단계") as HTMLInputElement).value).toBe("12");
+  expect((screen.getByLabelText("프롬프트 반영 강도 (CFG)") as HTMLInputElement).value).toBe("2");
+  expect((screen.getByLabelText("시드") as HTMLInputElement).value).toBe("42");
+  await user.selectOptions(screen.getByLabelText("버전"), "anima-aesthetic-v1.1");
+  await user.click(screen.getByRole("button", { name: "저장" }));
+  expect(api.update_settings).toHaveBeenCalledWith(
+    { ...saved, model_id: "anima-aesthetic-v1.1", steps: 40, cfg: 4.5 }, promptSettings,
+  );
+  await user.click(screen.getByRole("button", { name: "모델 준비" }));
+  expect((screen.getByLabelText("버전") as HTMLSelectElement).value).toBe("anima-aesthetic-v1.1");
+});
+
+it("does not require the unselected variant at startup", async () => {
+  const bootstrap = await api.bootstrap();
+  api.bootstrap.mockResolvedValue({ ...bootstrap, value: { ...bootstrap.value,
+    models: ["prompt", "anima-turbo-v1.1", "text_encoder", "vae"].map((id) => ({ id, available: true })),
+  } });
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("restores Aesthetic without requiring Turbo weights", async () => {
+  const bootstrap = await api.bootstrap();
+  api.bootstrap.mockResolvedValue({ ...bootstrap, value: { ...bootstrap.value,
+    settings: { ...settings, model_id: "anima-aesthetic-v1.1", steps: 40, cfg: 4.5 },
+    models: ["prompt", "anima-aesthetic-v1.1", "text_encoder", "vae"].map((id) => ({ id, available: true })),
+  } });
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await user.click(screen.getByLabelText("생성 설정"));
+  expect((screen.getByLabelText("버전") as HTMLSelectElement).value).toBe("anima-aesthetic-v1.1");
+  expect((screen.getByLabelText("생성 단계") as HTMLInputElement).value).toBe("40");
+  expect(screen.queryByRole("option", { name: /SDXL/ })).toBeNull();
+  await user.selectOptions(screen.getByLabelText("버전"), "anima-turbo-v1.1");
+  expect((screen.getByLabelText("생성 단계") as HTMLInputElement).value).toBe("10");
 });
 
 it("shows only the moru wordmark beside the language selector in the header", async () => {
@@ -175,7 +258,7 @@ describe("conversation", () => {
 
   it.each([
     ["생성 설정", "생성 설정"],
-    ["모델 설정", "모델 설정"],
+    ["모델 준비", "모델 준비"],
     ["수정", "프롬프트"],
     ["이미지 전체 화면 보기", "이미지 보기"],
   ])("isolates all background controls while the %s dialog is open", async (button, title) => {
@@ -512,11 +595,11 @@ describe("conversation", () => {
     render(<App />);
     await screen.findByText("어떤 장면을 그릴까요?");
     const history = screen.getByRole("combobox", { name: "작업 기록" });
-    const models = screen.getByRole("button", { name: "모델 설정" });
+    const models = screen.getByRole("button", { name: "모델 준비" });
     expect(history.parentElement).toBe(models.parentElement);
     await user.click(screen.getByRole("button", { name: "새 작업" }));
     expect(screen.getByRole("combobox", { name: "작업 기록" })).toBe(history);
-    expect(screen.getByRole("button", { name: "모델 설정" })).toBe(models);
+    expect(screen.getByRole("button", { name: "모델 준비" })).toBe(models);
     expect(within(history).getAllByRole("option")).toHaveLength(2);
   });
 
@@ -896,7 +979,7 @@ describe("conversation", () => {
     render(<App />);
     await screen.findByText("어떤 장면을 그릴까요?");
     await user.click(screen.getByLabelText("생성 설정"));
-    await user.selectOptions(screen.getByLabelText("모델"), "anima-aesthetic-v1.1");
+    await user.selectOptions(screen.getByLabelText("버전"), "anima-aesthetic-v1.1");
     expect((screen.getByLabelText("생성 단계") as HTMLInputElement).value).toBe("40");
     expect((screen.getByLabelText("프롬프트 반영 강도 (CFG)") as HTMLInputElement).value).toBe("4.5");
     await user.clear(screen.getByLabelText("생성 단계"));
@@ -907,7 +990,7 @@ describe("conversation", () => {
       promptSettings,
     );
     await user.click(screen.getByLabelText("생성 설정"));
-    await user.selectOptions(screen.getByLabelText("모델"), "anima-turbo-v1.1");
+    await user.selectOptions(screen.getByLabelText("버전"), "anima-turbo-v1.1");
     expect((screen.getByLabelText("생성 단계") as HTMLInputElement).value).toBe("10");
     expect((screen.getByLabelText("프롬프트 반영 강도 (CFG)") as HTMLInputElement).value).toBe("1");
   });
@@ -1024,7 +1107,8 @@ describe("display language", () => {
     let language = "ko";
     api.bootstrap.mockImplementation(() => Promise.resolve({ ok: true, value: {
       language, project: current, projects: [empty], settings,
-      generation_defaults: {}, prompt_settings: promptSettings,
+      image_models: imageModels,
+        generation_defaults: {}, prompt_settings: promptSettings,
     }}));
     api.set_language = vi.fn(async (next) => {
       language = next as string;
@@ -1110,7 +1194,8 @@ it("does not allow a language change before the saved language has loaded", asyn
   await waitFor(() => expect(api.bootstrap).toHaveBeenCalled());
   await act(async () => finish({ ok: true, value: {
     language: "en", project: empty, projects: [empty], settings,
-    generation_defaults: {}, prompt_settings: promptSettings,
+    image_models: imageModels,
+        generation_defaults: {}, prompt_settings: promptSettings,
   } }));
   expect((screen.getByRole("combobox", { name: "Language" }) as HTMLSelectElement).disabled).toBe(false);
 });

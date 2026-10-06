@@ -267,6 +267,86 @@ def test_invalid_prompt_settings_do_not_partially_save_image_settings(app, value
     assert app.get_prompt_settings() == PromptSettings()
 
 
+def test_model_catalog_describes_alternative_variants_and_their_shared_assets(app):
+    catalog = {model["id"]: model for model in Api(app).bootstrap()["value"]["image_models"]}
+    turbo, aesthetic = catalog["anima-turbo-v1.1"], catalog["anima-aesthetic-v1.1"]
+    assert turbo["family"] == aesthetic["family"] == "anima"
+    assert (turbo["variant_name"], aesthetic["variant_name"]) == ("Turbo", "Aesthetic")
+    assert turbo["asset_ids"] == ["anima-turbo-v1.1", "text_encoder", "vae"]
+    assert aesthetic["asset_ids"] == ["anima-aesthetic-v1.1", "text_encoder", "vae"]
+    assert turbo["defaults"] == {"steps": 10, "cfg": 1.0}
+    assert aesthetic["defaults"] == {"steps": 40, "cfg": 4.5}
+
+
+def test_retired_sdxl_is_absent_from_selection_and_downloads(app, tmp_path):
+    downloads = ModelDownloads(ModelPaths(tmp_path), executor=app.scheduler)
+    api = Api(app, downloads=downloads)
+    result = api.bootstrap()["value"]
+    assert {model["id"] for model in result["image_models"]} == {
+        "anima-turbo-v1.1", "anima-aesthetic-v1.1",
+    }
+    assert all(model["id"] != "sdxl-base-1.0" for model in result["models"])
+    assert api.update_settings({"model_id": "sdxl-base-1.0"})["error"]["code"] == "INVALID_SETTINGS"
+    assert api.download_model("sdxl-base-1.0")["error"]["code"] == "INVALID_SETTINGS"
+
+
+def test_old_sdxl_images_remain_readable_and_keep_their_original_settings(app):
+    from dataclasses import replace
+
+    project = app.create_project()
+    original = generate(app, project.id)
+    settings = GenerationSettings(model_id="sdxl-base-1.0", seed=42, allow_retired=True)
+    archived = replace(
+        original, id="archived", request_id="archived-request", parent_image_id=original.id,
+        settings=settings, generation_method="manual",
+    )
+    from moru.domain import Request
+
+    app.repository.add_request(Request(
+        "archived-request", project.id, "a cat", original.created_at, original.id,
+        "manual", settings,
+    ))
+    app.repository.complete_generation(archived)
+    api = Api(app)
+    details = api.get_image_details("archived")["value"]
+    assert details["model_name"] == "SDXL Base 1.0"
+    assert details["settings"]["model_id"] == "sdxl-base-1.0"
+    assert details["settings"]["steps"] == 30
+    assert details["settings"]["cfg"] == 7
+    assert api.get_project(project.id)["ok"]
+    assert api.fork(project.id, "archived")["ok"]
+    regenerated = api.regenerate("archived")
+    assert regenerated["ok"]
+    app.scheduler.run_next()
+    assert app.images.inputs[-1][1].model_id == "anima-turbo-v1.1"
+    assert api.get_image_details("archived")["value"] == details
+
+
+def test_retired_model_settings_cannot_be_saved_or_retried(app):
+    from moru.domain import Request
+    from moru.errors import MoruError
+
+    project = app.create_project()
+    settings = GenerationSettings(model_id="sdxl-base-1.0", allow_retired=True)
+    with pytest.raises(MoruError) as error:
+        app.update_settings(settings)
+    assert error.value.code == "INVALID_SETTINGS"
+    request = Request("old", project.id, "a cat", project.created_at, None, "create", settings)
+    app.repository.add_request(request)
+    app.repository.set_request_status(request.id, "failed", "GENERATION_FAILED")
+    result = Api(app).retry_request(request.id)
+    assert result["error"]["code"] == "INVALID_SETTINGS"
+    assert app.repository.get_request(request.id).status == "failed"
+
+def test_image_details_keep_the_model_name_from_the_record_after_switching_models(app):
+    project = app.create_project()
+    image = generate(app, project.id)
+    app.update_settings(GenerationSettings(model_id="anima-aesthetic-v1.1"))
+    details = Api(app).get_image_details(image.id)["value"]
+    assert details["model_name"] == "Anima Turbo"
+    assert details["settings"]["model_id"] == "anima-turbo-v1.1"
+
+
 def test_images_are_supplied_without_exposing_local_paths_or_running_a_server(app):
     project = app.create_project()
     image = generate(app, project.id)

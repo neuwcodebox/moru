@@ -124,7 +124,7 @@ ComfyUI는 일반 pip dependency로 느슨하게 따라가지 않고 검증한 c
 │  └─ Prompt LLM / CUDA            │
 │                                  │
 │  Hidden Image Worker             │
-│  └─ ComfyUI core + Anima / CUDA  │
+│  └─ ComfyUI core / CUDA          │
 └──────────────────────────────────┘
 ```
 
@@ -426,18 +426,18 @@ HTTP/localhost 서버를 만들지 않는다.
 
 ---
 
-## 12. 고정 Anima Workflow
+## 12. 계열별 고정 생성 경로
 
 사용자가 workflow를 구성하지 않는다.
 
-앱 내부에 고정된 text-to-image workflow를 코드로 정의한다.
+앱 내부에 지원 계열의 text-to-image 경로를 코드로 정의한다.
 
 개념:
 
 ```text
 Prompt
 → Text Encoder
-→ Anima Diffusion Model
+→ Diffusion Model
 → Sampler
 → VAE Decode
 → PNG
@@ -448,7 +448,15 @@ Prompt
 - Anima Turbo
 - Anima Aesthetic
 
-모델별 sampler/scheduler 기본값은 코드의 preset으로 관리한다.
+`models.py`의 작은 정의 목록이 ID, 계열/버전/표시 이름, 필요 asset과 런타임 역할,
+Steps/CFG 및 sampler/scheduler 기본값, 프롬프트 보충 지침을 관리한다.
+파일 경로 해석·준비 검사·설정 검증·추론과 bridge 카탈로그는 이 정의를 사용한다.
+다운로드 URL·크기·해시는 기존 manifest에 유지한다. 기존 Anima ID·경로 키·저장 schema는 유지한다.
+
+Anima는 diffusion/encoder/VAE를 분리 로드한다. 로드된 모델의 계열과 필수 구성요소를
+확인하고 맞지 않으면 `MODEL_LOAD_FAILED`를 반환한다. 자동 대체는 없다.
+로드 캐시는 계열과 경로를 함께 비교하며 전환 시 이전 모델을 unload한다.
+latent 준비·진행·취소·OOM 처리·원자적 PNG 저장은 두 버전이 기존 경로를 공유한다.
 
 Sampler/Scheduler는 MVP 설정 UI에 노출하지 않는다.
 
@@ -468,12 +476,26 @@ models/
 │  │  └─ qwen_3_06b_base.safetensors
 │  └─ vae/
 │     └─ qwen_image_vae.safetensors
-│
 └─ prompt/
    └─ prompt-model.gguf
 ```
 
 모델 위치는 설정 파일로 override 가능하게 한다.
+`ModelPaths.image_payload`는 선택한 정의의 런타임 역할만 해석한다. 파일이 없거나 비어 있으면
+준비 실패로 처리한다.
+
+`bootstrap.image_models`로 표시 이름·계열·버전·필요 asset ID·기본값을 React에 전달한다.
+`ImageModelSelect`는 계열/버전 표시만 공유한다. 생성 설정은 App의 Settings를 저장하고,
+모델 준비는 `initialModelId`로 초기화한 로컬 `viewedModelId`로 표시할 파일만 바꾼다.
+모델 준비에는 Settings나 저장 callback을 전달하지 않으며 `update_settings`를 호출하지 않는다.
+파일 준비는 기존 path/download bridge로 즉시 반영한다. 탐색 중 다른 asset의 진행/실패
+다운로드를 유지한다. 한국어 메뉴와 팝업 이름은 `모델 준비`, 영어는 `Model setup`이다.
+App의 시작 검사도 카탈로그의 선택 모델과 prompt asset만 요구한다.
+이미지 상세의 모델명은 현재 UI 선택이 아니라 저장된 record ID로 Python에서 결정한다.
+`RETIRED_MODELS`에는 기존 SDXL 기록을 읽기 위한 이름·기본값만 유지한다. Repository는
+`GenerationSettings(..., allow_retired=True)`로 불변 기록을 복원한다. 일반 설정 생성·저장,
+재시도·파일 준비·다운로드·추론에는 해당 ID를 허용하지 않는다. 기존 경로 설정의 SDXL
+항목은 읽을 때 제외하며 모델 파일이나 생성 기록은 삭제하지 않는다.
 
 ---
 
@@ -484,7 +506,7 @@ models/
 첫 실행 시 필요한 모델이 없으면 앱 UI 안에서 다운로드한다.
 
 기본 흐름은 모델 역할과 준비 상태를 안내한다. 수동 다운로드가 필요한 사용자는
-모델 설정의 접힌 안내에서 정확한 원본 파일 이름과 Hugging Face 파일 페이지를 확인한다.
+모델 준비의 접힌 안내에서 정확한 원본 파일 이름과 Hugging Face 파일 페이지를 확인한다.
 `ModelDownloads.status`가 manifest의 고정 revision URL에서 `/resolve/`를 `/blob/`으로
 바꾼 파일 페이지 URL과 원본 파일 이름을 `manual_download`로 제공한다.
 React에 모델 URL 목록을 따로 두지 않는다. 다운로드 실패 시 안내를 펼치고,
@@ -724,7 +746,7 @@ Moru.exe
 
 ```text
 Image Worker start hidden
-→ ComfyUI/Anima load
+→ ComfyUI/선택 이미지 모델 load
 → generation
 ```
 
@@ -925,7 +947,7 @@ GPU 및 실제 WebView2 검증은 `scripts/smoke_*.py`에 분리되어 있으며
 일반 `uv run pytest`에서는 실행하지 않는다.
 
 프롬프트 LLM의 thinking은 기본적으로 켠다. 사고 과정은 생성용 프롬프트에서 제외하고
-완성된 최종 프롬프트만 Anima에 전달한다. `prompting` 상태는 대화의 생성 placeholder에
+완성된 최종 프롬프트만 선택한 이미지 모델에 전달한다. `prompting` 상태는 생성 placeholder에
 표시하며, 토큰 제한 때문에 잘린 응답은 오류로 처리한다.
 프롬프트 검증·완료 오류는 `PROMPT_EMPTY_RESPONSE`, `PROMPT_INVALID_RESPONSE`,
 `PROMPT_NON_ENGLISH_RESPONSE`, `PROMPT_OUTPUT_TOO_LONG`, `PROMPT_RESPONSE_INTERRUPTED`로
@@ -935,13 +957,15 @@ GPU 및 실제 WebView2 검증은 `scripts/smoke_*.py`에 분리되어 있으며
 기본 프롬프트 모델은 HauhauCS Qwen3.5-4B Uncensored Aggressive Q4_K_M이다.
 기본 context는 4096, 출력 한도는 2048 tokens로 설정한다.
 프롬프트 작성 지침은 CUDA 추론 코드와 분리한 `prompt_instructions.py`에서 관리한다.
-공통 출력·해석·보강(`ENHANCE`)·구성·태그·검토 규칙에 생성용 예시 또는 수정용 예시를 붙인다.
-같은 모듈의 정적 `TAG_REFERENCE`에 종류별 참고 어휘를 두고 생성·수정에서 공유한다.
+해석·보강(`ENHANCE`) 규칙과 Anima의 출력·구성·검토 규칙을 함께 전달한다.
+생성·수정 예시와 정적 `TAG_REFERENCE`는 같은 모듈에 둔다.
 제공된 CSV의 빈도와 의미를 검토해 선택한 어휘이며 실행 중 CSV를 읽거나
 분류·검색 모델을 추가하지 않는다.
 `prompt_messages`는 이 지침을 system으로 전달하고 실제 user/assistant 이력만
 대화 턴으로 추가한다. 예시는 이력으로 세지 않으며 현재 상태와 최신 요청을 유지한다.
-모델명은 지침에 넣지 않고 Aesthetic 선택 시 점수 태그 제외 규칙을 추가한다.
+모델명은 지침에 넣지 않고 모델 정의의 `prompt_suffix`로 Aesthetic의 점수 태그 제외 규칙을 추가한다.
+refine은 기존 프롬프트와 변경 요청으로 전체 프롬프트를 작성한다. regenerate와 수동 생성은
+LLM을 우회하며 불변 이미지 기록의 설정은 바꾸지 않는다.
 규칙의 조사 근거, 태그 선택표와 상세 예시는 [프롬프트 작성 지침](PROMPT_GUIDE.md)에 둔다.
 문서 전체를 읽어 넣거나 외부 검색 결과를 실행 중 컨텍스트에 주입하지 않는다.
 현재 참고표의 범위와 실제 tokenizer로 측정한 예산은

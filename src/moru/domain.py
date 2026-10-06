@@ -1,16 +1,13 @@
 """Conversation records and generation settings independent of inference runtimes."""
 
 import math
-from dataclasses import dataclass, replace
+from dataclasses import InitVar, dataclass, replace
 from typing import Literal
 
 from moru.errors import MoruError
+from moru.models import IMAGE_MODELS, MODEL_DEFAULTS, RETIRED_MODELS, image_model
 
-MODEL_DEFAULTS = {
-    "anima-turbo-v1.1": {"steps": 10, "cfg": 1.0},
-    "anima-aesthetic-v1.1": {"steps": 40, "cfg": 4.5},
-}
-MODEL_IDS = tuple(MODEL_DEFAULTS)
+MODEL_IDS = tuple(IMAGE_MODELS)
 # This is an LLM output reserve, not a hard input limit of the image model.
 FINAL_PROMPT_TOKEN_RESERVE = 512 + 128
 REASONING_SHARES = {"low": 0.5, "medium": 0.75, "high": 1.0}
@@ -63,13 +60,17 @@ class GenerationSettings:
     steps: int | None = None
     cfg: float | None = None
     seed: int | None = None
+    allow_retired: InitVar[bool] = False
 
-    def __post_init__(self):
-        if self.model_id not in MODEL_IDS:
-            raise MoruError("INVALID_SETTINGS")
+    def __post_init__(self, allow_retired):
+        if allow_retired and self.model_id in RETIRED_MODELS:
+            defaults = RETIRED_MODELS[self.model_id]
+        else:
+            image_model(self.model_id)
+            defaults = MODEL_DEFAULTS[self.model_id]
         for field in ("steps", "cfg"):
             if getattr(self, field) is None:
-                object.__setattr__(self, field, MODEL_DEFAULTS[self.model_id][field])
+                object.__setattr__(self, field, defaults[field])
         for value in (self.width, self.height):
             if type(value) is not int or not 64 <= value <= 4096 or value % 16:
                 raise MoruError("INVALID_SETTINGS")

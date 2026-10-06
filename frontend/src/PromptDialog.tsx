@@ -3,7 +3,6 @@ import { useState } from "react";
 import { call } from "./api";
 import type { ImageDetails } from "./api";
 import Modal from "./Modal";
-import { imageModelNames } from "./modelNames";
 import { WandSparkles } from "lucide-react";
 import CopyButton from "./CopyButton";
 import { errorMessage } from "./errorMessages";
@@ -35,7 +34,7 @@ export default function PromptDialog({
       <dl className="metadata">
         <div>
           <dt>{t("common.model")}</dt>
-          <dd>{imageModelNames[s.model_id]}</dd>
+          <dd>{details.model_name}</dd>
         </div>
         <div>
           <dt>{t("common.dimensions")}</dt>

@@ -1,9 +1,9 @@
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
-import type { GenerationDefaults, PromptSettings, Settings } from "./api";
+import type { ImageModel, PromptSettings, Settings } from "./api";
 import Modal from "./Modal";
 import { errorMessage } from "./errorMessages";
-import { imageModelNames } from "./modelNames";
+import ImageModelSelect from "./ImageModelSelect";
 import { Check } from "lucide-react";
 const resolutions = [
   [1024, 1024],
@@ -15,13 +15,13 @@ const resolutions = [
 
 export default function SettingsDialog({
   settings,
-  generationDefaults,
+  imageModels,
   promptSettings,
   onClose,
   onSave,
 }: {
   settings: Settings;
-  generationDefaults: GenerationDefaults;
+  imageModels: ImageModel[];
   promptSettings: PromptSettings;
   onClose: () => void;
   onSave: (settings: Settings, promptSettings: PromptSettings) => Promise<void>;
@@ -54,25 +54,8 @@ export default function SettingsDialog({
           }
         }}
       >
-        <label>
-          {t("common.model")}
-          <select
-            value={draft.model_id}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                model_id: event.target.value,
-                ...generationDefaults[event.target.value],
-              })
-            }
-          >
-            {Object.entries(imageModelNames).map(([id, name]) => (
-              <option key={id} value={id}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <ImageModelSelect models={imageModels} modelId={draft.model_id} disabled={saving}
+          onChange={(model) => setDraft({ ...draft, model_id: model.id, ...model.defaults })} />
         <p className="hint">{t("settings.modelHint")}</p>
         <label>
           {t("settings.imageSize")}

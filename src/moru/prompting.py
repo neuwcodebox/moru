@@ -14,6 +14,7 @@ from threading import Event, RLock
 from moru.config import ModelPaths
 from moru.domain import PromptSettings, PromptTurn
 from moru.errors import MoruError
+from moru.models import image_model
 from moru.ports import PromptProgress
 from moru.prompt_instructions import CREATE_SYSTEM, REFINE_SYSTEM
 
@@ -27,9 +28,9 @@ def prompt_messages(
     history: tuple[PromptTurn, ...] = (),
     model_id: str = "anima-turbo-v1.1",
 ) -> list[dict[str, str]]:
+    model = image_model(model_id)
     system = CREATE_SYSTEM if base_prompt is None else REFINE_SYSTEM
-    if "aesthetic" in model_id:
-        system += " Omit score_* tags. Quality tags are optional."
+    system += model.prompt_suffix
     messages = [{"role": "system", "content": system}]
     for turn in history:
         messages.extend(

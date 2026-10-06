@@ -355,11 +355,15 @@ class Repository:
     @staticmethod
     def _request(row) -> Request:
         values = dict(row)
-        values["settings"] = GenerationSettings(**json.loads(values["settings"]))
+        values["settings"] = GenerationSettings(
+            **json.loads(values["settings"]), allow_retired=True
+        )
         return Request(**values)
 
     @staticmethod
     def _image(row) -> Image:
         values = dict(row)
-        values["settings"] = GenerationSettings(**json.loads(values["settings"]))
+        values["settings"] = GenerationSettings(
+            **json.loads(values["settings"]), allow_retired=True
+        )
         return Image(**values)

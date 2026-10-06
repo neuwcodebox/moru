@@ -1,4 +1,4 @@
-"""Fixed Anima workflow using ComfyUI core only, never nodes, server or plugins."""
+"""Supported text-to-image workflows using ComfyUI core, without nodes or servers."""
 
 import logging
 import os
@@ -8,13 +8,10 @@ from threading import Event
 
 from moru.domain import GenerationSettings
 from moru.errors import MoruError
+from moru.models import image_model
 from moru.ports import Progress
 
 log = logging.getLogger(__name__)
-PRESETS = {
-    "anima-turbo-v1.1": ("euler", "simple"),
-    "anima-aesthetic-v1.1": ("euler", "simple"),
-}
 
 
 def image_frame(decoded):
@@ -52,17 +49,20 @@ class ComfyEngine:
 
         args.disable_dynamic_vram = True
         args.disable_cuda_graphs = True
+        import comfy.model_base
         import comfy.model_management
         import comfy.sample
         import comfy.sd
         import comfy.utils
 
-        self._runtime = (torch, comfy.sd, comfy.sample, comfy.model_management, comfy.utils)
+        self._runtime = (
+            torch, comfy.sd, comfy.sample, comfy.model_management, comfy.utils, comfy.model_base
+        )
         return self._runtime
 
-    def _load_models(self, paths):
-        torch, sd, _, management, utils = self._load_runtime()
-        if paths == self._loaded_paths:
+    def _load_models(self, family, paths):
+        torch, sd, _, management, utils, model_base = self._load_runtime()
+        if (family, paths) == self._loaded_paths:
             return
         if any(not Path(path).is_file() for path in paths.values()):
             raise MoruError("IMAGE_MODEL_NOT_FOUND")
@@ -70,11 +70,30 @@ class ComfyEngine:
         management.unload_all_models()
         management.soft_empty_cache()
         self._loaded_paths = None
-        self._model = sd.load_diffusion_model(paths["diffusion"])
-        self._clip = sd.load_clip([paths["text_encoder"]], clip_type=sd.CLIPType.STABLE_DIFFUSION)
-        self._vae = sd.VAE(sd=utils.load_torch_file(paths["vae"]))
-        self._loaded_paths = dict(paths)
+        try:
+            if family != "anima":
+                raise MoruError("INVALID_SETTINGS")
+            self._model = sd.load_diffusion_model(paths["diffusion"])
+            self._clip = sd.load_clip(
+                [paths["text_encoder"]], clip_type=sd.CLIPType.STABLE_DIFFUSION
+            )
+            self._vae = sd.VAE(sd=utils.load_torch_file(paths["vae"]))
+            if (
+                self._model is None or self._clip is None or self._vae is None
+                or not isinstance(self._model.model, model_base.Anima)
+            ):
+                raise MoruError("MODEL_LOAD_FAILED")
+        except (MoruError, torch.cuda.OutOfMemoryError):
+            raise
+        except Exception as exc:
+            raise MoruError("MODEL_LOAD_FAILED") from exc
+        self._loaded_paths = (family, dict(paths))
         log.info("image models loaded")
+
+    def _conditioning(self, text):
+        return self._clip.encode_from_tokens_scheduled(
+            self._clip.tokenize(text), show_pbar=False
+        )
 
     def generate(
         self,
@@ -88,16 +107,13 @@ class ComfyEngine:
         temporary = output_path.with_suffix(".png.part")
         try:
             progress("loading_model", None, None)
-            self._load_models(paths)
-            torch, _, sample, management, _ = self._runtime
+            model = image_model(settings.model_id)
+            self._load_models(model.family, paths)
+            torch, _, sample, management, _, _ = self._runtime
             with torch.inference_mode():
-                positive = self._clip.encode_from_tokens_scheduled(
-                    self._clip.tokenize(prompt),
-                    show_pbar=False,
-                )
-                negative = self._clip.encode_from_tokens_scheduled(
-                    self._clip.tokenize("worst quality, low quality, blurry, jpeg artifacts"),
-                    show_pbar=False,
+                positive = self._conditioning(prompt)
+                negative = self._conditioning(
+                    "worst quality, low quality, blurry, jpeg artifacts"
                 )
                 latent = torch.zeros(
                     (1, 4, settings.height // 8, settings.width // 8),
@@ -105,7 +121,6 @@ class ComfyEngine:
                 )
                 latent = sample.fix_empty_latent_channels(self._model, latent, 8)
                 noise = sample.prepare_noise(latent, settings.seed)
-                sampler, scheduler = PRESETS[settings.model_id]
 
                 def step_progress(step, _denoised, _latent, total):
                     if cancelled.is_set():
@@ -118,8 +133,8 @@ class ComfyEngine:
                     noise,
                     settings.steps,
                     settings.cfg,
-                    sampler,
-                    scheduler,
+                    model.sampler,
+                    model.scheduler,
                     positive,
                     negative,
                     latent,

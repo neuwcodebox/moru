@@ -11,8 +11,9 @@ from pathlib import Path
 from threading import Event, RLock
 from urllib.request import urlopen
 
-from moru.config import DEFAULT_MODEL_FILES, ModelPaths
+from moru.config import ModelPaths
 from moru.errors import MoruError
+from moru.models import DEFAULT_MODEL_FILES
 
 log = logging.getLogger(__name__)
 

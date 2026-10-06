@@ -861,6 +861,27 @@ footer {
   margin: 10px 0 0;
   font-size: 12px;
 }
+.model-section {
+  margin-top: 20px;
+}
+.model-section h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.model-section .model-row:last-child {
+  border-bottom: none;
+}
+.model-label h3 {
+  margin: 0;
+}
+.model-readiness {
+  color: #a8b5c7;
+  font-size: 13px;
+}
+.field-grid select {
+  width: 100%;
+}
 .manual-download {
   margin-top: 12px;
   font-size: 12px;

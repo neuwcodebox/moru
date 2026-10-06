@@ -7,9 +7,10 @@ from functools import wraps
 from pathlib import Path
 
 from moru.config import ModelPaths
-from moru.domain import MODEL_DEFAULTS, GenerationSettings, PromptSettings
+from moru.domain import GenerationSettings, PromptSettings
 from moru.downloads import ModelDownloads
 from moru.errors import MESSAGES, MoruError
+from moru.models import MODEL_DEFAULTS, RETIRED_MODELS, image_model, image_model_catalog
 from moru.service import Application
 
 log = logging.getLogger(__name__)
@@ -95,6 +96,7 @@ class Api:
             "projects": self._projects_view(),
             "settings": settings_to_wire(self._app.get_settings()),
             "generation_defaults": MODEL_DEFAULTS,
+            "image_models": image_model_catalog(),
             "prompt_settings": asdict(self._app.get_prompt_settings()),
             "models": self._model_status(),
         }
@@ -267,6 +269,11 @@ class Api:
         return {
             "id": image.id,
             "prompt": image.prompt,
+            "model_name": (
+                RETIRED_MODELS[image.settings.model_id]["name"]
+                if image.settings.model_id in RETIRED_MODELS
+                else image_model(image.settings.model_id).name
+            ),
             "settings": settings_to_wire(image.settings),
         }
 
