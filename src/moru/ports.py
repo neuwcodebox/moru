@@ -34,9 +34,20 @@ class PromptGenerator(Protocol):
         model_id: str = "anima-turbo-v1.1",
     ) -> str: ...
     def unload(self) -> None: ...
+    def memory_required(self, settings: PromptSettings) -> int:
+        """Additional VRAM budget for loading; zero when the requested model is resident."""
+        ...
 
 
 class ImageGenerator(Protocol):
+    def reserve_memory(self, required_bytes: int, cancelled: Event) -> None:
+        """Release image VRAM as needed before loading the prompt model."""
+        ...
+
+    def needs_prompt_unload(self, settings: GenerationSettings, cancelled: Event) -> bool:
+        """Compare the image budget to measured free and reclaimable image VRAM."""
+        ...
+
     def generate(
         self,
         prompt: str,

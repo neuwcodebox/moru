@@ -27,20 +27,27 @@ def main():
         default=PromptSettings().reasoning_level,
     )
     parser.add_argument("--cancel-prompt", action="store_true")
-    parser.add_argument("--image", choices=("turbo", "aesthetic"))
+    parser.add_argument("--image", choices=("turbo", "aesthetic", "flux"))
     parser.add_argument("--width", type=int, default=512)
     parser.add_argument("--height", type=int, default=512)
     parser.add_argument("--steps", type=int)
     parser.add_argument("--cfg", type=float)
     parser.add_argument("--cancel-restart", action="store_true")
     options = parser.parse_args()
-    model_id = f"anima-{options.image or 'turbo'}-v1.1"
+    model_id = (
+        "flux2-klein-4b" if options.image == "flux" else f"anima-{options.image or 'turbo'}-v1.1"
+    )
     root = application_root()
     configure_logging(root)
     paths = ModelPaths(root)
     prompts = LlamaPrompts(paths)
     worker = ImageWorker(paths, root / "vendor/comfyui")
-    prompt = "1girl, silver hair, blue eyes, convenience store, eating noodles, night, anime"
+    prompt = (
+        "A silver-haired woman with blue eyes eating noodles outside a convenience store "
+        "at night, anime illustration."
+        if options.image == "flux"
+        else "1girl, silver hair, blue eyes, convenience store, eating noodles, night, anime"
+    )
     started = time.perf_counter()
     try:
         if options.prompt:
@@ -50,6 +57,7 @@ def main():
                 thinking=options.thinking,
                 reasoning_level=options.reasoning_level,
             )
+            worker.reserve_memory(prompts.memory_required(prompt_settings), Event())
             prompt = prompts.create(
                 "은발 소녀가 편의점 앞에서 컵라면을 먹는 장면", prompt_settings, model_id=model_id
             )
@@ -114,6 +122,9 @@ def main():
                 assert not output.exists()
                 assert not output.with_suffix(".png.part").exists()
                 print("worker_cancel_ok", flush=True)
+            if worker.needs_prompt_unload(settings, Event()):
+                prompts.unload()
+                print("prompt_released_before_image", flush=True)
             worker.generate(prompt, settings, output, progress, Event())
             with Image.open(output) as image:
                 assert image.size == (settings.width, settings.height)

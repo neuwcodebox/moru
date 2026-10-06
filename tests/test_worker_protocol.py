@@ -48,6 +48,41 @@ def test_worker_returns_step_progress_and_result_with_actual_seed(tmp_path):
     assert result["payload"]["image_path"] == str((tmp_path / "images/new.png").resolve())
 
 
+def test_worker_reports_budget_and_reserves_memory_without_generating_an_image(tmp_path):
+    engine = Mock()
+    engine.needs_prompt_unload.return_value = True
+    requests = [
+        {"id": "reserve", "type": "reserve_memory", "payload": {"required_bytes": 4096}},
+        {"id": "budget", "type": "memory_budget", "payload": {
+            "settings": {"model_id": "flux2-klein-4b", "width": 832, "height": 1216},
+            "paths": {"diffusion": "fp8", "text_encoder": "fp4", "vae": "vae"},
+        }},
+    ]
+    output = StringIO()
+    serve(StringIO("".join(json.dumps(request) + "\n" for request in requests)),
+          output, engine, tmp_path)
+    replies = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert replies[0] == {"id": "reserve", "type": "result", "payload": {}}
+    assert replies[1] == {"id": "budget", "type": "result",
+                          "payload": {"release_prompt": True}}
+    engine.reserve_memory.assert_called_once_with(4096)
+    settings, paths = engine.needs_prompt_unload.call_args.args
+    assert (settings.model_id, settings.width, settings.height) == ("flux2-klein-4b", 832, 1216)
+    assert paths["text_encoder"] == "fp4"
+    engine.generate.assert_not_called()
+
+
+@pytest.mark.parametrize("required", [True, -1, 0, "1024"])
+def test_invalid_memory_reservation_is_rejected(tmp_path, required):
+    engine = Mock()
+    output = StringIO()
+    request = {"id": "reserve", "type": "reserve_memory",
+               "payload": {"required_bytes": required}}
+    serve(StringIO(json.dumps(request) + "\n"), output, engine, tmp_path)
+    assert json.loads(output.getvalue())["payload"]["code"] == "INVALID_REQUEST"
+    engine.reserve_memory.assert_not_called()
+
+
 def test_worker_failure_has_stable_code_and_no_traceback_or_prompt_in_protocol(tmp_path):
     engine = Mock()
     engine.generate.side_effect = MoruError("CUDA_OOM")

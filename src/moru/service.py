@@ -309,6 +309,8 @@ class Application:
             self._prompt_progress(job_id, request.text)
             return request.text
         self._progress(job_id, "prompting")
+        self.images.reserve_memory(self.prompts.memory_required(settings), cancelled)
+        self._check_cancelled(cancelled)
 
         def progress(_thinking, prompt):
             self._prompt_progress(job_id, prompt)
@@ -355,6 +357,10 @@ class Application:
             )
 
     def _write_image(self, prompt, settings, output_path, progress, cancelled):
+        if self.images.needs_prompt_unload(settings, cancelled):
+            log.info("releasing prompt model before image loading: VRAM budget exceeded")
+            self.prompts.unload()
+        self._check_cancelled(cancelled)
         try:
             self.images.generate(prompt, settings, output_path, progress, cancelled)
         except MoruError as exc:

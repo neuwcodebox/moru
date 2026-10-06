@@ -23,6 +23,12 @@ DEFAULT_MODEL_FILES = {
         "anima/qwen_3_600m.safetensors",
     ),
     "vae": ("anima/vae/qwen_image_vae.safetensors", "anima/qwen_image_vae.safetensors"),
+    "flux2-klein-4b": ("flux2/diffusion_models/flux-2-klein-4b-fp8.safetensors",),
+    "flux2_text_encoder": (
+        "flux2/text_encoders/qwen_3_4b_fp4_flux2.safetensors",
+        "flux2/text_encoders/qwen_3_4b.safetensors",
+    ),
+    "flux2_vae": ("flux2/vae/flux2-vae.safetensors",),
 }
 
 
@@ -39,6 +45,7 @@ class ImageModel:
     sampler: str
     scheduler: str
     prompt_suffix: str = ""
+    natural_prompt: bool = False
 
 
 IMAGE_MODELS = {
@@ -70,6 +77,20 @@ IMAGE_MODELS = {
         sampler="euler",
         scheduler="simple",
         prompt_suffix=" Omit score_* tags. Quality tags are optional.",
+    ),
+    "flux2-klein-4b": ImageModel(
+        id="flux2-klein-4b",
+        name="FLUX.2 klein 4B",
+        family="flux2",
+        family_name="FLUX.2",
+        variant_name="klein 4B",
+        files=(("diffusion", "flux2-klein-4b"), ("text_encoder", "flux2_text_encoder"),
+               ("vae", "flux2_vae")),
+        steps=4,
+        cfg=1.0,
+        sampler="euler",
+        scheduler="simple",
+        natural_prompt=True,
     ),
 }
 # Read old immutable records without offering the retired model for generation.

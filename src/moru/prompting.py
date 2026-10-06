@@ -14,9 +14,15 @@ from threading import Event, RLock
 from moru.config import ModelPaths
 from moru.domain import PromptSettings, PromptTurn
 from moru.errors import MoruError
+from moru.memory_budget import prompt_memory_required
 from moru.models import image_model
 from moru.ports import PromptProgress
-from moru.prompt_instructions import CREATE_SYSTEM, REFINE_SYSTEM
+from moru.prompt_instructions import (
+    CREATE_SYSTEM,
+    NATURAL_CREATE_SYSTEM,
+    NATURAL_REFINE_SYSTEM,
+    REFINE_SYSTEM,
+)
 
 log = logging.getLogger(__name__)
 PROMPT_PREFIX = "Final image prompt:"
@@ -29,7 +35,10 @@ def prompt_messages(
     model_id: str = "anima-turbo-v1.1",
 ) -> list[dict[str, str]]:
     model = image_model(model_id)
-    system = CREATE_SYSTEM if base_prompt is None else REFINE_SYSTEM
+    if model.natural_prompt:
+        system = NATURAL_CREATE_SYSTEM if base_prompt is None else NATURAL_REFINE_SYSTEM
+    else:
+        system = CREATE_SYSTEM if base_prompt is None else REFINE_SYSTEM
     system += model.prompt_suffix
     messages = [{"role": "system", "content": system}]
     for turn in history:
@@ -185,15 +194,27 @@ class LlamaPrompts:
         self._dll_directories = []
         self._cuda_libraries = []
 
+    def _can_reuse(self, path: Path, context_size: int) -> bool:
+        return (
+            self._llm is not None
+            and path == self._loaded_path
+            and context_size == self._context_size
+        )
+
+    def memory_required(self, settings: PromptSettings) -> int:
+        path = self._paths.get("prompt")
+        if not path.is_file():
+            raise MoruError("PROMPT_MODEL_NOT_FOUND")
+        with self._lock:
+            if self._can_reuse(path, settings.context_size):
+                return 0
+            return prompt_memory_required(path, settings)
+
     def _load(self, settings: PromptSettings):
         path = self._paths.get("prompt")
         if not path.is_file():
             raise MoruError("PROMPT_MODEL_NOT_FOUND")
-        if (
-            self._llm is not None
-            and path == self._loaded_path
-            and settings.context_size == self._context_size
-        ):
+        if self._can_reuse(path, settings.context_size):
             return self._llm
         self.unload()
         try:

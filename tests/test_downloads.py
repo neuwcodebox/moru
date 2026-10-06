@@ -96,6 +96,9 @@ def test_bundled_manifest_covers_all_runtime_models_with_fixed_revisions_and_sha
         "anima-aesthetic-v1.1",
         "text_encoder",
         "vae",
+        "flux2-klein-4b",
+        "flux2_text_encoder",
+        "flux2_vae",
     }
     for item in manifest.values():
         assert "/resolve/main/" not in item.url

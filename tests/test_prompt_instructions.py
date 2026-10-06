@@ -93,3 +93,31 @@ def test_writer_can_enhance_presentation_while_preserving_requested_scene(base):
     assert "Preserve explicit counts, colors, clothing, actions, relationships" in system
     assert "enhance only the requested change unless broader enhancement is requested" in system
     assert "Leave unspecified style" not in system
+
+
+@pytest.mark.parametrize("base", [None, "1girl, red hair, book"])
+def test_flux_writer_uses_visual_sentences_and_preserves_tagged_edit_context(base):
+    messages = prompt_messages("make it night", base, model_id="flux2-klein-4b")
+    system = messages[0]["content"]
+    assert "natural English rather than booru tags" in system
+    assert TAG_REFERENCE not in system
+    assert "TAG OPTIONS" not in system
+    assert "FLUX" not in system
+    assert "INTENT:" in system and "ENHANCE:" in system
+    assert "attach" in system.lower()
+    if base:
+        assert "retain its visual meaning in natural English" in system
+        assert "Return the entire revised prompt, never a patch" in system
+        assert base in messages[-1]["content"]
+        assert "Two black cats" not in system
+
+
+def test_flux_writer_keeps_real_history_and_never_inserts_examples_as_turns():
+    history = (PromptTurn("a forest", "forest, sunlight"),)
+    messages = prompt_messages("night", "forest, sunlight", history, "flux2-klein-4b")
+    assert [item["role"] for item in messages] == ["system", "user", "assistant", "user"]
+    assert messages[1:3] == [
+        {"role": "user", "content": "a forest"},
+        {"role": "assistant", "content": "forest, sunlight"},
+    ]
+    assert "forest, sunlight" in messages[-1]["content"]

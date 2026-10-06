@@ -39,6 +39,10 @@ class FakePrompts:
         self.unloads = 0
         self.settings = []
         self.contexts = []
+        self.required_memory = 0
+
+    def memory_required(self, settings):
+        return self.required_memory
 
     def create(self, text, settings, cancelled, progress, **context):
         self.contexts.append(context)
@@ -61,6 +65,14 @@ class FakeImages:
         self.inputs = []
         self.failures = []
         self.closed = False
+        self.reservations = []
+        self.release_prompt = False
+
+    def reserve_memory(self, required_bytes, cancelled):
+        self.reservations.append(required_bytes)
+
+    def needs_prompt_unload(self, settings, cancelled):
+        return self.release_prompt
 
     def generate(self, prompt, settings, output_path, progress, cancelled):
         self.inputs.append((prompt, settings))

@@ -53,7 +53,7 @@ Release에는 `vite build` 결과물만 포함하며 Node.js 런타임은 포함
 
 - PyTorch + CUDA
 - ComfyUI core/backend
-- Anima Turbo / Anima Aesthetic
+- Anima Turbo / Anima Aesthetic / FLUX.2 klein 4B
 
 ComfyUI의 웹 UI와 노드 편집기는 사용하지 않는다.
 
@@ -297,24 +297,26 @@ Prompt 작성 성능을 우선하며 고난도 reasoning 성능은 요구하지 
 
 ## 9. GPU 메모리 정책
 
-Prompt LLM과 Anima 모두 GPU를 사용한다.
+Prompt LLM과 이미지 모델 모두 GPU를 사용한다.
 
-기본 전략:
+`Application`은 두 엔진의 좁은 메모리 계약으로 추론 단계 전 VRAM을 확보한다.
+CUDA 측정과 ComfyUI 모델 해제는 이미지 worker 안에서 수행하며 main에 PyTorch를 로드하지 않는다.
 
-1. Prompt LLM을 GPU에 로드한다.
-2. 프롬프트 생성 후 Anima generation을 실행한다.
-3. 실제 VRAM 사용량이 허용하면 둘을 상주시킨다.
+1. Prompt LLM의 파일·컨텍스트가 이미 적재된 상태와 같으면 추가 로딩 예산은 0이다.
+   새 로딩에는 GGUF 크기의 110%, 컨텍스트 토큰당 256KiB, 여유 1GiB를 예약한다.
+   worker는 필요할 때 이미지 가중치를 GPU에서 내리고 PyTorch allocator cache를 반환한다.
+2. 이미지 생성 전 선택한 세 파일 크기의 110%와 1024²당 2GiB 작업 공간(최소 1GiB),
+   여유 1GiB를 합산한다. 측정한 free VRAM과 worker가 반환 가능한 allocated VRAM을
+   합쳐도 이 예산에 못 미치면 Prompt LLM을 먼저 unload한다. 충분하면 상주 상태를 유지한다.
+3. 실제 `CUDA_OOM`이면 Prompt LLM을 unload하고 동일 프롬프트·설정·seed로 한 번 재시도한다.
+   다음 자연어 요청에서 LLM을 lazy reload한다. 반복 실패는 명시적 오류로 처리한다.
 
-VRAM 부족 시 fallback:
-
-- Prompt LLM 객체 unload
-- CUDA 메모리 반환 확인
-- Anima generation 수행
-- 다음 Prompt 요청에서 LLM lazy reload
-
-CPU-only 추론은 기본 경로로 사용하지 않는다.
-
-실제 대상 GPU에서 측정 후 residency 정책을 결정한다.
+예산은 공존을 위한 보수적 추정이며 정확한 최고 사용량이나 메모리 상한이 아니다.
+현재 이미지 예산은 인코더 입력 길이와 CFG에 따른 추가 작업량을 반영하지 않는다.
+ComfyUI는 생성 단계별 이미지 가중치의 GPU/CPU 이동을 계속 관리한다.
+사전 판단의 요구량·가용량·해제 여부는 진단 로그에 기록한다.
+완료된 이미지의 저장 후 사용하지 않는 CUDA allocator cache를 반환하고 모델 객체는 유지한다.
+CPU-only 추론이나 모델·해상도·컨텍스트의 자동 변경은 하지 않는다.
 
 ---
 
@@ -376,6 +378,10 @@ Windows console 창은 생성하지 않는다.
 ### 11.2 IPC
 
 stdio 기반 JSON Lines를 사용한다.
+
+`reserve_memory(required_bytes)` 요청은 프롬프트 로딩 공간을 확보하고,
+`memory_budget(settings, paths)` 요청은 `release_prompt` boolean을 반환한다.
+두 요청은 생성 요청과 같은 ID 검증·취소·worker 실패 경로를 사용한다.
 
 HTTP/localhost 서버를 만들지 않는다.
 
@@ -447,16 +453,30 @@ Prompt
 
 - Anima Turbo
 - Anima Aesthetic
+- FLUX.2 klein 4B (증류 버전, FP8)
 
 `models.py`의 작은 정의 목록이 ID, 계열/버전/표시 이름, 필요 asset과 런타임 역할,
-Steps/CFG 및 sampler/scheduler 기본값, 프롬프트 보충 지침을 관리한다.
+Steps/CFG 및 sampler/scheduler 기본값, 자연어 작성 여부와 프롬프트 보충 지침을 관리한다.
 파일 경로 해석·준비 검사·설정 검증·추론과 bridge 카탈로그는 이 정의를 사용한다.
 다운로드 URL·크기·해시는 기존 manifest에 유지한다. 기존 Anima ID·경로 키·저장 schema는 유지한다.
 
 Anima는 diffusion/encoder/VAE를 분리 로드한다. 로드된 모델의 계열과 필수 구성요소를
 확인하고 맞지 않으면 `MODEL_LOAD_FAILED`를 반환한다. 자동 대체는 없다.
 로드 캐시는 계열과 경로를 함께 비교하며 전환 시 이전 모델을 unload한다.
-latent 준비·진행·취소·OOM 처리·원자적 PNG 저장은 두 버전이 기존 경로를 공유한다.
+FLUX.2도 분리 로드하며 encoder에 `CLIPType.FLUX2`를 지정한다. diffusion은 `model_base.Flux2`,
+VAE는 128채널/16배 구조인지 확인한다. Euler, Steps 4, CFG 1을 기본으로 하고 positive를
+영점화한 negative와 128채널/16배 latent를 사용한다. `flux2_schedule.py`는 고정 revision의
+`Flux2Scheduler`와 같은 해상도·Steps별 sigma를 계산해 core sampler에 전달한다.
+ComfyUI 노드·서버는 로드하지 않는다. 진행·취소·OOM 처리·원자적 PNG 저장은 두 계열이
+기존 경로를 공유하며 사용자 Steps·CFG·Seed는 그대로 전달한다.
+
+프롬프트 LLM의 `512 + 128` 출력 예약과 이미지 인코더의 토큰 길이는 별도 단위다.
+현재 고정 ComfyUI의 Anima는 Qwen3와 T5 토큰을 함께 사용하고 adapter 결과를 최소 512까지
+패딩한다. FLUX klein은 Qwen3 채팅 템플릿을 사용하고 입력을 최소 512까지 패딩한다.
+두 경로 모두 512 초과를 자동으로 자르지 않는다. BFL의 [공식 Qwen3Embedder](https://github.com/black-forest-labs/flux2/blob/main/src/flux2/text_encoder.py)는
+템플릿을 포함한 입력을 512로 패딩·절단하므로 현재 core 동작과 다르다.
+Moru는 생성·수동 입력에 실제 인코더 토큰 수 검사나 입력 길이 정책을 적용하지 않는다.
+로더는 diffusion 계열과 FLUX VAE 구조를 확인하지만 encoder 계열은 별도로 검증하지 않는다.
 
 Sampler/Scheduler는 MVP 설정 UI에 노출하지 않는다.
 
@@ -476,6 +496,13 @@ models/
 │  │  └─ qwen_3_06b_base.safetensors
 │  └─ vae/
 │     └─ qwen_image_vae.safetensors
+├─ flux2/
+│  ├─ diffusion_models/
+│  │  └─ flux-2-klein-4b-fp8.safetensors
+│  ├─ text_encoders/
+│  │  └─ qwen_3_4b_fp4_flux2.safetensors
+│  └─ vae/
+│     └─ flux2-vae.safetensors
 └─ prompt/
    └─ prompt-model.gguf
 ```
@@ -483,6 +510,11 @@ models/
 모델 위치는 설정 파일로 override 가능하게 한다.
 `ModelPaths.image_payload`는 선택한 정의의 런타임 역할만 해석한다. 파일이 없거나 비어 있으면
 준비 실패로 처리한다.
+FLUX 전용 encoder/VAE는 `flux2_text_encoder`·`flux2_vae` asset 키로 분리하고 Anima 키는
+유지한다. 모델 URL·크기·SHA-256을 고정하고 원본 라이선스와 출처를 `vendor/licenses`에 둔다.
+FLUX 문장 이해 모델은 Comfy-Org의 FP4 파일을 기본으로 다운로드한다. 기본 경로에서는
+FP4 파일을 먼저 탐색하고 기존 FP16 파일도 허용한다. 명시적으로 선택한 경로가 우선하며
+자동으로 덮어쓰거나 기존 파일을 삭제하지 않는다. 양자화 처리는 고정 ComfyUI core가 담당한다.
 
 `bootstrap.image_models`로 표시 이름·계열·버전·필요 asset ID·기본값을 React에 전달한다.
 `ImageModelSelect`는 계열/버전 표시만 공유한다. 생성 설정은 App의 Settings를 저장하고,
@@ -844,7 +876,8 @@ Mock LLM + Mock Image Worker:
 - Prompt LLM CUDA
 - Anima Turbo
 - Anima Aesthetic
-- LLM + Anima 동시 VRAM
+- FLUX.2 klein 4B
+- LLM + 이미지 모델 동시 VRAM
 - OOM fallback
 - worker restart
 - packaged portable build 실행
@@ -958,6 +991,8 @@ GPU 및 실제 WebView2 검증은 `scripts/smoke_*.py`에 분리되어 있으며
 기본 context는 4096, 출력 한도는 2048 tokens로 설정한다.
 프롬프트 작성 지침은 CUDA 추론 코드와 분리한 `prompt_instructions.py`에서 관리한다.
 해석·보강(`ENHANCE`) 규칙과 Anima의 출력·구성·검토 규칙을 함께 전달한다.
+FLUX는 같은 해석·보강 규칙에 자연어 문장 작성 지침을 붙인다. 모델 정의의 `natural_prompt`로
+생성·수정 지침을 선택하며 FLUX에는 Anima 태그 참고표를 전달하지 않는다.
 생성·수정 예시와 정적 `TAG_REFERENCE`는 같은 모듈에 둔다.
 제공된 CSV의 빈도와 의미를 검토해 선택한 어휘이며 실행 중 CSV를 읽거나
 분류·검색 모델을 추가하지 않는다.
@@ -1113,6 +1148,7 @@ npm run build
 ```powershell
 uv run --extra inference python scripts/smoke_runtime.py --prompt --reasoning-level low
 uv run --extra inference python scripts/smoke_runtime.py --image aesthetic --width 1024 --height 1024
+uv run --extra inference python scripts/smoke_runtime.py --prompt --image flux --width 1024 --height 1024
 uv run --extra inference python scripts/build_portable.py
 uv run --extra inference python scripts/smoke_portable.py <빌드된-Moru-폴더> --ui-only
 ```

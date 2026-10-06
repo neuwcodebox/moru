@@ -56,6 +56,36 @@ def test_restarting_an_exited_worker_releases_its_pipes_and_windows_job(tmp_path
         worker.close()
 
 
+@pytest.mark.parametrize("release", [True, False])
+def test_worker_client_uses_measured_budget_decision(tmp_path, monkeypatch, release):
+    reply = {"id": "request", "type": "result", "payload": {"release_prompt": release}}
+    worker, processes, _ = install_workers(tmp_path, monkeypatch, [reply])
+    try:
+        assert worker.needs_prompt_unload(GenerationSettings(), Event()) is release
+        sent = json.loads(processes[0].stdin.getvalue())
+        assert sent["type"] == "memory_budget"
+        assert sent["payload"]["settings"]["width"] == 1024
+    finally:
+        worker.close()
+
+
+def test_worker_client_rejects_an_invalid_budget_response(tmp_path, monkeypatch):
+    reply = {"id": "request", "type": "result", "payload": {"release_prompt": "false"}}
+    worker, processes, _ = install_workers(tmp_path, monkeypatch, [reply])
+    with pytest.raises(MoruError) as error:
+        worker.needs_prompt_unload(GenerationSettings(), Event())
+    assert error.value.code == "GENERATION_FAILED"
+    assert processes[0].stdin.closed
+
+
+def test_resident_prompt_does_not_start_worker_to_reserve_zero_bytes(tmp_path, monkeypatch):
+    worker = ImageWorker(Mock(root=tmp_path), tmp_path)
+    start = Mock()
+    monkeypatch.setattr(worker, "_start", start)
+    worker.reserve_memory(0, Event())
+    start.assert_not_called()
+
+
 def test_progress_callback_failure_stops_the_worker_and_has_a_stable_error(tmp_path, monkeypatch):
     response = {"id": "request", "type": "progress", "payload": {"state": "generating"}}
     worker, processes, jobs = install_workers(tmp_path, monkeypatch, [response])

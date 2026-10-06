@@ -119,4 +119,47 @@ def test_old_sdxl_path_overrides_do_not_break_supported_model_preparation(tmp_pa
     paths.config_path.write_text('{"sdxl-base-1.0": "old/checkpoint.safetensors"}')
     assert {item["id"] for item in paths.status()} == {
         "prompt", "anima-turbo-v1.1", "anima-aesthetic-v1.1", "text_encoder", "vae",
+        "flux2-klein-4b", "flux2_text_encoder", "flux2_vae",
     }
+
+
+def test_flux_generation_uses_its_three_files_without_anima_assets(tmp_path):
+    paths = ModelPaths(tmp_path)
+    for asset_id in ("flux2-klein-4b", "flux2_text_encoder", "flux2_vae"):
+        target = paths.get(asset_id)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"model")
+    assert paths.image_payload("flux2-klein-4b") == {
+        "diffusion": str(paths.get("flux2-klein-4b")),
+        "text_encoder": str(paths.get("flux2_text_encoder")),
+        "vae": str(paths.get("flux2_vae")),
+    }
+    assert not paths.get("text_encoder").exists()
+    assert not paths.get("vae").exists()
+
+
+def test_flux_prefers_fp4_when_present_and_keeps_explicit_path_overrides(tmp_path):
+    paths = ModelPaths(tmp_path)
+    fp4 = paths.get("flux2_text_encoder")
+    fp16 = fp4.with_name("qwen_3_4b.safetensors")
+    fp16.parent.mkdir(parents=True)
+    fp16.write_bytes(b"existing fp16")
+    assert paths.get("flux2_text_encoder") == fp16
+    fp4.write_bytes(b"new fp4")
+    assert paths.get("flux2_text_encoder") == fp4
+    paths.set("flux2_text_encoder", fp16)
+    assert paths.get("flux2_text_encoder") == fp16
+
+
+@pytest.mark.parametrize("missing", ["flux2-klein-4b", "flux2_text_encoder", "flux2_vae"])
+def test_flux_requires_each_of_its_own_files(tmp_path, missing):
+    paths = ModelPaths(tmp_path)
+    for asset_id in ("flux2-klein-4b", "flux2_text_encoder", "flux2_vae"):
+        if asset_id == missing:
+            continue
+        target = paths.get(asset_id)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"model")
+    with pytest.raises(MoruError) as error:
+        paths.image_payload("flux2-klein-4b")
+    assert error.value.code == "IMAGE_MODEL_NOT_FOUND"

@@ -6,7 +6,7 @@
 
 Moru is a Windows desktop app for making images through conversation. Describe a scene,
 look at the result, and tell it what to change. A local LLM writes the image prompt, and
-Anima generates the image on your computer.
+Anima or FLUX.2 generates the image on your computer.
 
 Your work grows as a conversation: try another result, choose a version you like,
 or return to an earlier image and explore a different direction.
@@ -47,7 +47,7 @@ Reopen a project later and continue where you left off.
 
 - **Edit the actual prompt.** Inspect or copy the prompt behind an image, change it yourself,
   and generate another version directly.
-- **Choose how to generate.** Choose Anima Turbo or Anima Aesthetic.
+- **Choose how to generate.** Choose Anima Turbo, Anima Aesthetic, or FLUX.2 klein 4B.
   Adjust image dimensions, Steps, CFG, and Seed.
 - **Tune the prompt LLM.** Adjust thinking, reasoning level, context and output limits,
   and how much recent conversation it uses.
@@ -87,18 +87,22 @@ or use the file-page links below. Click the download button on Hugging Face, the
 **Select file** for the matching model in Moru to choose the downloaded file.
 You can keep the original filename and save it anywhere.
 
-The prompt-writing model is required for both Anima versions. Choose the family and
+The prompt-writing model is required for every image model. Choose the family and
 version in **Model setup**, then prepare its listed files. Choose the active model separately
 in **Generation settings**. Anima needs one version plus the
 shared text-understanding and image-decoding models.
+FLUX.2 klein 4B needs its own diffusion, text encoder, and VAE files.
 
 | Model | File to download |
 | --- | --- |
 | Prompt-writing model | [Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive/blob/c09cdbcdb1fefad6d335809d445621b5f5ba0c6e/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf) |
-| Text-understanding model | [qwen_3_06b_base.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/text_encoders/qwen_3_06b_base.safetensors) |
-| Image-decoding model | [qwen_image_vae.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/vae/qwen_image_vae.safetensors) |
+| Anima text-understanding model | [qwen_3_06b_base.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/text_encoders/qwen_3_06b_base.safetensors) |
+| Anima image-decoding model | [qwen_image_vae.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/vae/qwen_image_vae.safetensors) |
 | Anima Turbo | [anima-turbo-v1.1.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/diffusion_models/anima-turbo-v1.1.safetensors) |
 | Anima Aesthetic | [anima-aesthetic-v1.1.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/diffusion_models/anima-aesthetic-v1.1.safetensors) |
+| FLUX.2 klein 4B | [flux-2-klein-4b-fp8.safetensors](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/blob/5b4408e59397a4a37ccb46afe426d8ed86379441/flux-2-klein-4b-fp8.safetensors) |
+| FLUX.2 text encoder (FP4) | [qwen_3_4b_fp4_flux2.safetensors](https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-4b/blob/8556e4d870cda7c53c7942b190bfeea5be9bd411/split_files/text_encoders/qwen_3_4b_fp4_flux2.safetensors) |
+| FLUX.2 VAE | [flux2-vae.safetensors](https://huggingface.co/Comfy-Org/flux2-klein-4B/blob/5f526678002e43af5551dadb73ce2e8c91b43afe/split_files/vae/flux2-vae.safetensors) |
 
 ### Run from source
 

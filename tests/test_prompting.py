@@ -406,6 +406,29 @@ def test_a_complete_answer_ends_at_its_paragraph_boundary(thinking):
     ]
 
 
+def test_resident_prompt_needs_no_loading_budget_until_context_or_path_changes(tmp_path):
+    paths = ModelPaths(tmp_path)
+    path = paths.get("prompt")
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"fake gguf")
+    settings = PromptSettings()
+    llm = Mock(metadata={}, tokenize=lambda *args, **kwargs: [0])
+    llm.create_chat_completion.side_effect = lambda **kwargs: completion("girl")
+    load = Mock(return_value=llm)
+    prompts = LlamaPrompts(paths, load_llama=load)
+    assert prompts.memory_required(settings) > 0
+    load.assert_not_called()
+    prompts.create("girl", settings)
+    assert prompts.memory_required(settings) == 0
+    assert prompts.memory_required(PromptSettings(context_size=8192)) > 0
+    other = path.with_name("other.gguf")
+    other.write_bytes(b"other gguf")
+    paths.set("prompt", other)
+    assert prompts.memory_required(settings) > 0
+    prompts.unload()
+    assert prompts.memory_required(settings) > 0
+
+
 @pytest.mark.parametrize("thinking", [True, False])
 def test_analysis_after_a_completed_prompt_is_not_displayed_or_forwarded(thinking):
     snapshots = []

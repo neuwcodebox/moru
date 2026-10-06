@@ -8,6 +8,8 @@ from threading import Event
 
 from moru.domain import GenerationSettings
 from moru.errors import MoruError
+from moru.flux2_schedule import flux2_sigmas
+from moru.memory_budget import image_memory_required
 from moru.models import image_model
 from moru.ports import Progress
 
@@ -21,6 +23,33 @@ def image_frame(decoded):
     if decoded.ndim == 4 and decoded.shape[0] == 1:
         return decoded[0]
     raise MoruError("GENERATION_FAILED")
+
+
+def zero_conditioning(positive, zeros_like):
+    negative = []
+    for embedding, metadata in positive:
+        values = dict(metadata)
+        if values.get("pooled_output") is not None:
+            values["pooled_output"] = zeros_like(values["pooled_output"])
+        negative.append([zeros_like(embedding), values])
+    return negative
+
+
+def _save_png(pixels, output_path: Path, temporary: Path):
+    import numpy as np
+    from PIL import Image
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with temporary.open("wb") as image_file:
+            Image.fromarray(np.clip(pixels * 255, 0, 255).astype(np.uint8)).save(
+                image_file, format="PNG",
+            )
+            image_file.flush()
+            os.fsync(image_file.fileno())
+        os.replace(temporary, output_path)
+    except OSError as exc:
+        raise MoruError("IMAGE_SAVE_FAILED") from exc
 
 
 class ComfyEngine:
@@ -60,6 +89,29 @@ class ComfyEngine:
         )
         return self._runtime
 
+    def reserve_memory(self, required_bytes: int):
+        torch, _, _, management, _, _ = self._load_runtime()
+        device = management.get_torch_device()
+        before = management.get_free_memory(device)
+        if before < required_bytes:
+            management.free_memory(required_bytes, device)
+        # llama.cpp cannot reuse memory held by PyTorch's allocator.
+        management.soft_empty_cache()
+        after = torch.cuda.mem_get_info(device)[0]
+        log.info("prompt VRAM preflight required=%s free_before=%s free_after=%s",
+                 required_bytes, before, after)
+
+    def needs_prompt_unload(self, settings: GenerationSettings, paths: dict[str, str]) -> bool:
+        torch, _, _, management, _, _ = self._load_runtime()
+        required = image_memory_required(paths, settings)
+        device = management.get_torch_device()
+        # ComfyUI may evict this worker's resident weights; other processes are not reclaimable.
+        available = management.get_free_memory(device) + torch.cuda.memory_allocated(device)
+        release = available < required
+        log.info("image VRAM preflight required=%s available=%s release_prompt=%s",
+                 required, available, release)
+        return release
+
     def _load_models(self, family, paths):
         torch, sd, _, management, utils, model_base = self._load_runtime()
         if (family, paths) == self._loaded_paths:
@@ -71,16 +123,22 @@ class ComfyEngine:
         management.soft_empty_cache()
         self._loaded_paths = None
         try:
-            if family != "anima":
+            if family not in ("anima", "flux2"):
                 raise MoruError("INVALID_SETTINGS")
+            expected_type = model_base.Anima if family == "anima" else model_base.Flux2
             self._model = sd.load_diffusion_model(paths["diffusion"])
             self._clip = sd.load_clip(
-                [paths["text_encoder"]], clip_type=sd.CLIPType.STABLE_DIFFUSION
+                [paths["text_encoder"]],
+                clip_type=(sd.CLIPType.STABLE_DIFFUSION if family == "anima" else sd.CLIPType.FLUX2)
             )
             self._vae = sd.VAE(sd=utils.load_torch_file(paths["vae"]))
             if (
                 self._model is None or self._clip is None or self._vae is None
-                or not isinstance(self._model.model, model_base.Anima)
+                or not isinstance(self._model.model, expected_type)
+            ):
+                raise MoruError("MODEL_LOAD_FAILED")
+            if family == "flux2" and (
+                self._vae.latent_channels != 128 or self._vae.downscale_ratio != 16
             ):
                 raise MoruError("MODEL_LOAD_FAILED")
         except (MoruError, torch.cuda.OutOfMemoryError):
@@ -112,14 +170,24 @@ class ComfyEngine:
             torch, _, sample, management, _, _ = self._runtime
             with torch.inference_mode():
                 positive = self._conditioning(prompt)
-                negative = self._conditioning(
-                    "worst quality, low quality, blurry, jpeg artifacts"
-                )
+                if model.family == "flux2":
+                    negative = zero_conditioning(positive, torch.zeros_like)
+                    channels, downscale = 128, 16
+                    sampling_options = {"sigmas": torch.tensor(
+                        flux2_sigmas(settings.steps, settings.width, settings.height),
+                        dtype=torch.float32,
+                    )}
+                else:
+                    negative = self._conditioning(
+                        "worst quality, low quality, blurry, jpeg artifacts"
+                    )
+                    channels, downscale = 4, 8
+                    sampling_options = {}
                 latent = torch.zeros(
-                    (1, 4, settings.height // 8, settings.width // 8),
+                    (1, channels, settings.height // downscale, settings.width // downscale),
                     device=management.intermediate_device(),
                 )
-                latent = sample.fix_empty_latent_channels(self._model, latent, 8)
+                latent = sample.fix_empty_latent_channels(self._model, latent, downscale)
                 noise = sample.prepare_noise(latent, settings.seed)
 
                 def step_progress(step, _denoised, _latent, total):
@@ -141,25 +209,14 @@ class ComfyEngine:
                     callback=step_progress,
                     disable_pbar=True,
                     seed=settings.seed,
+                    **sampling_options,
                 )
                 if cancelled.is_set():
                     raise MoruError("GENERATION_CANCELLED")
                 pixels = image_frame(self._vae.decode(samples)).detach().cpu().numpy()
-            import numpy as np
-            from PIL import Image
-
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                with temporary.open("wb") as image_file:
-                    Image.fromarray(np.clip(pixels * 255, 0, 255).astype(np.uint8)).save(
-                        image_file,
-                        format="PNG",
-                    )
-                    image_file.flush()
-                    os.fsync(image_file.fileno())
-                os.replace(temporary, output_path)
-            except OSError as exc:
-                raise MoruError("IMAGE_SAVE_FAILED") from exc
+            _save_png(pixels, output_path, temporary)
+            # Return unused generation buffers while keeping reusable model weights resident.
+            management.soft_empty_cache()
         except MoruError:
             raise
         except Exception as exc:

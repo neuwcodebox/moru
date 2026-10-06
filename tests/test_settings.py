@@ -220,3 +220,13 @@ def test_stored_prompt_settings_are_preserved_without_default_migrations(
         assert restored.get_prompt_settings() == explicit_old_values
     finally:
         restored.close()
+
+
+def test_flux_defaults_preserve_explicit_generation_settings():
+    settings = GenerationSettings(model_id="flux2-klein-4b")
+    assert (settings.steps, settings.cfg) == (4, 1)
+    explicit = GenerationSettings(
+        model_id="flux2-klein-4b", steps=8, cfg=2, width=832, height=1216, seed=42,
+    )
+    assert (explicit.steps, explicit.cfg, explicit.seed) == (8, 2, 42)
+    assert (explicit.width, explicit.height) == (832, 1216)

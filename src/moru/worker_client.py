@@ -135,6 +135,19 @@ class ImageWorker:
                 stream.close()
         log.info("image worker stopped pid=%s", process.pid)
 
+    def reserve_memory(self, required_bytes: int, cancelled: Event):
+        if required_bytes:
+            self._request("reserve_memory", {"required_bytes": required_bytes}, cancelled)
+
+    def needs_prompt_unload(self, settings: GenerationSettings, cancelled: Event) -> bool:
+        result = self._request("memory_budget", {
+            "settings": asdict(settings), "paths": self._paths.image_payload(settings.model_id),
+        }, cancelled)
+        if type(result.get("release_prompt")) is not bool:
+            self._stop()
+            raise MoruError("GENERATION_FAILED")
+        return result["release_prompt"]
+
     def generate(
         self,
         prompt: str,
@@ -146,8 +159,6 @@ class ImageWorker:
         if output_path.exists():
             raise MoruError("IMAGE_SAVE_FAILED")
         paths = self._paths.image_payload(settings.model_id)
-        process, messages = self._start()
-        request_id = uuid.uuid4().hex
         payload = {
             **asdict(settings),
             "prompt": prompt,
@@ -155,8 +166,28 @@ class ImageWorker:
             "paths": paths,
         }
         try:
+            details = self._request("generate", payload, cancelled, progress)
+            if (
+                details.get("image_path") != str(output_path.resolve())
+                or details.get("seed") != settings.seed
+            ):
+                self._stop()
+                raise MoruError("GENERATION_FAILED")
+        except MoruError as exc:
+            if exc.code == "GENERATION_CANCELLED":
+                output_path.unlink(missing_ok=True)
+            raise
+        finally:
+            output_path.with_suffix(".png.part").unlink(missing_ok=True)
+
+    def _request(self, message_type, payload, cancelled, progress=None):
+        if cancelled.is_set():
+            raise MoruError("GENERATION_CANCELLED")
+        process, messages = self._start()
+        request_id = uuid.uuid4().hex
+        try:
             process.stdin.write(
-                json.dumps({"id": request_id, "type": "generate", "payload": payload}) + "\n"
+                json.dumps({"id": request_id, "type": message_type, "payload": payload}) + "\n"
             )
             process.stdin.flush()
             while True:
@@ -174,6 +205,8 @@ class ImageWorker:
                 message = parse_worker_message(line, request_id)
                 details = message["payload"]
                 if message["type"] == "progress":
+                    if progress is None:
+                        raise MoruError("GENERATION_FAILED")
                     progress(
                         details.get("state", "generating"),
                         details.get("step"),
@@ -183,12 +216,7 @@ class ImageWorker:
                     code = details.get("code")
                     raise MoruError(code if code in MESSAGES else "GENERATION_FAILED")
                 else:
-                    if (
-                        details.get("image_path") != str(output_path.resolve())
-                        or details.get("seed") != settings.seed
-                    ):
-                        raise MoruError("GENERATION_FAILED")
-                    return
+                    return details
         except Exception as exc:
             code = (
                 exc.code
@@ -201,13 +229,9 @@ class ImageWorker:
             )
             if code != "CUDA_OOM":
                 self._stop()
-            if code == "GENERATION_CANCELLED":
-                output_path.unlink(missing_ok=True)
             if isinstance(exc, MoruError):
                 raise
             raise MoruError(code) from exc
-        finally:
-            output_path.with_suffix(".png.part").unlink(missing_ok=True)
 
     def close(self):
         with self._lock:

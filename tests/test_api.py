@@ -283,7 +283,7 @@ def test_retired_sdxl_is_absent_from_selection_and_downloads(app, tmp_path):
     api = Api(app, downloads=downloads)
     result = api.bootstrap()["value"]
     assert {model["id"] for model in result["image_models"]} == {
-        "anima-turbo-v1.1", "anima-aesthetic-v1.1",
+        "anima-turbo-v1.1", "anima-aesthetic-v1.1", "flux2-klein-4b",
     }
     assert all(model["id"] != "sdxl-base-1.0" for model in result["models"])
     assert api.update_settings({"model_id": "sdxl-base-1.0"})["error"]["code"] == "INVALID_SETTINGS"
@@ -460,3 +460,24 @@ def test_bridge_fork_opens_a_copied_session_and_excludes_later_conversation(app)
     assert copied["images"][0]["id"] != root.id
     assert len(api.get_project(project.id)["value"]["images"]) == 2
     assert len(api.list_projects()["value"]) == 2
+
+
+def test_flux_catalog_downloads_and_saved_selection_use_the_distilled_model(app, tmp_path):
+    downloads = ModelDownloads(ModelPaths(tmp_path), executor=app.scheduler)
+    api = Api(app, downloads=downloads)
+    bootstrap = api.bootstrap()["value"]
+    model = next(item for item in bootstrap["image_models"] if item["id"] == "flux2-klein-4b")
+    assert (model["family_name"], model["variant_name"]) == ("FLUX.2", "klein 4B")
+    assert model["asset_ids"] == ["flux2-klein-4b", "flux2_text_encoder", "flux2_vae"]
+    assert model["defaults"] == {"steps": 4, "cfg": 1}
+    filenames = {
+        "flux2-klein-4b": "flux-2-klein-4b-fp8.safetensors",
+        "flux2_text_encoder": "qwen_3_4b_fp4_flux2.safetensors",
+        "flux2_vae": "flux2-vae.safetensors",
+    }
+    for item in bootstrap["models"]:
+        if item["id"] in filenames:
+            assert item["manual_download"]["filename"] == filenames[item["id"]]
+            assert "/blob/main/" not in item["manual_download"]["url"]
+    assert api.update_settings({"model_id": "flux2-klein-4b"})["ok"]
+    assert api.bootstrap()["value"]["settings"]["model_id"] == "flux2-klein-4b"

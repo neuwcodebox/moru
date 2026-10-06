@@ -168,7 +168,7 @@ it("requires only the selected Anima variant and shared files", () => {
 it("offers only supported models for file preparation", () => {
   setupPreparation();
   const families = within(screen.getByLabelText("모델"));
-  expect(families.getAllByRole("option").map((option) => option.textContent)).toEqual(["Anima"]);
+  expect(families.getAllByRole("option").map((option) => option.textContent)).toEqual(["Anima", "FLUX.2"]);
   expect(screen.queryByRole("option", { name: /SDXL/ })).toBeNull();
 });
 
@@ -223,4 +223,33 @@ it("keeps an active download visible and cancellable after choosing another vari
   expect(downloads.getByText("50%")).toBeTruthy();
   await user.click(downloads.getByRole("button", { name: "취소" }));
   expect(cancel).toHaveBeenCalledWith("anima-turbo-v1.1");
+});
+
+
+it("prepares FLUX files separately from Anima without changing the active model", async () => {
+  setupPreparation();
+  const user = userEvent.setup();
+  await user.selectOptions(screen.getByLabelText("모델"), "flux2");
+  const imageSetup = within(screen.getByRole("region", { name: "이미지 생성 모델" }));
+  expect(imageSetup.getByRole("group", { name: "FLUX.2 klein 4B" })).toBeTruthy();
+  expect(imageSetup.getByRole("group", { name: "문장 이해 모델" })).toBeTruthy();
+  expect(imageSetup.getByRole("group", { name: "이미지 복원 모델" })).toBeTruthy();
+  expect(imageSetup.queryByText("Anima Turbo")).toBeNull();
+  expect(imageSetup.getByRole("status").textContent).toBe("필요한 모델 파일을 준비하세요.");
+  expect((screen.getByLabelText("버전") as HTMLSelectElement).value).toBe("flux2-klein-4b");
+  const download = vi.fn(async () => ({ ok: true as const, value: preparedModels }));
+  window.pywebview!.api.download_model = download;
+  await user.click(within(imageSetup.getByRole("group", { name: "문장 이해 모델" }))
+    .getByRole("button", { name: "다운로드" }));
+  expect(download).toHaveBeenCalledWith("flux2_text_encoder");
+  expect(screen.queryByRole("button", { name: "저장" })).toBeNull();
+});
+
+
+it.each(["flux2_text_encoder", "flux2_vae"])("keeps FLUX unprepared when %s is missing", async (missing) => {
+  const models = ["prompt", "flux2-klein-4b", "flux2_text_encoder", "flux2_vae"]
+    .filter((id) => id !== missing).map((id) => ({ id, available: true }));
+  setupPreparation(models);
+  await userEvent.setup().selectOptions(screen.getByLabelText("모델"), "flux2");
+  expect(screen.getByRole("status").textContent).toBe("필요한 모델 파일을 준비하세요.");
 });

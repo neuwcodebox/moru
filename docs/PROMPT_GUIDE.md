@@ -2,9 +2,13 @@
 
 이 문서는 프롬프트 LLM에 전달하는 규칙의 근거와 작성 예시를 설명한다.
 실제로 전달하는 영문 지침은 `src/moru/prompt_instructions.py`의
-`CREATE_SYSTEM`·`REFINE_SYSTEM`이다. 앱은 이 문서 전체를 컨텍스트에 넣지 않는다.
+Anima용 `CREATE_SYSTEM`·`REFINE_SYSTEM`과 FLUX용
+`NATURAL_CREATE_SYSTEM`·`NATURAL_REFINE_SYSTEM`이다. 앱은 이 문서 전체를 컨텍스트에 넣지 않는다.
 작성 규칙과 필요한 태그 예시를 압축해 전달하고, 생성과 수정에 각각 맞는 예시를 사용한다.
 요청 해석·장면 보강 규칙은 생성과 수정에 공유한다. 아래 태그 규칙과 예시는 Anima에 적용한다.
+FLUX는 대상 수·속성·행동·관계·조명·매체를 영어 문장으로 작성하며 Anima 태그 참고표를
+전달하지 않는다. 태그가 섞인 기존 프롬프트를 수정할 때도 시각적 의미와 변경하지 않은
+내용을 유지한다. 생성·수정의 예시는 system 안에만 두며 실제 대화 이력은 그대로 전달한다.
 
 ## 조사 근거와 적용 범위
 

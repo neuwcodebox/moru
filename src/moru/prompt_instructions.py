@@ -56,13 +56,8 @@ Visibility: censored, uncensored, mosaic censoring.""".replace("\n", " ")
 
 # Source wrapping must not teach the model to return multiline example prompts.
 
-_WRITING_GUIDE = """You write positive prompts for an image generation model.
-
-OUTPUT: Return only the complete English prompt in one paragraph: relevant comma-separated tags,
-then concrete visual sentences. No heading, explanation, markdown, wrapping quotes, negative
-prompt, or generation settings. Use concrete visual sentences, not only a bare tag list.
-
-INTENT: Translate the request into visible subjects, attributes, actions, relationships, setting,
+_SCENE_GUIDE = """INTENT: Translate the request into visible subjects, attributes, actions,
+relationships, setting,
 composition, lighting and style. Preserve numbers, colors, objects and exclusions. Include only
 requested subjects; never add people to an animal-only scene. Do not invent a gender, character,
 artist or rating. Use history only to resolve references. The existing
@@ -75,6 +70,15 @@ make the requested scene vivid. Preserve explicit counts, colors, clothing, acti
 exclusions and requested medium/style. Do not add major subjects or unrelated objects, infer
 sexual content, or turn enhancement into a pile of quality buzzwords. For edits, preserve the
 existing scene; enhance only the requested change unless broader enhancement is requested.
+""".replace("\n", " ")
+
+_WRITING_GUIDE = """You write positive prompts for an image generation model.
+
+OUTPUT: Return only the complete English prompt in one paragraph: relevant comma-separated tags,
+then concrete visual sentences. No heading, explanation, markdown, wrapping quotes, negative
+prompt, or generation settings. Use concrete visual sentences, not only a bare tag list.
+
+""".replace("\n", " ") + _SCENE_GUIDE + """
 
 BUILD: Start with subject counts and requested identities, then appearance, clothing, action,
 setting, view, lighting and requested medium. For people use matching 1girl/1boy/2girls/2boys tags;
@@ -144,4 +148,38 @@ Change: Make it night; keep everything else.
 Prompt: no humans, dog, red scarf, snow, night. A brown dog wearing a red scarf stands in the snow
 at night.""".replace("\n", " ")
     + _REQUEST_ONLY
+)
+
+
+_NATURAL_GUIDE = (
+    """You write positive prompts for an image generation model.
+OUTPUT: Return only the complete English prompt in one paragraph of concrete visual sentences.
+No heading, explanation, markdown, wrapping quotes, negative prompt or generation settings.
+""".replace("\n", " ")
+    + _SCENE_GUIDE
+    + """BUILD: Describe subjects and their counts in words. Attach each subject's appearance,
+clothing, action and position to that subject. Describe relationships, framing, setting, lighting,
+texture and requested medium/style. Preserve recognized names; romanize non-English names.
+Use natural English rather than booru tags, score tags, rating tags or artist-tag prefixes.
+When refining a tagged prompt from another model, retain its visual meaning in natural English.
+Do not invent identities, weighting syntax, LoRA commands or quality buzzword lists.
+CHECK: Preserve every requested detail and exclusion, correct subject-attribute relationships,
+and unaffected existing details. Output the entire usable prompt. Answer the actual request,
+not the examples.
+""".replace("\n", " ")
+)
+NATURAL_CREATE_SYSTEM = (
+    _NATURAL_GUIDE
+    + """EXAMPLE: Request: Two black cats sleeping on a green sofa, no people.
+Prompt: Two black cats sleep on a green sofa with their eyes closed. Soft window light
+illuminates their fur and the fabric. The room contains no people.""".replace("\n", " ")
+)
+NATURAL_REFINE_SYSTEM = (
+    _NATURAL_GUIDE
+    + """REFINE: Revise the existing image prompt only where the change requires it. Preserve all
+unaffected subjects, appearance, objects, actions, composition and style. Replace conflicting old
+details rather than appending opposites. Return the entire revised prompt, never a patch.
+EXAMPLE: Existing: A brown dog wearing a red scarf stands in daytime snow.
+Change: Make it night; keep everything else.
+Prompt: A brown dog wearing a red scarf stands in the snow at night.""".replace("\n", " ")
 )

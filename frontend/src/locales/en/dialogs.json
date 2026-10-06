@@ -53,7 +53,9 @@
     "names": {
       "prompt": "Prompt-writing model",
       "text_encoder": "Text-understanding model",
-      "vae": "Image-decoding model"
+      "vae": "Image-decoding model",
+      "flux2_text_encoder": "Text-understanding model",
+      "flux2_vae": "Image-decoding model"
     }
   },
   "prompt": {

@@ -159,10 +159,11 @@ def main():
     copy_licenses(application / "licenses", root)
     (application / "README.txt").write_text(
         "Moru\n\nZIP 전체를 압축 해제한 뒤 Moru.exe를 실행하세요.\n"
-        "모델 설정 창에서 모델을 다운로드하거나 로컬 파일을 선택합니다.\n"
+        "모델 준비 창에서 모델을 다운로드하거나 로컬 파일을 선택합니다.\n"
         "모델 준비 후에는 오프라인으로 사용할 수 있습니다.\n"
         "작업은 data 폴더에 저장됩니다. 앱을 이동할 때 data와 models도 함께 옮기세요.\n"
-        "Turbo: Steps 10, CFG 1. Aesthetic: Steps 40, CFG 4.5. Seed Auto.\n",
+        "Turbo: Steps 10, CFG 1. Aesthetic: Steps 40, CFG 4.5. "
+        "FLUX.2 klein 4B: Steps 4, CFG 1. Seed Auto.\n",
         encoding="utf-8",
     )
     release = root / "release"

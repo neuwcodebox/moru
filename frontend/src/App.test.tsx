@@ -1220,3 +1220,35 @@ it.each(["unreadable", "unsupported"])("uses English when the saved preference i
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Could not save or load the project history.");
   expect(document.documentElement.lang).toBe("en");
 });
+
+
+it("restores FLUX with its own files and saves family changes only in generation settings", async () => {
+  const bootstrap = await api.bootstrap();
+  const saved = { ...settings, model_id: "flux2-klein-4b", steps: 4, cfg: 1,
+    width: 832, height: 1216, seed: "42" };
+  api.bootstrap.mockResolvedValue({ ...bootstrap, value: { ...bootstrap.value,
+    settings: saved,
+    models: ["prompt", "flux2-klein-4b", "flux2_text_encoder", "flux2_vae"]
+      .map((id) => ({ id, available: true })),
+  } });
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "모델 준비" }));
+  expect((screen.getByLabelText("모델") as HTMLSelectElement).value).toBe("flux2");
+  await user.selectOptions(screen.getByLabelText("모델"), "anima");
+  await user.keyboard("{Escape}");
+  expect(api.update_settings).not.toHaveBeenCalled();
+  await user.click(screen.getByLabelText("생성 설정"));
+  expect((screen.getByLabelText("모델") as HTMLSelectElement).value).toBe("flux2");
+  expect((screen.getByLabelText("생성 단계") as HTMLInputElement).value).toBe("4");
+  await user.selectOptions(screen.getByLabelText("모델"), "anima");
+  expect((screen.getByLabelText("생성 단계") as HTMLInputElement).value).toBe("10");
+  await user.selectOptions(screen.getByLabelText("모델"), "flux2");
+  expect((screen.getByLabelText("생성 단계") as HTMLInputElement).value).toBe("4");
+  expect((screen.getByLabelText("프롬프트 반영 강도 (CFG)") as HTMLInputElement).value).toBe("1");
+  expect((screen.getByLabelText("시드") as HTMLInputElement).value).toBe("42");
+  await user.click(screen.getByRole("button", { name: "저장" }));
+  expect(api.update_settings).toHaveBeenCalledWith(saved, promptSettings);
+});

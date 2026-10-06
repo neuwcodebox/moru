@@ -6,7 +6,7 @@
 
 Moru는 대화로 이미지를 만드는 Windows 데스크톱 앱입니다. 원하는 장면을 설명하고,
 결과를 본 뒤 무엇을 바꿀지 말하세요. 로컬 LLM이 이미지 프롬프트를 작성하고,
-Anima가 내 컴퓨터에서 이미지를 생성합니다.
+Anima 또는 FLUX.2가 내 컴퓨터에서 이미지를 생성합니다.
 
 작업은 하나의 대화로 쌓입니다. 같은 요청을 다시 시도하고, 마음에 드는 버전을 고르고,
 과거 이미지로 돌아가 다른 방향으로 이어갈 수 있습니다.
@@ -47,7 +47,7 @@ Moru는 현재 이미지의 실제 프롬프트와 최근 요청을 참고해 �
 
 - **실제 프롬프트 편집:** 이미지에 사용된 프롬프트를 확인·복사하거나 직접 고쳐
   새 버전을 생성할 수 있습니다.
-- **생성 방식 선택:** Anima Turbo 또는 Anima Aesthetic을 선택합니다.
+- **생성 방식 선택:** Anima Turbo, Anima Aesthetic 또는 FLUX.2 klein 4B를 선택합니다.
   이미지 크기, Steps, CFG, Seed도 조절할 수 있습니다.
 - **프롬프트 LLM 조절:** Thinking, 추론 수준, 컨텍스트·출력 한도와 최근 대화 참고 범위를
   조절할 수 있습니다.
@@ -87,17 +87,21 @@ Windows, NVIDIA GPU와 드라이버, Windows WebView2 Runtime이 필요합니다
 Moru의 해당 모델에서 **파일 선택**을 눌러 받은 파일을 지정합니다.
 파일 이름을 바꿀 필요 없이 원하는 폴더에 저장할 수 있습니다.
 
-프롬프트 작성 모델은 두 Anima 버전에 공통으로 필요합니다. **모델 준비**에서
+프롬프트 작성 모델은 모든 이미지 모델에 공통으로 필요합니다. **모델 준비**에서
 계열과 버전별 파일을 준비하세요. 실제 사용할 모델은 **생성 설정**에서 선택합니다. Anima는 사용할 버전 하나와
 공유 문장 이해·이미지 복원 모델이 필요합니다.
+FLUX.2 klein 4B는 전용 이미지 가중치·문장 이해·이미지 복원 모델 세 파일이 필요합니다.
 
 | 모델 | 받을 파일 |
 | --- | --- |
 | 프롬프트 작성 모델 | [Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive/blob/c09cdbcdb1fefad6d335809d445621b5f5ba0c6e/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf) |
-| 문장 이해 모델 | [qwen_3_06b_base.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/text_encoders/qwen_3_06b_base.safetensors) |
-| 이미지 복원 모델 | [qwen_image_vae.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/vae/qwen_image_vae.safetensors) |
+| Anima 문장 이해 모델 | [qwen_3_06b_base.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/text_encoders/qwen_3_06b_base.safetensors) |
+| Anima 이미지 복원 모델 | [qwen_image_vae.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/vae/qwen_image_vae.safetensors) |
 | Anima Turbo | [anima-turbo-v1.1.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/diffusion_models/anima-turbo-v1.1.safetensors) |
 | Anima Aesthetic | [anima-aesthetic-v1.1.safetensors](https://huggingface.co/circlestone-labs/Anima/blob/f973fc41ec7545364ac9776c2440285f43ff2a30/split_files/diffusion_models/anima-aesthetic-v1.1.safetensors) |
+| FLUX.2 klein 4B | [flux-2-klein-4b-fp8.safetensors](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/blob/5b4408e59397a4a37ccb46afe426d8ed86379441/flux-2-klein-4b-fp8.safetensors) |
+| FLUX.2 문장 이해 모델 (FP4) | [qwen_3_4b_fp4_flux2.safetensors](https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-4b/blob/8556e4d870cda7c53c7942b190bfeea5be9bd411/split_files/text_encoders/qwen_3_4b_fp4_flux2.safetensors) |
+| FLUX.2 이미지 복원 모델 | [flux2-vae.safetensors](https://huggingface.co/Comfy-Org/flux2-klein-4B/blob/5f526678002e43af5551dadb73ce2e8c91b43afe/split_files/vae/flux2-vae.safetensors) |
 
 ### 소스에서 실행
 

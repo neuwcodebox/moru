@@ -72,6 +72,19 @@ def serve(input_stream: TextIO, output_stream: TextIO, engine, data_dir: Path):
             request_id = message["id"]
             if message["type"] == "shutdown":
                 return
+            if message["type"] == "reserve_memory" and isinstance(request_id, str):
+                required = message["payload"]["required_bytes"]
+                if type(required) is not int or required <= 0:
+                    raise MoruError("INVALID_REQUEST")
+                engine.reserve_memory(required)
+                send(request_id, "result", {})
+                continue
+            if message["type"] == "memory_budget" and isinstance(request_id, str):
+                payload = message["payload"]
+                settings = GenerationSettings(**payload["settings"])
+                release = engine.needs_prompt_unload(settings, payload["paths"])
+                send(request_id, "result", {"release_prompt": release})
+                continue
             if message["type"] != "generate" or not isinstance(request_id, str):
                 raise MoruError("INVALID_REQUEST")
             payload = message["payload"]
