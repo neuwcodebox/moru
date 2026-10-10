@@ -1,6 +1,7 @@
 import copy
 import json
 from contextlib import contextmanager
+from dataclasses import replace
 from threading import Event
 
 import pytest
@@ -235,6 +236,31 @@ def test_completed_output_item_events_can_supply_calls_when_completion_omits_out
     tools = Tools()
     ChatGPTPrompts(Auth(), http, tag_tools=tools).create("girl", SETTINGS, Event(), lambda *_: None)
     assert len(tools.calls) == 1
+
+
+@pytest.mark.parametrize("operation", ["create", "refine"])
+def test_disabling_tag_search_omits_tools_and_lookup_guidance(operation):
+    from moru.chatgpt.instructions import TAG_GUIDANCE, prompt_messages
+
+    http, tools = Responses(final_turn()), Tools()
+    sources, progress, stages = [], [], []
+    prompts = ChatGPTPrompts(Auth(), http, tag_tools=tools)
+    settings = replace(SETTINGS, tag_search_enabled=False)
+    args = ("girl", settings, Event(), lambda *event: progress.append(event))
+    context = dict(on_source=sources.append, on_stage=lambda *event: stages.append(event))
+    result = (
+        prompts.create(*args, **context)
+        if operation == "create"
+        else prompts.refine("original", *args, **context)
+    )
+    assert result == "1girl, crossed_arms, grey_hair"
+    assert len(http.calls) == 1 and tools.calls == [] and sources == []
+    payload = http.calls[0][1]
+    assert "tools" not in payload and "include" not in payload
+    assert payload["instructions"] == prompt_messages("girl")[0]
+    assert TAG_GUIDANCE not in payload["instructions"]
+    assert progress == [("", result)]
+    assert all(stage != "searching_tags" for stage, _ in stages)
 
 
 def test_flux_keeps_its_existing_single_request_without_tag_tools():

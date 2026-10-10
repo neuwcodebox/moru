@@ -19,6 +19,7 @@ const promptSettings: PromptSettings = {
   context_size: 4096,
   max_tokens: 2048,
   thinking: true,
+  tag_search_enabled: true,
   history_turns: 4,
   reasoning_level: "medium",
 };

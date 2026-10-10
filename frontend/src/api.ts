@@ -15,6 +15,7 @@ export type PromptSettings = {
   provider?: "local" | "chatgpt";
   chatgpt_model?: string;
   chatgpt_reasoning_effort?: ChatGPTReasoningEffort | "default";
+  tag_search_enabled: boolean;
 };
 export type ChatGPTReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 export type PromptConfiguration = Partial<Omit<PromptSettings, "provider">>;

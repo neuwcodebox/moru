@@ -5,7 +5,7 @@ import PromptOptions from "./PromptOptions";
 import type { PromptSettings } from "../../api";
 
 const settings: PromptSettings = {
-  context_size: 4096, max_tokens: 2048, thinking: true, history_turns: 4,
+  context_size: 4096, max_tokens: 2048, thinking: true, history_turns: 4, tag_search_enabled: true,
   reasoning_level: "low", provider: "chatgpt", chatgpt_model: "gpt-6-astra",
 };
 

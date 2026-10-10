@@ -25,6 +25,7 @@ class PromptSettings:
     provider: Literal["local", "chatgpt"] = "local"
     chatgpt_model: str = ""
     chatgpt_reasoning_effort: str = "default"
+    tag_search_enabled: bool = True
 
     def __post_init__(self):
         if not isinstance(self.provider, str) or self.provider not in ("local", "chatgpt"):
@@ -43,7 +44,7 @@ class PromptSettings:
             raise MoruError("INVALID_SETTINGS")
         if type(self.max_tokens) is not int or not 1 <= self.max_tokens < self.context_size:
             raise MoruError("INVALID_SETTINGS")
-        if type(self.thinking) is not bool:
+        if type(self.thinking) is not bool or type(self.tag_search_enabled) is not bool:
             raise MoruError("INVALID_SETTINGS")
         if type(self.history_turns) is not int or not 0 <= self.history_turns <= 20:
             raise MoruError("INVALID_SETTINGS")

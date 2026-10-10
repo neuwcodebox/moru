@@ -39,6 +39,9 @@ export default function SettingsDialog({
   const [error, setError] = useState<unknown>(null);
   const form = useRef<HTMLFormElement>(null);
   const savingPending = useRef(false);
+  const supportsTagSearch = imageModels.some(
+    (model) => model.id === draft.model_id && model.family === "anima",
+  );
   async function close() {
     if (savingPending.current) return;
     const changed = Object.entries(draft).some(([field, value]) => value !== settings[field as keyof Settings]) ||
@@ -175,6 +178,14 @@ export default function SettingsDialog({
             </select>
           </label>
           <p className="hint">{t("chatgpt.setupHint")}</p>
+          <label className="checkbox-field">
+            <input type="checkbox" checked={promptDraft.tag_search_enabled}
+              disabled={!supportsTagSearch}
+              onChange={(event) => setPromptDraft({ ...promptDraft,
+                tag_search_enabled: event.target.checked })} />
+            {t("settings.tagSearch")}
+          </label>
+          <p className="hint">{t("settings.tagSearchHint")}</p>
           <details className="advanced-settings">
             <summary>{t("settings.advanced")}</summary>
             <fieldset disabled={saving} className="prompt-options">

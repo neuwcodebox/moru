@@ -279,6 +279,7 @@ GGUF 채팅 템플릿을 렌더링한 뒤 tokenizer로 입력 토큰 수를 계�
 `prompts/tag_search.py`가 쿼리 지침·형식 검증·선택적 조회·참고 자료 구성을 담당한다.
 `LlamaPrompts`는 모델 적재·재사용과 두 작성 단계를 연결하며, `prompts/completion.py`는
 추론 종료·한 문단 종료·스트림 읽기를 담당한다. 검색어 작성과 최종 작성은 같은 적재 모델을 사용한다.
+`PromptSettings.tag_search_enabled`가 꺼져 있으면 검색·참고 자료 예약 없이 최종 작성만 수행한다.
 검색 단계는 짧은 전용 system과 현재 프롬프트·최신 요청·보존한 이력을 사용하며,
 전체 작성 지침이나 정적 태그표를 넣지 않는다. 영어 검색 개념을 쉼표로 구분한 한 줄로 받고,
 정규화·중복 제거 후 최대 5개만 검색한다. 조회할 개념이 없으면 `none`을 반환한다.
@@ -1092,6 +1093,9 @@ LLM을 우회하며 불변 이미지 기록의 설정은 바꾸지 않는다.
 생성 설정에서 로컬 LLM을 선택하면 접힌 고급 영역에서 두 한도와 thinking 사용 여부, 추론 수준을
 변경할 수 있다. 불변 `PromptSettings`는 이미지 설정과 함께 preferences에 원자적으로
 저장되며 작업 접수 시 고정한다. 현재 작업에는 저장 후 변경한 값을 적용하지 않는다.
+공통 `tag_search_enabled`는 기본 `True`이며 기존 저장값에 필드가 없으면 이 기본값을 사용한다.
+생성 설정은 작성 모델 선택과 고급 설정 사이에 검색 체크박스를 두고 닫을 때 함께 저장한다.
+Anima 이외의 이미지 모델에서는 선택을 비활성화하며 값은 보존한다.
 컨텍스트 또는 모델 경로가 변경되면 다음 LLM 호출에서 모델을 다시 로드한다.
 출력 한도, thinking 및 추론 수준 변경은 모델을 재사용한다. GGUF의 chat template에
 `enable_thinking`을 명시하여 기존 템플릿의 thinking 분기를 선택한다.
@@ -1249,7 +1253,8 @@ phase가 없는 응답은 메시지·텍스트 출력 시점을 사용한다. �
 이미 받은 도구 결과를 그대로 재사용한다. 스트리밍 중 실패는 재요청하지 않는다.
 모델 목록은 GET /v1/models의 models에서 visibility:list인 slug/display_name을 서버 순서로 표시한다.
 
-Anima용 요청에는 `DanbooruTools`의 세 function을 `danbooru` namespace로 제공한다.
+태그 검색이 켜진 Anima용 요청에는 `DanbooruTools`의 세 function을 `danbooru` namespace로 제공한다.
+끄면 도구 정의·검색 지침·추론 이력 재전달용 include를 보내지 않고 단일 요청으로 작성한다.
 `search_tags(query, limit=20)`는 단어·별칭·철자 기반 후보 이름만 반환한다.
 `get_tag_info(name)`는 정확한 태그·활성 별칭의 정식 이름과 wiki 설명을 반환하며,
 필요한 경우에만 deprecated를 표시한다. 태그가 없고 wiki만 있는 경우 정식 이름은 null이다.
@@ -1275,7 +1280,9 @@ Application은 조회 자료를 모아 이미지 완료 트랜잭션에 함께 �
 원본 소스를 이어받는다. 다른 수동 프롬프트와 새로운 자연어 작성은 해당 작성의 소스를 사용한다.
 `get_image_sources`는 선택한 이미지의 자료를 반환하고 `SourcesDialog`는 기존 이미지 메뉴의
 소스 버튼에서 연다. 팝업은 번역된 도구 종류·검색어·태그·설명과 조회 실패를 표시하며 원시 JSON은
-노출하지 않는다. wiki 설명은 HTML로 실행하지 않고 텍스트로 렌더링하고 태그 링크는 고정 wiki URL로 만든다.
+노출하지 않는다. wiki 설명과 관련 태그의 두 목록은 기본적으로 닫힌 `details`로 표시한다.
+관련 목록의 summary에는 태그 수를 표시하고 빈 목록은 생략한다. wiki 설명은 텍스트로 렌더링하며
+HTML로 실행하지 않는다. 태그 링크는 고정 wiki URL로 만든다.
 기존 Modal의 닫기·초점 복원·배경 잠금을 공유하며 소스가 없는 이미지도 같은 메뉴를 유지한다.
 
 `DanbooruTags`는 autocomplete·활성 alias·tag/wiki·related_tag 응답에서 필요한 정보만 추출한다.

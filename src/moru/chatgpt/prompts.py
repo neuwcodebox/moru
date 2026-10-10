@@ -104,7 +104,11 @@ class ChatGPTPrompts:
         }
         if settings.chatgpt_reasoning_effort != "default":
             payload["reasoning"] = {"effort": settings.chatgpt_reasoning_effort}
-        use_tools = self.tag_tools is not None and not image_model(model_id).natural_prompt
+        use_tools = (
+            settings.tag_search_enabled
+            and self.tag_tools is not None
+            and not image_model(model_id).natural_prompt
+        )
         if use_tools:
             payload["tools"] = self.tag_tools.definitions()
             payload["include"] = ["reasoning.encrypted_content"]

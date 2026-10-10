@@ -59,6 +59,8 @@
     "custom": "Custom",
     "seedHint": "Leave the seed blank to choose one automatically each time.",
     "advanced": "Advanced settings",
+    "tagSearch": "Danbooru tag search",
+    "tagSearchHint": "Used when writing Anima prompts.",
     "contextSize": "Context size",
     "maxTokens": "Output token limit",
     "historyTurns": "Recent requests",
@@ -116,6 +118,7 @@
     "deprecated": "Deprecated tag",
     "cooccurring": "Cooccurring tags",
     "wikiLinks": "Wiki references",
+    "wikiBody": "Wiki text",
     "tools": {
       "search_tags": "Tag search",
       "get_tag_info": "Tag information",

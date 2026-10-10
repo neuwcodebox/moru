@@ -29,7 +29,9 @@ class Account:
 
 def test_chatgpt_only_settings_do_not_require_a_local_model(app, tmp_path):
     api = Api(app, ModelPaths(tmp_path), chatgpt_auth=Account())
-    prompt = PromptSettings(provider="chatgpt", chatgpt_model="account-model")
+    prompt = PromptSettings(
+        provider="chatgpt", chatgpt_model="account-model", tag_search_enabled=False
+    )
     assert api.update_settings({}, asdict(prompt))["ok"] is True
     assert app.get_prompt_settings() == prompt
     assert not ModelPaths(tmp_path).get("prompt").exists()
@@ -100,10 +102,13 @@ def test_switching_both_configured_providers_preserves_model_and_generation_sett
     paths.get("prompt").parent.mkdir(parents=True)
     paths.get("prompt").write_bytes(b"local model")
     api = Api(app, paths, chatgpt_auth=Account())
-    app.update_settings(app.get_settings(), PromptSettings(chatgpt_model="chosen"))
+    app.update_settings(
+        app.get_settings(), PromptSettings(chatgpt_model="chosen", tag_search_enabled=False)
+    )
     before = app.get_settings()
     assert api.select_prompt_provider("chatgpt")["value"]["chatgpt_model"] == "chosen"
     assert api.select_prompt_provider("local")["value"]["provider"] == "local"
+    assert app.get_prompt_settings().tag_search_enabled is False
     assert app.get_settings() == before
 
 

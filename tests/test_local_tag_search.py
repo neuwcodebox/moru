@@ -103,6 +103,29 @@ def test_search_and_writing_share_the_request_state_but_not_generated_query_hist
     assert llm.calls[0]["max_tokens"] == llm.calls[1]["max_tokens"] == 2048
 
 
+@pytest.mark.parametrize("base", [None, "daytime city"])
+def test_disabling_tag_search_writes_directly_without_queries_sources_or_search_progress(
+    tmp_path, base
+):
+    llm = Llama("night, city")
+    tags, sources, stages = Tags(), [], []
+    prompts, _ = writer(tmp_path, llm, tags)
+    settings = PromptSettings(tag_search_enabled=False)
+    history = (PromptTurn("city", "daytime city"),)
+    context = dict(
+        history=history, on_source=sources.append, on_stage=lambda *event: stages.append(event)
+    )
+    result = (
+        prompts.create("make it night", settings, **context)
+        if base is None
+        else prompts.refine(base, "make it night", settings, **context)
+    )
+    assert result == "night, city"
+    assert len(llm.calls) == 1
+    assert llm.calls[0]["messages"] == prompt_messages("make it night", base, history)
+    assert tags.calls == [] and sources == [] and stages == []
+
+
 def test_query_plan_is_normalized_deduplicated_and_limited():
     assert parse_queries("silver hair, Silver_Hair, night, sky, city, hat, coat") == (
         "silver_hair",

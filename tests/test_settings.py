@@ -54,6 +54,7 @@ def test_prompt_defaults_reserve_1056_tokens_for_medium_reasoning():
     assert settings.context_size == 4096
     assert settings.max_tokens == 2048
     assert settings.thinking is True
+    assert settings.tag_search_enabled is True
     assert settings.reasoning_level == "medium"
     assert settings.thinking_budget == 1056
 
@@ -100,12 +101,15 @@ def test_disabling_thinking_allocates_no_reasoning_tokens():
         {"max_tokens": 1.5},
         {"thinking": "false"},
         {"thinking": 0},
+        {"tag_search_enabled": "false"},
+        {"tag_search_enabled": 0},
+        {"tag_search_enabled": None},
         {"reasoning_level": "extreme"},
         {"reasoning_level": None},
         {"reasoning_level": []},
     ],
 )
-def test_invalid_prompt_limits_and_non_boolean_thinking_are_rejected(values):
+def test_invalid_prompt_settings_are_rejected(values):
     with pytest.raises(MoruError) as error:
         PromptSettings(**values)
     assert error.value.code == "INVALID_SETTINGS"
@@ -115,7 +119,8 @@ def test_prompt_settings_apply_to_next_job_without_changing_an_accepted_request(
     project = app.create_project()
     original = PromptSettings()
     changed = PromptSettings(
-        context_size=8192, max_tokens=4096, thinking=False, reasoning_level="high"
+        context_size=8192, max_tokens=4096, thinking=False, reasoning_level="high",
+        tag_search_enabled=False,
     )
     app.submit_request(project.id, "girl")
     app.update_settings(app.get_settings(), changed)
@@ -150,7 +155,9 @@ def test_prompt_settings_are_restored_after_application_restart(app, tmp_path):
     from moru.repository import Repository
     from moru.service import Application
 
-    changed = PromptSettings(context_size=4096, max_tokens=2048, thinking=False)
+    changed = PromptSettings(
+        context_size=4096, max_tokens=2048, thinking=False, tag_search_enabled=False
+    )
     app.update_settings(GenerationSettings(steps=12), changed)
     app.close()
     restored = Application(

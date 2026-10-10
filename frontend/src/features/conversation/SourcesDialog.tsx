@@ -13,6 +13,14 @@ function TagList({ tags }: { tags: string[] }) {
   </ul>;
 }
 
+function RelatedTagList({ title, tags }: { title: string; tags: string[] }) {
+  if (!tags.length) return null;
+  return <details className="source-details" aria-label={title}>
+    <summary>{title} ({tags.length})</summary>
+    <TagList tags={tags} />
+  </details>;
+}
+
 function ReferenceResult({ source }: { source: PromptSource }) {
   const { t } = useTranslation("dialogs");
   const result = source.result;
@@ -23,18 +31,17 @@ function ReferenceResult({ source }: { source: PromptSource }) {
   if ("name" in result) return <>
     {result.name && result.name !== source.query && <p><TagLink name={result.name} /></p>}
     {result.deprecated && <p className="hint">{t("sources.deprecated")}</p>}
-    {result.description && <p className="source-description">{result.description}</p>}
+    {result.description && <details className="source-details">
+      <summary>{t("sources.wikiBody")}</summary>
+      <p className="source-description">{result.description}</p>
+    </details>}
     {!result.name && !result.description && <p className="hint">{t("sources.noResults")}</p>}
   </>;
   if (!result.cooccurring.length && !result.wiki_links.length)
     return <p className="hint">{t("sources.noResults")}</p>;
   return <>
-    {result.cooccurring.length > 0 && <div role="group" aria-label={t("sources.cooccurring")}>
-      <h4>{t("sources.cooccurring")}</h4><TagList tags={result.cooccurring} />
-    </div>}
-    {result.wiki_links.length > 0 && <div role="group" aria-label={t("sources.wikiLinks")}>
-      <h4>{t("sources.wikiLinks")}</h4><TagList tags={result.wiki_links} />
-    </div>}
+    <RelatedTagList title={t("sources.cooccurring")} tags={result.cooccurring} />
+    <RelatedTagList title={t("sources.wikiLinks")} tags={result.wiki_links} />
   </>;
 }
 

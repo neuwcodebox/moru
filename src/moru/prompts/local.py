@@ -183,7 +183,9 @@ class LlamaPrompts:
                     return self._count_tokens(llm, items, settings.thinking)
 
                 input_limit = settings.context_size - settings.max_tokens
-                use_search = search_tags and self._tag_search is not None
+                use_search = (
+                    settings.tag_search_enabled and search_tags and self._tag_search is not None
+                )
                 reserve = 0
                 if use_search:
                     # Reserve lookup space before planning so both passes see the same history.

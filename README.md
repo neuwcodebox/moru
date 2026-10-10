@@ -68,7 +68,8 @@ an internet connection and uses no local model for prompt writing. Your request,
 and recent conversation text are sent to OpenAI, and ChatGPT plan limits and content policies apply.
 
 Set up either option to get started, or set up both and switch beside the input box.
-Whichever you choose, images are generated and saved on your computer.
+Whichever you choose, images are generated and saved on your computer. You can turn Danbooru
+lookup for Anima on or off in Generation settings.
 
 Projects, images, and settings live in the app's `data/` folder; downloaded models live in
 `models/`. Keep these folders with the app when moving it to preserve your work and models.
