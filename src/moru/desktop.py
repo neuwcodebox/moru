@@ -10,11 +10,16 @@ from pathlib import Path
 
 from moru.api import Api
 from moru.application_lock import application_lock
+from moru.chatgpt_auth import ChatGPTAuth
+from moru.chatgpt_credentials import CredentialStore, credential_path
+from moru.chatgpt_http import ChatGPTHttp
+from moru.chatgpt_prompts import ChatGPTPrompts
 from moru.clipboard import copy_image, copy_text
 from moru.config import ModelPaths, application_root
 from moru.diagnostics import PrivateTracebackFormatter
 from moru.downloads import ModelDownloads
 from moru.language import model_file_filter, startup_language, startup_message
+from moru.prompt_providers import PromptProviders
 from moru.prompting import LlamaPrompts
 from moru.repository import Repository
 from moru.service import Application
@@ -85,6 +90,7 @@ def _run_desktop(root, comfy_root, arguments):
     log.info("app started")
     application = None
     downloads = None
+    chatgpt_auth = None
     try:
         html = files("moru").joinpath("web/index.html").read_text(encoding="utf-8")
         paths = ModelPaths(root)
@@ -94,9 +100,12 @@ def _run_desktop(root, comfy_root, arguments):
             sum(item["available"] for item in model_status),
             len(model_status),
         )
+        chatgpt_http = ChatGPTHttp()
+        chatgpt_auth = ChatGPTAuth(CredentialStore(credential_path()), http=chatgpt_http)
+        chatgpt_prompts = ChatGPTPrompts(chatgpt_auth, chatgpt_http)
         application = Application(
             Repository(root / "data/anima.db"),
-            LlamaPrompts(paths),
+            PromptProviders(LlamaPrompts(paths), chatgpt_prompts),
             ImageWorker(paths, comfy_root),
             root / "data",
         )
@@ -120,6 +129,8 @@ def _run_desktop(root, comfy_root, arguments):
                 choose_file,
                 copy_to_clipboard=lambda text: copy_text(window, text),
                 copy_image_to_clipboard=lambda content: copy_image(window, content),
+                chatgpt_auth=chatgpt_auth,
+                chatgpt_prompts=chatgpt_prompts,
             ),
             width=1080,
             height=900,
@@ -152,6 +163,10 @@ def _run_desktop(root, comfy_root, arguments):
             if downloads is not None:
                 downloads.close()
         finally:
-            if application is not None:
-                application.close()
-            log.info("app stopped")
+            try:
+                if application is not None:
+                    application.close()
+            finally:
+                if chatgpt_auth is not None:
+                    chatgpt_auth.close()
+                log.info("app stopped")

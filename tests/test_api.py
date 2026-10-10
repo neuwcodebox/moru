@@ -1,3 +1,5 @@
+from unittest.mock import Mock
+
 import pytest
 from test_conversation import generate
 
@@ -5,6 +7,63 @@ from moru.api import Api
 from moru.config import ModelPaths
 from moru.domain import GenerationSettings, PromptSettings
 from moru.downloads import ModelDownloads
+from moru.prompt_providers import PromptProviders
+from moru.prompting import LlamaPrompts
+
+
+@pytest.mark.parametrize("reload_reason", ["first_request", "chatgpt_switch", "context_change"])
+def test_prompt_loading_is_reported_until_inference_and_resident_models_skip_it(
+    app, tmp_path, reload_reason
+):
+    from conftest import FakePrompts
+    from test_prompting import completion
+
+    paths = ModelPaths(tmp_path)
+    paths.get("prompt").parent.mkdir(parents=True, exist_ok=True)
+    paths.get("prompt").write_bytes(b"fake gguf")
+    api = Api(app)
+    loading, inference = [], []
+    llm = Mock(metadata={}, tokenize=lambda *args, **kwargs: [0], token_eos=lambda: -1)
+
+    def load(**kwargs):
+        loading.append(api.get_job(job.id)["value"]["state"])
+        return llm
+
+    def infer(**kwargs):
+        inference.append(api.get_job(job.id)["value"]["state"])
+        return completion("night, girl")
+
+    llm.create_chat_completion.side_effect = infer
+    app.prompts = PromptProviders(LlamaPrompts(paths, load_llama=load), FakePrompts())
+    project = app.create_project()
+    if reload_reason != "first_request":
+        job = app.submit_request(project.id, "girl")
+        app.scheduler.run_next()
+        if reload_reason == "chatgpt_switch":
+            app.update_settings(
+                app.get_settings(), PromptSettings(provider="chatgpt", chatgpt_model="gpt")
+            )
+            job = app.submit_request(project.id, "daytime")
+            app.scheduler.run_next()
+            app.update_settings(app.get_settings(), PromptSettings())
+        else:
+            app.update_settings(app.get_settings(), PromptSettings(context_size=8192))
+        loading.clear()
+        inference.clear()
+
+    job = app.submit_request(project.id, "night")
+    app.scheduler.run_next()
+    assert loading == ["loading_prompt_model"]
+    assert inference == ["prompting"]
+    assert app.get_job(job.id).state == "completed"
+
+    loading.clear()
+    inference.clear()
+    job = app.submit_request(project.id, "rain")
+    app.scheduler.run_next()
+    assert loading == []
+    assert inference == ["prompting"]
+    assert app.get_job(job.id).state == "completed"
 
 
 @pytest.mark.parametrize(
@@ -229,10 +288,13 @@ def test_bootstrap_exposes_prompt_defaults_and_restores_saved_values(app):
         "thinking": True,
         "history_turns": 4,
         "reasoning_level": "medium",
+        "provider": "local",
+        "chatgpt_model": "",
     }
     values = {
         "context_size": 8192, "max_tokens": 4096, "thinking": False,
         "history_turns": 2, "reasoning_level": "high",
+        "provider": "local", "chatgpt_model": "",
     }
     assert api.update_settings({"steps": 12}, values)["ok"]
     assert api.get_prompt_settings()["value"] == values

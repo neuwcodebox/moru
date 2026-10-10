@@ -6,7 +6,6 @@ import importlib.util
 import logging
 import os
 import sys
-import unicodedata
 from contextlib import closing
 from pathlib import Path
 from threading import Event, RLock
@@ -23,9 +22,15 @@ from moru.prompt_instructions import (
     NATURAL_REFINE_SYSTEM,
     REFINE_SYSTEM,
 )
+from moru.prompt_text import (
+    PROMPT_PREFIX,
+    answer_text,
+    check_cancelled,
+    conversation_messages,
+    final_prompt,
+)
 
 log = logging.getLogger(__name__)
-PROMPT_PREFIX = "Final image prompt:"
 
 
 def prompt_messages(
@@ -40,18 +45,10 @@ def prompt_messages(
     else:
         system = CREATE_SYSTEM if base_prompt is None else REFINE_SYSTEM
     system += model.prompt_suffix
-    messages = [{"role": "system", "content": system}]
-    for turn in history:
-        messages.extend(
-            [{"role": "user", "content": turn.text}, {"role": "assistant", "content": turn.prompt}]
-        )
-    content = (
-        text
-        if base_prompt is None
-        else (f"Existing image prompt:\n{base_prompt}\n\nChange request:\n{text}")
-    )
-    messages.append({"role": "user", "content": content})
-    return messages
+    return [
+        {"role": "system", "content": system},
+        *conversation_messages(text, base_prompt, history),
+    ]
 
 
 def fit_messages(messages, count_tokens, input_limit):
@@ -61,30 +58,6 @@ def fit_messages(messages, count_tokens, input_limit):
             raise MoruError("PROMPT_CONTEXT_TOO_LONG")
         del messages[1:3]  # Drop complete oldest turns; never truncate canonical state.
     return messages
-
-
-def final_prompt(content: str) -> str:
-    # Templates may prefill the opening tag outside the generated content.
-    prompt = answer_text(content.rsplit("</think>", 1)[-1]).partition("\n")[0]
-    if not prompt:
-        raise MoruError("PROMPT_EMPTY_RESPONSE")
-    if "<think>" in prompt or prompt.startswith("Thinking Process:"):
-        raise MoruError("PROMPT_INVALID_RESPONSE")
-    if any(char.isalpha() and "LATIN" not in unicodedata.name(char, "") for char in prompt):
-        raise MoruError("PROMPT_NON_ENGLISH_RESPONSE")
-    return prompt
-
-
-def answer_text(content: str) -> str:
-    content = content.strip()
-    if PROMPT_PREFIX.startswith(content):
-        return ""
-    return content.removeprefix(PROMPT_PREFIX).strip()
-
-
-def check_cancelled(cancelled: Event):
-    if cancelled.is_set():
-        raise MoruError("GENERATION_CANCELLED")
 
 
 class ThinkingBudget:
@@ -276,7 +249,8 @@ class LlamaPrompts:
         llm.chat_handler = self._thinking_handlers[enabled]
 
     def _complete(
-        self, messages, settings: PromptSettings, cancelled: Event, progress: PromptProgress | None
+        self, messages, settings: PromptSettings, cancelled: Event, progress: PromptProgress | None,
+        on_ready=None,
     ) -> str:
         with self._lock:
             check_cancelled(cancelled)
@@ -321,6 +295,9 @@ class LlamaPrompts:
                     processors = (processors or []) + [
                         PromptParagraph(llm.detokenize, eos, settings.thinking)
                     ]
+                check_cancelled(cancelled)
+                if on_ready is not None:
+                    on_ready()
                 response = llm.create_chat_completion(
                     messages=messages,
                     temperature=0.6 if settings.thinking else 0.7,
@@ -347,12 +324,14 @@ class LlamaPrompts:
         *,
         history: tuple[PromptTurn, ...] = (),
         model_id: str = "anima-turbo-v1.1",
+        on_ready=None,
     ) -> str:
         return self._complete(
             prompt_messages(text, history=history, model_id=model_id),
             settings or PromptSettings(),
             cancelled or Event(),
             progress,
+            on_ready,
         )
 
     def refine(
@@ -365,12 +344,14 @@ class LlamaPrompts:
         *,
         history: tuple[PromptTurn, ...] = (),
         model_id: str = "anima-turbo-v1.1",
+        on_ready=None,
     ) -> str:
         return self._complete(
             prompt_messages(text, prompt, history, model_id),
             settings or PromptSettings(),
             cancelled or Event(),
             progress,
+            on_ready,
         )
 
     def unload(self):

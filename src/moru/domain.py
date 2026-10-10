@@ -22,8 +22,16 @@ class PromptSettings:
     thinking: bool = True
     history_turns: int = 4
     reasoning_level: Literal["low", "medium", "high"] = "medium"
+    provider: Literal["local", "chatgpt"] = "local"
+    chatgpt_model: str = ""
 
     def __post_init__(self):
+        if not isinstance(self.provider, str) or self.provider not in ("local", "chatgpt"):
+            raise MoruError("INVALID_SETTINGS")
+        if not isinstance(self.chatgpt_model, str) or len(self.chatgpt_model) > 200:
+            raise MoruError("INVALID_SETTINGS")
+        if self.provider == "chatgpt" and not self.chatgpt_model.strip():
+            raise MoruError("INVALID_SETTINGS")
         if type(self.context_size) is not int or not 1024 <= self.context_size <= 32768:
             raise MoruError("INVALID_SETTINGS")
         if type(self.max_tokens) is not int or not 1 <= self.max_tokens < self.context_size:

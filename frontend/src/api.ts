@@ -12,6 +12,21 @@ export type PromptSettings = {
   thinking: boolean;
   history_turns: number;
   reasoning_level: "low" | "medium" | "high";
+  provider?: "local" | "chatgpt";
+  chatgpt_model?: string;
+};
+export type PromptConfiguration = Partial<Omit<PromptSettings, "provider">>;
+export type ChatGPTModel = { slug: string; display_name: string };
+export type ChatGPTStatus = {
+  connected: boolean;
+  plan_enabled: boolean;
+  active_account: string | null;
+  email: string | null;
+  accounts: { id: string; email: string | null; connected: boolean }[];
+  login_state: string;
+  error_code: string | null;
+  welcome_pending: boolean;
+  revocation_confirmed?: boolean;
 };
 export type GenerationDefaults = Record<string, Pick<Settings, "steps" | "cfg">>;
 export type ImageModel = {
@@ -93,6 +108,7 @@ export type Bootstrap = {
   image_models: ImageModel[];
   prompt_settings: PromptSettings;
   models?: ModelStatus[];
+  chatgpt?: ChatGPTStatus | null;
 };
 type Result<T> =
   | { ok: true; value: T }

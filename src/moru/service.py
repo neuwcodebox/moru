@@ -73,6 +73,11 @@ class Application:
         if self._active_job is not None:
             raise MoruError("GENERATION_BUSY")
 
+    def run_when_idle(self, action):
+        with self._lock:
+            self._available()
+            return action()
+
     def create_project(self) -> Project:
         with self._lock:
             self._available()
@@ -199,7 +204,9 @@ class Application:
         self._cancelled = Event()
         try:
             prompt_settings = self.get_prompt_settings()
-            job = replace(job, thinking_enabled=prompt_settings.thinking)
+            job = replace(job, thinking_enabled=(
+                prompt_settings.provider == "local" and prompt_settings.thinking
+            ))
             self._jobs[job.id] = job
             self._executor.submit(self._generate, job.id, request, self._cancelled, prompt_settings)
         except Exception as exc:
@@ -308,8 +315,10 @@ class Application:
         if request.kind == "manual":
             self._prompt_progress(job_id, request.text)
             return request.text
-        self._progress(job_id, "prompting")
-        self.images.reserve_memory(self.prompts.memory_required(settings), cancelled)
+        required_memory = self.prompts.memory_required(settings)
+        self._progress(job_id, "loading_prompt_model" if required_memory else "prompting")
+        if settings.provider == "local" or required_memory:
+            self.images.reserve_memory(required_memory, cancelled)
         self._check_cancelled(cancelled)
 
         def progress(_thinking, prompt):
@@ -325,7 +334,10 @@ class Application:
                 if original.id == base_turn:
                     break
             history = history[-settings.history_turns :]
-        context = {"history": tuple(history), "model_id": request.settings.model_id}
+        context = {
+            "history": tuple(history), "model_id": request.settings.model_id,
+            "on_ready": lambda: self._progress(job_id, "prompting"),
+        }
 
         if request.base_image_id:
             base = self.repository.get_image(request.base_image_id)

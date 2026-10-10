@@ -4,19 +4,20 @@ import type { Job } from "./api";
 import PromptText from "./PromptText";
 import { imageFrameStyle } from "./imageFrame";
 
+function progressLabel(job: Job): string {
+  switch (job.state) {
+    case "queued": return "queued";
+    case "loading_prompt_model": return "loadingPromptModel";
+    case "prompting": return job.thinking_enabled && !job.prompt_text ? "thinking" : "writingPrompt";
+    case "loading_model": return "loadingModel";
+    default: return "generating";
+  }
+}
+
 export default function GenerationProgress({ job }: { job: Job }) {
   const { t } = useTranslation();
   const writing = job.state === "prompting";
-  const label =
-    job.state === "queued"
-      ? t("queued")
-      : writing
-        ? job.thinking_enabled && !job.prompt_text
-          ? t("thinking")
-          : t("writingPrompt")
-        : job.state === "loading_model"
-          ? t("loadingModel")
-          : t("generating");
+  const preparingPrompt = writing || job.state === "loading_prompt_model";
   return (
     <section
       className="generation-placeholder"
@@ -25,7 +26,7 @@ export default function GenerationProgress({ job }: { job: Job }) {
     >
       <div className="generation-stage" role="status" aria-live="polite">
         <LoaderCircle className="spinner" size={18} aria-hidden="true" />
-        <span>{label}</span>
+        <span>{t(progressLabel(job))}</span>
         {job.step != null && job.total != null && (
           <span className="step-count">
             {job.step} / {job.total}
@@ -35,13 +36,13 @@ export default function GenerationProgress({ job }: { job: Job }) {
       <div className="generation-canvas">
         {!job.prompt_text && (
           <>
-            {writing ? (
+            {preparingPrompt ? (
               <WandSparkles size={32} aria-hidden="true" />
             ) : (
               <Image size={32} aria-hidden="true" />
             )}
             <span>
-              {writing
+              {preparingPrompt
                 ? t("preparingScene")
                 : t("imageComing")}
             </span>

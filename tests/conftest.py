@@ -44,13 +44,17 @@ class FakePrompts:
     def memory_required(self, settings):
         return self.required_memory
 
-    def create(self, text, settings, cancelled, progress, **context):
+    def create(self, text, settings, cancelled, progress, *, on_ready=None, **context):
+        if on_ready is not None:
+            on_ready()
         self.contexts.append(context)
         self.settings.append(settings)
         self.inputs.append(("create", text))
         return "silver-haired girl, daytime"
 
-    def refine(self, prompt, text, settings, cancelled, progress, **context):
+    def refine(self, prompt, text, settings, cancelled, progress, *, on_ready=None, **context):
+        if on_ready is not None:
+            on_ready()
         self.contexts.append(context)
         self.settings.append(settings)
         self.inputs.append(("refine", prompt, text))

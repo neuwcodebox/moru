@@ -1,7 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import { call } from "./api";
-import type { ImageModel, ModelStatus } from "./api";
+import type { ChatGPTStatus, ImageModel, ModelStatus, PromptConfiguration, PromptSettings } from "./api";
+import ChatGPTAccount from "./ChatGPTAccount";
 import Modal from "./Modal";
 import ImageModelSelect from "./ImageModelSelect";
 import { errorMessage } from "./errorMessages";
@@ -12,25 +13,33 @@ const downloadActive = (model: ModelStatus) =>
 
 export default function ModelsDialog({
   initial, imageModels, initialModelId, onUpdate, onClose,
+  chatgpt = null, promptSettings, onChatGPTStatus, onConfigurePrompt, suspended = false,
 }: {
   initial: ModelStatus[];
   imageModels: ImageModel[];
   initialModelId: string;
   onUpdate: (models: ModelStatus[]) => void;
   onClose: () => void;
+  chatgpt?: ChatGPTStatus | null;
+  promptSettings?: PromptSettings;
+  onChatGPTStatus?: (status: ChatGPTStatus) => void;
+  onConfigurePrompt?: (values: PromptConfiguration) => Promise<PromptSettings>;
+  suspended?: boolean;
 }) {
   const { t } = useTranslation("dialogs");
   const [models, setModels] = useState(initial);
   const [viewedModelId, setViewedModelId] = useState(initialModelId);
   const [error, setError] = useState<{ cause: unknown; fallbackCode: string } | null>(null);
   const [acting, setActing] = useState(false);
+  const [chatgptModel, setChatgptModel] = useState(promptSettings?.chatgpt_model ?? "");
+  const [provider, setProvider] = useState<"local" | "chatgpt">(promptSettings?.provider ?? "local");
   const downloading = models.some(downloadActive);
   const viewedModel = imageModels.find((model) => model.id === viewedModelId);
   const assetIds = viewedModel?.asset_ids ?? [];
   const asset = (id: string): ModelStatus => models.find((model) => model.id === id) ?? { id, available: false };
   const ready = assetIds.length > 0 && assetIds.every((id) => asset(id).available);
   const otherDownloads = models.filter((model) =>
-    model.id !== "prompt" && !assetIds.includes(model.id) &&
+    !(model.id === "prompt" && provider === "local") && !assetIds.includes(model.id) &&
     (downloadActive(model) || model.download?.state === "failed"),
   );
 
@@ -65,18 +74,16 @@ export default function ModelsDialog({
   }
 
   function file(model: ModelStatus) {
-    const name = imageModels.find((image) => image.id === model.id)?.name ??
+    const name = model.id === "prompt" && promptSettings ? t("chatgpt.local") :
+      imageModels.find((image) => image.id === model.id)?.name ??
       t(`models.names.${model.id}`, { defaultValue: model.id });
     return <ModelFileRow key={model.id} model={model} name={name}
-      busy={acting} downloading={downloading} onAction={action} />;
+      busy={acting} downloading={downloading} onAction={action}
+      showName={model.id !== "prompt" || !promptSettings} />;
   }
 
-  return (
+  return suspended ? null : (
     <Modal title={t("models.title")} onClose={onClose}>
-      <p className="hint">{t("models.hint")}</p>
-      <section className="model-section" aria-label={t("models.names.prompt")}>
-        {file(asset("prompt"))}
-      </section>
       <section className="model-section" aria-label={t("models.imageSection")}>
         <h3>{t("models.imageSection")}</h3>
         <ImageModelSelect models={imageModels} modelId={viewedModelId} disabled={acting}
@@ -85,6 +92,25 @@ export default function ModelsDialog({
           {t(ready ? "models.imageReady" : "models.imageNotReady")}
         </p>
         <div className="model-list">{assetIds.map((id) => file(asset(id)))}</div>
+      </section>
+      <hr className="model-section-divider" />
+      <section className="model-section" aria-label={t("models.names.prompt")}>
+        {promptSettings && onConfigurePrompt && onChatGPTStatus ? <>
+          <label>{t("chatgpt.provider")}
+            <select value={provider} disabled={acting || chatgpt?.login_state === "waiting"}
+              onChange={(event) => setProvider(event.target.value as "local" | "chatgpt")}>
+              <option value="local">{t("chatgpt.local")}</option>
+              <option value="chatgpt">ChatGPT</option>
+            </select>
+          </label>
+          {provider === "local" ? file(asset("prompt")) :
+            <ChatGPTAccount status={chatgpt} model={chatgptModel}
+              disabled={acting} onStatus={onChatGPTStatus}
+              onModel={async (model) => {
+                const saved = await onConfigurePrompt({ chatgpt_model: model });
+                setChatgptModel(saved.chatgpt_model ?? "");
+              }} />}
+        </> : file(asset("prompt"))}
       </section>
       {otherDownloads.length > 0 && <section className="model-section" aria-label={t("models.otherDownloads")}>
         <h3>{t("models.otherDownloads")}</h3>
@@ -98,11 +124,12 @@ export default function ModelsDialog({
   );
 }
 
-function ModelFileRow({ model, name, busy, downloading, onAction }: {
+function ModelFileRow({ model, name, busy, downloading, onAction, showName }: {
   model: ModelStatus;
   name: string;
   busy: boolean;
   downloading: boolean;
+  showName: boolean;
   onAction: (method: string, id: string) => Promise<void>;
 }) {
   const { t } = useTranslation("dialogs");
@@ -110,7 +137,7 @@ function ModelFileRow({ model, name, busy, downloading, onAction }: {
   return (
     <div className="model-row" role="group" aria-label={name}>
       <div className="model-label">
-        {model.id === "prompt" ? <h3>{name}</h3> : <strong>{name}</strong>}
+        {showName && (model.id === "prompt" ? <h3>{name}</h3> : <strong>{name}</strong>)}
         <span className="hint">{model.available
           ? <><CheckCircle2 size={14} aria-hidden="true" /> {t("models.ready")}</>
           : t("models.notReady")}</span>

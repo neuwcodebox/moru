@@ -52,6 +52,8 @@ class Api:
         choose_file=None,
         copy_to_clipboard=None,
         copy_image_to_clipboard=None,
+        chatgpt_auth=None,
+        chatgpt_prompts=None,
     ):
         self._app = application
         self._models = models
@@ -59,6 +61,8 @@ class Api:
         self._choose_file = choose_file
         self._copy_to_clipboard = copy_to_clipboard
         self._copy_image_to_clipboard = copy_image_to_clipboard
+        self._chatgpt_auth = chatgpt_auth
+        self._chatgpt_prompts = chatgpt_prompts
 
     @endpoint
     def copy_prompt(self, text):
@@ -99,7 +103,87 @@ class Api:
             "image_models": image_model_catalog(),
             "prompt_settings": asdict(self._app.get_prompt_settings()),
             "models": self._model_status(),
+            "chatgpt": self._chatgpt_auth.status() if self._chatgpt_auth else None,
         }
+
+    def _account_service(self):
+        if self._chatgpt_auth is None:
+            raise MoruError("CHATGPT_UNAVAILABLE")
+        return self._chatgpt_auth
+
+    @endpoint
+    def get_chatgpt_status(self):
+        return self._account_service().status()
+
+    @endpoint
+    def login_chatgpt(self, account_id=None):
+        return self._app.run_when_idle(lambda: self._account_service().login(account_id))
+
+    @endpoint
+    def cancel_chatgpt_login(self):
+        return self._account_service().cancel_login()
+
+    @endpoint
+    def logout_chatgpt(self):
+        return self._app.run_when_idle(lambda: self._account_service().logout())
+
+    @endpoint
+    def select_chatgpt_account(self, account_id):
+        return self._app.run_when_idle(lambda: self._account_service().select_account(account_id))
+
+    @endpoint
+    def dismiss_chatgpt_welcome(self):
+        return self._account_service().dismiss_welcome()
+
+    @endpoint
+    def get_chatgpt_models(self):
+        if self._chatgpt_prompts is None:
+            raise MoruError("CHATGPT_UNAVAILABLE")
+        return self._chatgpt_prompts.models()
+
+    @endpoint
+    def select_prompt_provider(self, provider):
+        from dataclasses import replace
+
+        def select():
+            settings = replace(self._app.get_prompt_settings(), provider=provider)
+            self._validate_prompt_provider(settings)
+            self._app.update_settings(self._app.get_settings(), settings)
+            return asdict(settings)
+
+        return self._app.run_when_idle(select)
+
+    @endpoint
+    def configure_prompt_writer(self, values):
+        from dataclasses import replace
+
+        if not isinstance(values, dict) or "provider" in values:
+            raise MoruError("INVALID_SETTINGS")
+
+        def configure():
+            try:
+                settings = replace(self._app.get_prompt_settings(), **values)
+            except TypeError as exc:
+                raise MoruError("INVALID_SETTINGS") from exc
+            # Preparation can precede files/sign-in; activation validates readiness separately.
+            self._app.update_settings(self._app.get_settings(), settings)
+            return asdict(settings)
+
+        return self._app.run_when_idle(configure)
+
+    def _validate_prompt_provider(self, settings):
+        if settings.provider == "chatgpt":
+            status = self._account_service().status()
+            if status["login_state"] == "waiting":
+                raise MoruError("GENERATION_BUSY")
+            if not status["connected"]:
+                raise MoruError("CHATGPT_SIGN_IN_REQUIRED")
+            if not status["plan_enabled"]:
+                raise MoruError("CHATGPT_NOT_ELIGIBLE")
+        elif self._models is not None:
+            path = self._models.get("prompt")
+            if not path.is_file() or not path.stat().st_size:
+                raise MoruError("PROMPT_MODEL_NOT_FOUND")
 
     def _model_status(self):
         if self._downloads is not None:
@@ -212,7 +296,11 @@ class Api:
 
     @endpoint
     def submit_request(self, project_id, text):
-        return asdict(self._app.submit_request(project_id, text))
+        def submit():
+            self._check_chatgpt_login()
+            return asdict(self._app.submit_request(project_id, text))
+
+        return self._app.run_when_idle(submit)
 
     @endpoint
     def generate_from_prompt(self, image_id, prompt):
@@ -220,7 +308,17 @@ class Api:
 
     @endpoint
     def retry_request(self, request_id):
-        return asdict(self._app.retry_request(request_id))
+        def retry():
+            if self._app.repository.get_request(request_id).kind != "manual":
+                self._check_chatgpt_login()
+            return asdict(self._app.retry_request(request_id))
+
+        return self._app.run_when_idle(retry)
+
+    def _check_chatgpt_login(self):
+        if self._app.get_prompt_settings().provider == "chatgpt":
+            if self._account_service().status()["login_state"] == "waiting":
+                raise MoruError("GENERATION_BUSY")
 
     @endpoint
     def get_job(self, job_id):
@@ -260,6 +358,8 @@ class Api:
             prompt_settings = PromptSettings(**prompt_values) if prompt_values is not None else None
         except (TypeError, ValueError) as exc:
             raise MoruError("INVALID_SETTINGS") from exc
+        if prompt_settings is not None:
+            self._validate_prompt_provider(prompt_settings)
         self._app.update_settings(settings, prompt_settings)
         return settings_to_wire(settings)
 

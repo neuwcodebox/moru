@@ -70,6 +70,30 @@ def test_missing_model_is_explicit_and_does_not_call_another_model(tmp_path):
     load.assert_not_called()
 
 
+@pytest.mark.parametrize("cancel_during_load", [False, True])
+def test_failed_or_cancelled_loading_does_not_announce_inference(tmp_path, cancel_during_load):
+    paths = ModelPaths(tmp_path)
+    paths.get("prompt").parent.mkdir(parents=True)
+    paths.get("prompt").write_bytes(b"fake gguf")
+    cancelled = Event()
+    ready = Mock()
+    llm = Mock()
+
+    def load(**kwargs):
+        if cancel_during_load:
+            cancelled.set()
+            return llm
+        raise RuntimeError("load failed")
+
+    with pytest.raises(MoruError) as error:
+        LlamaPrompts(paths, load_llama=load).create("girl", cancelled=cancelled, on_ready=ready)
+    assert error.value.code == (
+        "GENERATION_CANCELLED" if cancel_during_load else "MODEL_LOAD_FAILED"
+    )
+    ready.assert_not_called()
+    llm.create_chat_completion.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "content",
     ["<think>private reasoning</think>\nnight, girl", "private reasoning</think>\nnight, girl"],

@@ -7,7 +7,7 @@ authors = [
     { name = "Neuwcodebox", email = "neuwgmbox@gmail.com" }
 ]
 requires-python = ">=3.12,<3.13"
-dependencies = ["pywebview>=6,<7", "pillow>=11,<13"]
+dependencies = ["pywebview>=6,<7", "pillow>=11,<13", "pyjwt[crypto]>=2.10,<3"]
 
 [project.optional-dependencies]
 inference = [

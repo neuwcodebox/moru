@@ -83,6 +83,10 @@ function RequestFailure({
           {cancelled ? <CirclePause size={28} /> : <CircleAlert size={28} />}
         </div>
         <p role={cancelled ? "status" : "alert"}>{errorMessage(request)}</p>
+        {request.error_code === "CHATGPT_USAGE_LIMIT" && <a
+          className="primary" href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">
+          {t("dialogs:chatgpt.manageUsage")}
+        </a>}
         <button disabled={busy} onClick={() => onRetry(request.id)}>
           <RotateCcw size={15} aria-hidden="true" /> {t("retry")}
         </button>

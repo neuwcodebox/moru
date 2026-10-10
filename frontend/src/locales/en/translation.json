@@ -29,6 +29,7 @@
   "thinking": "Thinking…",
   "writingPrompt": "Writing the prompt…",
   "loadingModel": "Loading the image model…",
+  "loadingPromptModel": "Loading the prompt model…",
   "generating": "Generating image…",
   "generationProgress": "Generation progress",
   "generationFailure": "Generation failed",

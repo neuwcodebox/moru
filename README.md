@@ -2,11 +2,11 @@
 
 [한국어](README.ko.md)
 
-**Create with words. Refine, compare, and branch. All locally.**
+**Create with words. Refine, compare, and branch. Generate images locally.**
 
 Moru is a Windows desktop app for making images through conversation. Describe a scene,
-look at the result, and tell it what to change. A local LLM writes the image prompt, and
-Anima or FLUX.2 generates the image on your computer.
+look at the result, and tell it what to change. Choose a local LLM or ChatGPT to write the
+prompt, then generate the image on your computer with Anima or FLUX.2.
 
 Your work grows as a conversation: try another result, choose a version you like,
 or return to an earlier image and explore a different direction.
@@ -49,20 +49,27 @@ Reopen a project later and continue where you left off.
   and generate another version directly.
 - **Choose how to generate.** Choose Anima Turbo, Anima Aesthetic, or FLUX.2 klein 4B.
   Adjust image dimensions, Steps, CFG, and Seed.
-- **Tune the prompt LLM.** Adjust thinking, reasoning level, context and output limits,
-  and how much recent conversation it uses.
+- **Tune prompt writing.** Choose how much recent conversation to use. With a local LLM,
+  you can also adjust thinking, reasoning level, and context and output limits.
 - **Inspect and share results.** Open images in the full-screen viewer, zoom and pan,
   browse versions, or copy the image to the clipboard.
 - **Use Korean or English.** Switch the interface language while keeping your current work.
 
-## Local from prompt to image
+## Local images, your choice of prompt writer
 
-Both prompt writing and image generation run locally. No external API key is needed,
-and your requests, prompts, and images are not sent to external inference services.
-Once the models are ready, you can create and refine images offline.
+Choose a prompt writer that suits how you want to work. A local LLM runs on your computer
+and works offline once the models are ready. Your requests and prompts stay on your computer.
+
+To use ChatGPT, sign in with your account and choose an available GPT model. This requires
+an internet connection and uses no local model for prompt writing. Your request, base prompt,
+and recent conversation text are sent to OpenAI, and ChatGPT plan limits and content policies apply.
+
+Set up either option to get started, or set up both and switch beside the input box.
+Whichever you choose, images are generated and saved on your computer.
 
 Projects, images, and settings live in the app's `data/` folder; downloaded models live in
 `models/`. Keep these folders with the app when moving it to preserve your work and models.
+Sign in to ChatGPT again when using a different computer.
 
 ## Getting started
 
@@ -73,8 +80,10 @@ You need Windows, an NVIDIA GPU with its drivers, and the Windows WebView2 Runti
 [Download portable build (Google Drive)](https://drive.google.com/file/d/1Y_aYECQ6VqFdV51_GoDl_Uy2-r51NWwW/view?usp=sharing)
 
 1. Extract the entire `Moru.7z` archive and run `Moru.exe`.
-2. Open **Model setup** to download the required models or select local files you already have.
-3. Describe a scene in the input box and send it. Continue with changes after the image appears.
+2. In **Model setup**, choose an image-model family and version, then download the listed files or select files you already have.
+3. Choose a prompt writer to prepare in the same screen. For a local LLM, prepare the model file. For ChatGPT, sign in and choose a GPT model.
+4. Choose the prepared prompt writer and image model in **Generation settings**.
+5. Describe a scene in the input box and send it. Continue with changes after the image appears.
 
 The portable build includes the application runtimes, so you do not need to install Python,
 Node.js, or ComfyUI separately. Models are downloaded separately; their use is governed
@@ -82,16 +91,14 @@ by their distributors' licenses. Downloading models requires an internet connect
 
 ### Manual model download
 
-If downloading in the app fails, open **Model setup → Manual download** for the model,
-or use the file-page links below. Click the download button on Hugging Face, then use
-**Select file** for the matching model in Moru to choose the downloaded file.
-You can keep the original filename and save it anywhere.
+Each image model needs its own set of files. For Anima, download either the Turbo or
+Aesthetic weights together with the text-understanding and image-decoding models shared
+by both versions. For FLUX.2 klein 4B, download its diffusion, text encoder, and VAE files.
 
-The prompt-writing model is required for every image model. Choose the family and
-version in **Model setup**, then prepare its listed files. Choose the active model separately
-in **Generation settings**. Anima needs one version plus the
-shared text-understanding and image-decoding models.
-FLUX.2 klein 4B needs its own diffusion, text encoder, and VAE files.
+If downloading in the app fails, open **Model setup → Manual download** for the model,
+or use the file-page links below. Download the file from Hugging Face, then use **Select file**
+for the matching model in Moru. You can keep the original filename and save it anywhere.
+If you use a local LLM, prepare the prompt-writing GGUF file in the same way.
 
 | Model | File to download |
 | --- | --- |

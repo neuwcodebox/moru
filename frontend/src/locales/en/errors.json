@@ -1,4 +1,12 @@
 {
+  "CHATGPT_AUTH_FAILED": "ChatGPT sign-in failed. Please sign in again.",
+  "CHATGPT_SIGN_IN_REQUIRED": "Please sign in to ChatGPT again.",
+  "CHATGPT_NOT_ELIGIBLE": "ChatGPT plan usage is not allowed for this account. Check your permissions.",
+  "CHATGPT_USAGE_LIMIT": "A ChatGPT usage limit was reached. Manage usage in ChatGPT settings.",
+  "CHATGPT_UNSUPPORTED": "ChatGPT does not support the selected model or request.",
+  "CHATGPT_UNAVAILABLE": "Cannot connect to ChatGPT. Check your connection and try again.",
+  "CHATGPT_REFUSED": "ChatGPT refused this request. Please change the request.",
+  "CHATGPT_SECURE_STORAGE_UNAVAILABLE": "Cannot securely save or read ChatGPT credentials.",
   "CLIPBOARD_FAILED": "Could not copy to the clipboard. Please try again.",
   "INVALID_SETTINGS": "Please check the generation settings.",
   "INVALID_REQUEST": "Please enter a request.",

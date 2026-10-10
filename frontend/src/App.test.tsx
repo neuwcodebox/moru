@@ -97,6 +97,12 @@ beforeEach(() => {
       success({ id: "j1", project_id: "p1", width: 1024, height: 1024, state: "queued" }),
     ),
     update_settings: vi.fn((values) => success(values)),
+    configure_prompt_writer: vi.fn(async (values) => {
+      const result = await api.bootstrap();
+      const saved = { ...result.value.prompt_settings, ...values };
+      api.bootstrap.mockResolvedValue({ ...result, value: { ...result.value, prompt_settings: saved } });
+      return { ok: true, value: saved };
+    }),
     retry_request: vi.fn(() => {
       current = {
         ...current,
@@ -146,7 +152,8 @@ it("prepares an inactive variant's file without changing the generation model", 
   expect(api.select_local_model).toHaveBeenCalledWith("anima-aesthetic-v1.1");
   expect(await weights.findByText("custom-aesthetic.safetensors")).toBeTruthy();
   expect(api.update_settings).not.toHaveBeenCalled();
-  expect(screen.queryByRole("button", { name: "저장" })).toBeNull();
+  expect(within(screen.getByRole("region", { name: "이미지 생성 모델" }))
+    .queryByRole("button", { name: "저장" })).toBeNull();
   await user.keyboard("{Escape}");
   await user.click(screen.getByLabelText("생성 설정"));
   expect((screen.getByLabelText("버전") as HTMLSelectElement).value).toBe("anima-turbo-v1.1");
@@ -171,7 +178,7 @@ it("changes the active model only when generation settings are saved", async () 
   expect((screen.getByLabelText("프롬프트 반영 강도 (CFG)") as HTMLInputElement).value).toBe("2");
   expect((screen.getByLabelText("시드") as HTMLInputElement).value).toBe("42");
   await user.selectOptions(screen.getByLabelText("버전"), "anima-aesthetic-v1.1");
-  await user.click(screen.getByRole("button", { name: "저장" }));
+  await user.click(screen.getByText("닫기", { selector: "button" }));
   expect(api.update_settings).toHaveBeenCalledWith(
     { ...saved, model_id: "anima-aesthetic-v1.1", steps: 40, cfg: 4.5 }, promptSettings,
   );
@@ -424,6 +431,40 @@ describe("conversation", () => {
     await screen.findByRole("region", {name: "생성 진행"});
     fireEvent.keyDown(document, {key: "ArrowRight"});
     expect(api.select_version).not.toHaveBeenCalled();
+  });
+
+  it.each(["button", "enter"])("jumps to the bottom immediately on %s submission before the backend responds", async (method) => {
+    current = withImage;
+    let accept!: (value: unknown) => void;
+    api.submit_request.mockImplementation(() => new Promise((resolve) => { accept = resolve; }));
+    api.get_job.mockResolvedValue({ ok: true, value: {
+      id: "j1", project_id: "p1", request_id: "r2", width: 1024, height: 1024, state: "prompting",
+    } });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByAltText("생성 이미지");
+    const conversation = screen.getByLabelText("대화");
+    const scrollTo = vi.fn((options: ScrollToOptions) => { conversation.scrollTop = options.top ?? 0; });
+    Object.defineProperties(conversation, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 400 },
+      scrollTo: { configurable: true, value: scrollTo },
+    });
+    conversation.scrollTop = 100;
+    fireEvent.scroll(conversation);
+    expect(screen.getByRole("button", { name: "맨 아래로" })).toBeTruthy();
+    await user.type(screen.getByRole("textbox", { name: "이미지 요청" }), "rain");
+    if (method === "button") await user.click(screen.getByRole("button", { name: "전송" }));
+    else await user.keyboard("{Enter}");
+    expect(scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 1000, behavior: "instant" });
+    expect(conversation.scrollTop).toBe(1000);
+    expect(screen.queryByRole("button", { name: "맨 아래로" })).toBeNull();
+    expect(api.get_job).not.toHaveBeenCalled();
+    Object.defineProperty(conversation, "scrollHeight", { configurable: true, value: 1600 });
+    await act(async () => accept({ ok: true, value: {
+      id: "j1", project_id: "p1", request_id: "r2", width: 1024, height: 1024, state: "queued",
+    } }));
+    expect(conversation.scrollTop).toBe(1600);
   });
 
   it("keeps the reading position when generation updates arrive above the composer", async () => {
@@ -927,7 +968,7 @@ describe("conversation", () => {
       "832x1216",
     );
     await user.type(screen.getByLabelText("시드"), "9223372036854775807");
-    await user.click(screen.getByText("저장"));
+    await user.click(screen.getByText("닫기", { selector: "button" }));
     expect(api.update_settings).toHaveBeenCalledWith(
       {
         ...settings,
@@ -941,10 +982,12 @@ describe("conversation", () => {
 
   it("saves advanced LLM settings and shows the saved values when reopened", async () => {
     const user = userEvent.setup();
+    promptProviderBootstrap("local", true);
     render(<App />);
     await screen.findByText("어떤 장면을 그릴까요?");
     await user.click(screen.getByLabelText("생성 설정"));
-    await user.click(screen.getByText("고급 · 프롬프트 LLM"));
+    await user.click(screen.getByText("고급 설정"));
+    expect(screen.queryByRole("button", { name: "저장" })).toBeNull();
     const context = screen.getByLabelText("컨텍스트 크기");
     const output = screen.getByLabelText("출력 토큰 한도");
     const thinking = screen.getByLabelText("추론 사용") as HTMLInputElement;
@@ -956,8 +999,9 @@ describe("conversation", () => {
     await user.clear(output);
     await user.type(output, "4096");
     await user.click(thinking);
-    await user.click(screen.getByText("저장"));
+    await user.click(screen.getByText("닫기", { selector: "button" }));
     expect(api.update_settings).toHaveBeenCalledWith(settings, {
+      ...promptSettings, provider: "local", chatgpt_model: "available-gpt",
       context_size: 8192,
       max_tokens: 4096,
       thinking: false,
@@ -965,7 +1009,7 @@ describe("conversation", () => {
       reasoning_level: "medium",
     });
     await user.click(screen.getByLabelText("생성 설정"));
-    await user.click(screen.getByText("고급 · 프롬프트 LLM"));
+    await user.click(screen.getByText("고급 설정"));
     expect(
       (screen.getByLabelText("컨텍스트 크기") as HTMLInputElement).value,
     ).toBe("8192");
@@ -984,7 +1028,7 @@ describe("conversation", () => {
     expect((screen.getByLabelText("프롬프트 반영 강도 (CFG)") as HTMLInputElement).value).toBe("4.5");
     await user.clear(screen.getByLabelText("생성 단계"));
     await user.type(screen.getByLabelText("생성 단계"), "35");
-    await user.click(screen.getByText("저장"));
+    await user.click(screen.getByText("닫기", { selector: "button" }));
     expect(api.update_settings).toHaveBeenCalledWith(
       { ...settings, model_id: "anima-aesthetic-v1.1", steps: 35, cfg: 4.5 },
       promptSettings,
@@ -997,21 +1041,23 @@ describe("conversation", () => {
 
   it("defaults to medium reasoning and persists the chosen level while disabling it with thinking", async () => {
     const user = userEvent.setup();
+    promptProviderBootstrap("local", true);
     render(<App />);
     await screen.findByText("어떤 장면을 그릴까요?");
     await user.click(screen.getByLabelText("생성 설정"));
-    await user.click(screen.getByText("고급 · 프롬프트 LLM"));
+    await user.click(screen.getByText("고급 설정"));
     expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).value).toBe("medium");
     expect(screen.getByRole("option", { name: "높음 · 추론 예산의 100%" })).toBeTruthy();
     await user.selectOptions(screen.getByLabelText("추론 수준"), "high");
     await user.click(screen.getByLabelText("추론 사용"));
     expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).disabled).toBe(true);
-    await user.click(screen.getByText("저장"));
+    await user.click(screen.getByText("닫기", { selector: "button" }));
     expect(api.update_settings).toHaveBeenCalledWith(settings, {
-      ...promptSettings, thinking: false, reasoning_level: "high",
+      ...promptSettings, provider: "local", chatgpt_model: "available-gpt",
+      thinking: false, reasoning_level: "high",
     });
     await user.click(screen.getByLabelText("생성 설정"));
-    await user.click(screen.getByText("고급 · 프롬프트 LLM"));
+    await user.click(screen.getByText("고급 설정"));
     await user.click(screen.getByLabelText("추론 사용"));
     expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).value).toBe("high");
     expect((screen.getByLabelText("추론 수준") as HTMLSelectElement).disabled).toBe(false);
@@ -1019,14 +1065,15 @@ describe("conversation", () => {
 
   it("keeps the dialog open without saving when output leaves no input context", async () => {
     const user = userEvent.setup();
+    promptProviderBootstrap("local", true);
     render(<App />);
     await screen.findByText("어떤 장면을 그릴까요?");
     await user.click(screen.getByLabelText("생성 설정"));
-    await user.click(screen.getByText("고급 · 프롬프트 LLM"));
+    await user.click(screen.getByText("고급 설정"));
     const output = screen.getByLabelText("출력 토큰 한도");
     await user.clear(output);
     await user.type(output, "8192");
-    await user.click(screen.getByText("저장"));
+    await user.click(screen.getByText("닫기", { selector: "button" }));
     expect((await screen.findByRole("alert")).textContent).toBe(
       "출력 토큰 한도는 컨텍스트 크기보다 작아야 합니다.",
     );
@@ -1102,6 +1149,376 @@ it("waits for the pywebview ready event before loading state", async () => {
   expect(await screen.findByText("어떤 장면을 그릴까요?")).toBeTruthy();
 });
 
+const chatgptStatus = {
+  connected: true, plan_enabled: true, active_account: "oaiapp_moru", email: "user@example.com",
+  accounts: [{ id: "oaiapp_moru", email: "user@example.com", connected: true }],
+  login_state: "idle", error_code: null, welcome_pending: false,
+};
+
+function promptProviderBootstrap(provider: "local" | "chatgpt", localReady: boolean) {
+  api.get_model_status.mockResolvedValue({ ok: true, value: [
+    { id: "prompt", available: localReady },
+    ...imageModels[0].asset_ids.map((id) => ({ id, available: true })),
+  ] });
+  api.bootstrap.mockImplementation(async () => ({ ok: true, value: {
+    language: "ko", project: current, projects: [empty], settings, image_models: imageModels,
+    generation_defaults: {}, prompt_settings: { ...promptSettings, provider, chatgpt_model: "available-gpt" },
+    models: [
+      { id: "prompt", available: localReady },
+      ...imageModels[0].asset_ids.map((id) => ({ id, available: true })),
+    ],
+    chatgpt: chatgptStatus,
+  } }));
+}
+
+it("starts with ChatGPT and no GGUF without opening model setup", async () => {
+  promptProviderBootstrap("chatgpt", false);
+  render(<App />);
+  await screen.findByRole("combobox", { name: "프롬프트 작성 모델" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect((screen.getByRole("combobox", { name: "프롬프트 작성 모델" }) as HTMLSelectElement).value)
+    .toBe("chatgpt");
+  fireEvent.change(screen.getByRole("textbox", { name: "이미지 요청" }), { target: { value: "girl" } });
+  expect((screen.getByRole("button", { name: "전송" }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+it("switches configured prompt providers beside the composer and saves the selection", async () => {
+  const user = userEvent.setup();
+  promptProviderBootstrap("local", true);
+  api.select_prompt_provider = vi.fn(async (provider) => ({ ok: true, value: {
+    ...promptSettings, provider, chatgpt_model: "available-gpt",
+  } }));
+  render(<App />);
+  const selector = await screen.findByRole("combobox", { name: "프롬프트 작성 모델" });
+  await user.selectOptions(selector, "chatgpt");
+  await screen.findByRole("combobox", { name: "프롬프트 작성 모델" });
+  expect(api.select_prompt_provider).toHaveBeenCalledWith("chatgpt");
+  await user.selectOptions(selector, "local");
+  await waitFor(() => expect(selector).toHaveProperty("value", "local"));
+  expect(api.select_prompt_provider).toHaveBeenLastCalledWith("local");
+});
+
+it("keeps the previous prompt provider when saving a switch fails", async () => {
+  const user = userEvent.setup();
+  promptProviderBootstrap("local", true);
+  api.select_prompt_provider = vi.fn(async () => ({
+    ok: false, error: { code: "DATABASE_FAILED", message: "private" },
+  }));
+  render(<App />);
+  const selector = await screen.findByRole("combobox", { name: "프롬프트 작성 모델" });
+  await user.selectOptions(selector, "chatgpt");
+  await screen.findByRole("alert");
+  expect((selector as HTMLSelectElement).value).toBe("local");
+  expect(screen.queryByText(/ChatGPT 구독 사용 중/)).toBeNull();
+});
+
+it("blocks natural-language generation until one prompt provider is ready", async () => {
+  promptProviderBootstrap("local", false);
+  api.bootstrap.mockImplementationOnce(async () => ({ ok: true, value: {
+    language: "ko", project: current, projects: [empty], settings, image_models: imageModels,
+    generation_defaults: {}, prompt_settings: promptSettings,
+    models: imageModels[0].asset_ids.map((id) => ({ id, available: true })), chatgpt: null,
+  } }));
+  render(<App />);
+  const dialog = await screen.findByRole("dialog", { name: "모델 준비" });
+  fireEvent.click(within(dialog).getAllByRole("button", { name: "닫기" }).at(-1)!);
+  fireEvent.change(screen.getByRole("textbox", { name: "이미지 요청" }), { target: { value: "girl" } });
+  expect((screen.getByRole("button", { name: "전송" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.keyDown(screen.getByRole("textbox", { name: "이미지 요청" }), { key: "Enter" });
+  expect(api.submit_request).not.toHaveBeenCalled();
+});
+
+it("shows the first ChatGPT plan confirmation and persists acknowledgement", async () => {
+  promptProviderBootstrap("chatgpt", false);
+  api.bootstrap.mockImplementationOnce(async () => ({ ok: true, value: {
+    language: "ko", project: current, projects: [empty], settings, image_models: imageModels,
+    generation_defaults: {}, prompt_settings: { ...promptSettings, provider: "chatgpt", chatgpt_model: "gpt" },
+    models: imageModels[0].asset_ids.map((id) => ({ id, available: true })),
+    chatgpt: { ...chatgptStatus, welcome_pending: true },
+  } }));
+  api.dismiss_chatgpt_welcome = vi.fn(async () => ({ ok: true, value: chatgptStatus }));
+  render(<App />);
+  await screen.findByRole("dialog", { name: "ChatGPT 구독을 사용합니다" });
+  fireEvent.click(screen.getByRole("button", { name: "확인" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(api.dismiss_chatgpt_welcome).toHaveBeenCalledOnce();
+});
+
+it("prepares a GPT model without activating ChatGPT or requiring local files", async () => {
+  const user = userEvent.setup();
+  promptProviderBootstrap("local", false);
+  const result = await api.bootstrap();
+  api.bootstrap.mockResolvedValue({ ...result, value: { ...result.value,
+    prompt_settings: { ...promptSettings, provider: "local", chatgpt_model: "" },
+  } });
+  api.get_chatgpt_models = vi.fn(async () => ({ ok: true, value: [
+    { slug: "available-gpt", display_name: "Available GPT" },
+  ] }));
+  api.select_prompt_provider = vi.fn(async (provider) => ({ ok: true, value: {
+    ...promptSettings, provider, chatgpt_model: "available-gpt",
+  } }));
+  render(<App />);
+  const dialog = await screen.findByRole("dialog", { name: "모델 준비" });
+  await user.selectOptions(within(dialog).getByRole("combobox", { name: "프롬프트 작성 모델" }), "chatgpt");
+  await within(dialog).findByRole("option", { name: "Available GPT" });
+  await user.selectOptions(within(dialog).getByLabelText("GPT 모델"), "available-gpt");
+  expect(api.configure_prompt_writer).toHaveBeenCalledWith({ chatgpt_model: "available-gpt" });
+  expect(api.update_settings).not.toHaveBeenCalled();
+  expect(api.select_prompt_provider).not.toHaveBeenCalled();
+  expect(within(dialog).queryByRole("button", { name: /프롬프트 작성|설정 저장/ })).toBeNull();
+  await user.keyboard("{Escape}");
+  const selector = screen.getByRole("combobox", { name: "프롬프트 작성 모델" });
+  expect(selector).toHaveProperty("value", "local");
+  await user.selectOptions(selector, "chatgpt");
+  expect(api.select_prompt_provider).toHaveBeenCalledWith("chatgpt");
+});
+
+it("shows only the selected prompt writer's preparation and retains its saved GPT model", async () => {
+  promptProviderBootstrap("local", true);
+  api.select_prompt_provider = vi.fn();
+  api.get_chatgpt_models = vi.fn(async () => ({ ok: true, value: [
+    { slug: "available-gpt", display_name: "Available GPT" },
+    { slug: "another-gpt", display_name: "Another GPT" },
+  ] }));
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  await user.click(screen.getByRole("button", { name: "모델 준비" }));
+  const dialog = within(screen.getByRole("dialog", { name: "모델 준비" }));
+  expect(dialog.getByRole("group", { name: "로컬 LLM" })).toBeTruthy();
+  expect(dialog.getAllByText("로컬 LLM")).toHaveLength(1);
+  expect(dialog.getByRole("separator")).toBeTruthy();
+  expect(dialog.getByRole("region", { name: "이미지 생성 모델" })
+    .compareDocumentPosition(dialog.getByRole("region", { name: "프롬프트 작성 모델" }))
+    & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(dialog.queryByRole("button", { name: "ChatGPT 로그인" })).toBeNull();
+  expect(dialog.queryByText("고급 설정")).toBeNull();
+  expect(dialog.queryByLabelText("컨텍스트 크기")).toBeNull();
+  expect(dialog.queryByLabelText("최근 요청 수")).toBeNull();
+  expect(dialog.queryByRole("button", { name: "저장" })).toBeNull();
+  await user.selectOptions(dialog.getByRole("combobox", { name: "프롬프트 작성 모델" }), "chatgpt");
+  expect(dialog.queryByRole("group", { name: "로컬 LLM" })).toBeNull();
+  expect(dialog.getAllByText("ChatGPT")).toHaveLength(1);
+  expect(dialog.getByLabelText("계정")).toBeTruthy();
+  expect(dialog.queryByLabelText("컨텍스트 크기")).toBeNull();
+  expect(dialog.queryByLabelText("최근 요청 수")).toBeNull();
+  expect(dialog.queryByRole("button", { name: "저장" })).toBeNull();
+  expect(dialog.getByRole("button", { name: "계정 추가" })).toBeTruthy();
+  await dialog.findByRole("option", { name: "Another GPT" });
+  await user.selectOptions(dialog.getByLabelText("GPT 모델"), "another-gpt");
+  await user.selectOptions(dialog.getByRole("combobox", { name: "프롬프트 작성 모델" }), "local");
+  expect(dialog.getByRole("group", { name: "로컬 LLM" })).toBeTruthy();
+  expect(dialog.queryByLabelText("GPT 모델")).toBeNull();
+  await user.selectOptions(dialog.getByRole("combobox", { name: "프롬프트 작성 모델" }), "chatgpt");
+  await dialog.findByRole("option", { name: "Another GPT" });
+  expect(dialog.getByLabelText("GPT 모델")).toHaveProperty("value", "another-gpt");
+  expect(api.configure_prompt_writer).toHaveBeenCalledExactlyOnceWith({ chatgpt_model: "another-gpt" });
+  expect(api.update_settings).not.toHaveBeenCalled();
+  expect(api.select_prompt_provider).not.toHaveBeenCalled();
+});
+
+it("saves provider and inference drafts together when generation settings close", async () => {
+  promptProviderBootstrap("local", true);
+  api.get_chatgpt_models = vi.fn();
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  await user.click(screen.getByLabelText("생성 설정"));
+  const dialog = within(screen.getByRole("dialog", { name: "생성 설정" }));
+  expect(dialog.queryByRole("button", { name: "ChatGPT 로그인" })).toBeNull();
+  expect(dialog.queryByRole("button", { name: "로그아웃" })).toBeNull();
+  expect(dialog.queryByLabelText("GPT 모델")).toBeNull();
+  expect(dialog.queryByRole("button", { name: "파일 선택" })).toBeNull();
+  expect(dialog.queryByRole("button", { name: "저장" })).toBeNull();
+  await user.click(dialog.getByText("고급 설정"));
+  const writerChoice = dialog.getByLabelText("프롬프트 작성 모델");
+  const divider = dialog.getByRole("separator");
+  expect(dialog.getByLabelText("너비").compareDocumentPosition(divider)
+    & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(divider.compareDocumentPosition(writerChoice)
+    & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(dialog.getByLabelText("너비").compareDocumentPosition(writerChoice)
+    & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(writerChoice.compareDocumentPosition(dialog.getByLabelText("컨텍스트 크기"))
+    & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(dialog.queryByRole("button", { name: "저장" })).toBeNull();
+  await user.clear(dialog.getByLabelText("컨텍스트 크기"));
+  await user.type(dialog.getByLabelText("컨텍스트 크기"), "8192");
+  await user.clear(dialog.getByLabelText("생성 단계"));
+  await user.type(dialog.getByLabelText("생성 단계"), "15");
+  await user.selectOptions(dialog.getByLabelText("프롬프트 작성 모델"), "chatgpt");
+  for (const label of ["컨텍스트 크기", "출력 토큰 한도", "추론 사용", "추론 수준"]) {
+    expect(dialog.queryByLabelText(label)).toBeNull();
+  }
+  await user.clear(dialog.getByLabelText("최근 요청 수"));
+  await user.type(dialog.getByLabelText("최근 요청 수"), "6");
+  await user.selectOptions(dialog.getByLabelText("프롬프트 작성 모델"), "local");
+  expect(dialog.getByLabelText("컨텍스트 크기")).toHaveProperty("value", "8192");
+  expect(dialog.getByLabelText("최근 요청 수")).toHaveProperty("value", "6");
+  await user.selectOptions(dialog.getByLabelText("프롬프트 작성 모델"), "chatgpt");
+  expect(api.update_settings).not.toHaveBeenCalled();
+  expect(api.configure_prompt_writer).not.toHaveBeenCalled();
+  await user.click(dialog.getByText("닫기", { selector: "button" }));
+  expect(api.update_settings).toHaveBeenCalledExactlyOnceWith({ ...settings, steps: 15 }, {
+    ...promptSettings, provider: "chatgpt", chatgpt_model: "available-gpt",
+    context_size: 8192, history_turns: 6,
+  });
+  expect(screen.queryByRole("dialog", { name: "생성 설정" })).toBeNull();
+  expect(api.get_chatgpt_models).not.toHaveBeenCalled();
+});
+
+it.each(["button", "header", "escape", "overlay"])("saves generation settings before closing through %s", async (method) => {
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  await user.click(screen.getByLabelText("생성 설정"));
+  const dialog = screen.getByRole("dialog", { name: "생성 설정" });
+  await user.clear(within(dialog).getByLabelText("생성 단계"));
+  await user.type(within(dialog).getByLabelText("생성 단계"), "12");
+  expect(api.update_settings).not.toHaveBeenCalled();
+  if (method === "button") await user.click(within(dialog).getByText("닫기", { selector: "button" }));
+  if (method === "header") await user.click(within(dialog).getByLabelText("닫기"));
+  if (method === "escape") await user.keyboard("{Escape}");
+  if (method === "overlay") await user.click(dialog.parentElement!);
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(api.update_settings).toHaveBeenCalledExactlyOnceWith({ ...settings, steps: 12 }, promptSettings);
+  await user.click(screen.getByLabelText("생성 설정"));
+  expect(screen.getByLabelText("생성 단계")).toHaveProperty("value", "12");
+});
+
+it("retains the generation settings draft when saving on close fails and allows retry", async () => {
+  api.update_settings.mockResolvedValueOnce({ ok: false, error: { code: "DATABASE_FAILED" } });
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  await user.click(screen.getByLabelText("생성 설정"));
+  await user.clear(screen.getByLabelText("생성 단계"));
+  await user.type(screen.getByLabelText("생성 단계"), "12");
+  await user.keyboard("{Escape}");
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "작업 기록을 저장하거나 불러올 수 없습니다.");
+  expect(screen.getByRole("dialog", { name: "생성 설정" })).toBeTruthy();
+  expect(screen.getByLabelText("생성 단계")).toHaveProperty("value", "12");
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(api.update_settings).toHaveBeenCalledTimes(2);
+});
+
+it("keeps settings locked and ignores repeated close requests until saving completes", async () => {
+  let finish!: (value: unknown) => void;
+  api.update_settings.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  await user.click(screen.getByLabelText("생성 설정"));
+  const dialog = screen.getByRole("dialog", { name: "생성 설정" });
+  await user.clear(screen.getByLabelText("생성 단계"));
+  await user.type(screen.getByLabelText("생성 단계"), "12");
+  await user.click(within(dialog).getByText("닫기", { selector: "button" }));
+  expect((screen.getByLabelText("생성 단계") as HTMLInputElement).matches(":disabled")).toBe(true);
+  await user.keyboard("{Escape}");
+  await user.click(within(dialog).getByLabelText("닫기"));
+  await user.click(dialog.parentElement!);
+  expect(api.update_settings).toHaveBeenCalledOnce();
+  expect(screen.getByRole("dialog", { name: "생성 설정" })).toBe(dialog);
+  await act(async () => finish({ ok: true, value: { ...settings, steps: 12 } }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it.each(["너비", "컨텍스트 크기"])("keeps invalid %s available for correction instead of saving on close", async (label) => {
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  await user.click(screen.getByLabelText("생성 설정"));
+  if (label === "컨텍스트 크기") await user.click(screen.getByText("고급 설정"));
+  const input = screen.getByLabelText(label) as HTMLInputElement;
+  await user.clear(input);
+  if (label === "컨텍스트 크기") await user.click(screen.getByText("고급 설정"));
+  await user.keyboard("{Escape}");
+  expect(api.update_settings).not.toHaveBeenCalled();
+  expect(screen.getByRole("dialog", { name: "생성 설정" })).toBeTruthy();
+  expect(input.value).toBe("");
+  expect(input.validity.valid).toBe(false);
+  if (label === "컨텍스트 크기") expect(input.closest("details")?.open).toBe(true);
+  await user.type(input, label === "너비" ? "832" : "8192");
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(api.update_settings).toHaveBeenCalledOnce();
+});
+
+it("returns to the selected ChatGPT setup after the first sign-in welcome", async () => {
+  promptProviderBootstrap("local", false);
+  const result = await api.bootstrap();
+  api.bootstrap.mockResolvedValue({ ...result, value: { ...result.value, chatgpt: {
+    ...chatgptStatus, connected: false, plan_enabled: false, active_account: null,
+    accounts: [], email: null,
+  } } });
+  api.login_chatgpt = vi.fn(async () => ({ ok: true, value: { ...chatgptStatus, welcome_pending: true } }));
+  api.dismiss_chatgpt_welcome = vi.fn(async () => ({ ok: true, value: chatgptStatus }));
+  api.get_chatgpt_models = vi.fn(async () => ({ ok: true, value: [
+    { slug: "available-gpt", display_name: "Available GPT" },
+  ] }));
+  const user = userEvent.setup();
+  render(<App />);
+  const dialog = await screen.findByRole("dialog", { name: "모델 준비" });
+  await user.selectOptions(within(dialog).getByRole("combobox", { name: "프롬프트 작성 모델" }), "chatgpt");
+  await user.click(within(dialog).getByRole("button", { name: "ChatGPT 로그인" }));
+  const welcome = await screen.findByRole("dialog", { name: "ChatGPT 구독을 사용합니다" });
+  expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  await user.click(within(welcome).getByRole("button", { name: "확인" }));
+  const resumed = within(await screen.findByRole("dialog", { name: "모델 준비" }));
+  expect(resumed.getByRole("combobox", { name: "프롬프트 작성 모델" })).toHaveProperty("value", "chatgpt");
+  expect(resumed.queryByLabelText("컨텍스트 크기")).toBeNull();
+  expect(await resumed.findByRole("option", { name: "Available GPT" })).toBeTruthy();
+});
+
+it.each([
+  ["no GPT model", "", chatgptStatus],
+  ["disconnected account", "available-gpt", { ...chatgptStatus, connected: false }],
+  ["missing permission", "available-gpt", { ...chatgptStatus, plan_enabled: false }],
+  ["pending sign-in", "available-gpt", { ...chatgptStatus, login_state: "waiting" }],
+])("disables ChatGPT in both selectors with %s", async (_reason, model, status) => {
+  promptProviderBootstrap("local", true);
+  const result = await api.bootstrap();
+  api.bootstrap.mockResolvedValue({ ...result, value: { ...result.value,
+    prompt_settings: { ...promptSettings, provider: "local", chatgpt_model: model },
+    chatgpt: status,
+  } });
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  const composerSelect = screen.getByLabelText("프롬프트 작성 모델");
+  expect(within(composerSelect).getByRole("option", { name: "ChatGPT" })).toHaveProperty("disabled", true);
+  await user.click(screen.getByLabelText("생성 설정"));
+  const select = within(screen.getByRole("dialog", { name: "생성 설정" }))
+    .getByLabelText("프롬프트 작성 모델") as HTMLSelectElement;
+  expect(within(select).getByRole("option", { name: "ChatGPT" })).toHaveProperty("disabled", true);
+  await user.selectOptions(select, "chatgpt");
+  expect(select.value).toBe("local");
+});
+
+it("keeps a local prompt download cancellable while viewing ChatGPT setup", async () => {
+  promptProviderBootstrap("chatgpt", false);
+  const result = await api.bootstrap();
+  const models = [{ id: "prompt", available: false, download: {
+    model_id: "prompt", state: "downloading", received: 50, total: 100, error_code: null,
+  } }, ...imageModels[0].asset_ids.map((id) => ({ id, available: true }))];
+  api.bootstrap.mockResolvedValue({ ...result, value: { ...result.value, models } });
+  api.get_model_status.mockResolvedValue({ ok: true, value: models });
+  api.get_chatgpt_models = vi.fn(async () => ({ ok: true, value: [
+    { slug: "available-gpt", display_name: "Available GPT" },
+  ] }));
+  api.cancel_model_download = vi.fn(async () => ({ ok: true, value: models }));
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("어떤 장면을 그릴까요?");
+  await user.click(screen.getByRole("button", { name: "모델 준비" }));
+  const downloads = within(screen.getByRole("region", { name: "다른 모델의 다운로드" }));
+  expect(downloads.getByText("50%")).toBeTruthy();
+  await user.click(downloads.getByRole("button", { name: "취소" }));
+  expect(api.cancel_model_download).toHaveBeenCalledWith("prompt");
+  expect(screen.queryByLabelText("컨텍스트 크기")).toBeNull();
+});
+
 describe("display language", () => {
   it("switches beside the logo without changing a draft or project, and restores the saved language", async () => {
     let language = "ko";
@@ -1163,6 +1580,9 @@ describe("display language", () => {
     expect(screen.getByRole("dialog", { name: "Generation settings" })).toBeTruthy();
     expect(screen.getByLabelText("Width")).toBeTruthy();
     expect(screen.getByLabelText("Context size")).toBeTruthy();
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Model setup" }));
+    expect(screen.queryByLabelText("Context size")).toBeNull();
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "Edit" }));
     expect(await screen.findByRole("dialog", { name: "Prompt" })).toBeTruthy();
@@ -1249,6 +1669,6 @@ it("restores FLUX with its own files and saves family changes only in generation
   expect((screen.getByLabelText("생성 단계") as HTMLInputElement).value).toBe("4");
   expect((screen.getByLabelText("프롬프트 반영 강도 (CFG)") as HTMLInputElement).value).toBe("1");
   expect((screen.getByLabelText("시드") as HTMLInputElement).value).toBe("42");
-  await user.click(screen.getByRole("button", { name: "저장" }));
-  expect(api.update_settings).toHaveBeenCalledWith(saved, promptSettings);
+  await user.click(screen.getByText("닫기", { selector: "button" }));
+  expect(api.update_settings).not.toHaveBeenCalled();
 });

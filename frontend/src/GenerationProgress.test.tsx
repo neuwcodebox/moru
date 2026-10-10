@@ -77,3 +77,18 @@ it("writes the prompt directly when thinking is disabled", () => {
   expect(screen.queryByText("생각 과정")).toBeNull();
   expect(screen.getByText("night, girl")).toBeTruthy();
 });
+
+it("distinguishes prompt loading, inference and image loading in the same placeholder", () => {
+  const { rerender } = render(<GenerationProgress job={{ ...job, state: "loading_prompt_model" }} />);
+  const placeholder = screen.getByRole("region", { name: "생성 진행" });
+  expect(within(placeholder).getByText("프롬프트 모델을 불러오는 중…")).toBeTruthy();
+  expect(within(placeholder).queryByText("생각 중…")).toBeNull();
+  rerender(<GenerationProgress job={job} />);
+  expect(screen.getByRole("region", { name: "생성 진행" })).toBe(placeholder);
+  expect(within(placeholder).getByText("생각 중…")).toBeTruthy();
+  rerender(<GenerationProgress job={{ ...job, thinking_enabled: false }} />);
+  expect(within(placeholder).getByText("프롬프트 작성 중…")).toBeTruthy();
+  rerender(<GenerationProgress job={{ ...job, state: "loading_model" }} />);
+  expect(within(placeholder).getByText("이미지 모델을 불러오는 중…")).toBeTruthy();
+  expect(within(placeholder).queryByText("생각 중…")).toBeNull();
+});

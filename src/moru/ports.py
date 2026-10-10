@@ -12,6 +12,8 @@ PromptProgress = Callable[[str, str], None]
 
 
 class PromptGenerator(Protocol):
+    """Call on_ready after preparation, before inference; never after load failure/cancellation."""
+
     def create(
         self,
         text: str,
@@ -21,6 +23,7 @@ class PromptGenerator(Protocol):
         *,
         history: tuple[PromptTurn, ...] = (),
         model_id: str = "anima-turbo-v1.1",
+        on_ready: Callable[[], None] | None = None,
     ) -> str: ...
     def refine(
         self,
@@ -32,6 +35,7 @@ class PromptGenerator(Protocol):
         *,
         history: tuple[PromptTurn, ...] = (),
         model_id: str = "anima-turbo-v1.1",
+        on_ready: Callable[[], None] | None = None,
     ) -> str: ...
     def unload(self) -> None: ...
     def memory_required(self, settings: PromptSettings) -> int:

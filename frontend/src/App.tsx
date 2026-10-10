@@ -1,6 +1,6 @@
 import { errorMessage } from "./errorMessages";
 import { useTranslation } from "react-i18next";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowUp,
   ArrowDown,
@@ -14,6 +14,7 @@ import {
 import { call } from "./api";
 import type {
   Bootstrap,
+  ChatGPTStatus,
   ImageDetails,
   Job,
   ModelStatus,
@@ -28,6 +29,8 @@ import PromptDialog from "./PromptDialog";
 import SettingsDialog from "./SettingsDialog";
 import ModelsDialog from "./ModelsDialog";
 import Conversation from "./Conversation";
+import Modal from "./Modal";
+import { canUseChatGPT } from "./promptAvailability";
 
 export default function App() {
   const { t, i18n } = useTranslation();
@@ -45,7 +48,9 @@ export default function App() {
   const [error, setError] = useState<unknown>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [models, setModels] = useState<ModelStatus[]>([]);
+  const [modelsKnown, setModelsKnown] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
+  const [chatgpt, setChatgpt] = useState<ChatGPTStatus | null>(null);
   const [details, setDetails] = useState<ImageDetails | null>(null);
   const [viewer, setViewer] = useState(false);
   const [activeTurn, setActiveTurn] = useState<string | null>(null);
@@ -53,13 +58,30 @@ export default function App() {
   const [sources, setSources] = useState<Record<string, string>>({});
   const input = useRef<HTMLTextAreaElement>(null);
   const conversation = useRef<HTMLElement>(null);
+  const composerArea = useRef<HTMLElement>(null);
   const followLatest = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
   const busy = acting || job !== null;
-  const modalOpen = viewer || settingsOpen || modelsOpen || details !== null;
+  const promptReady = promptSettings?.provider === "chatgpt"
+    ? canUseChatGPT(chatgpt, promptSettings.chatgpt_model)
+    : !modelsKnown || !!models.find((model) => model.id === "prompt")?.available;
+  const modalOpen = viewer || settingsOpen || modelsOpen || details !== null || !!chatgpt?.welcome_pending;
   const activeImage =
     project?.images.find((image) => image.turn_id === activeTurn) ?? project?.images.at(-1);
   const actingNow = useRef(false);
+
+  useLayoutEffect(() => {
+    const element = composerArea.current;
+    if (!element) return;
+    const measure = () => conversation.current?.style.setProperty(
+      "--composer-height", `${element.getBoundingClientRect().height}px`,
+    );
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     setActiveTurn(null);
@@ -137,10 +159,15 @@ export default function App() {
         setPromptSettings(result.prompt_settings);
         setError("");
         setModels(result.models ?? []);
+        setModelsKnown(result.models !== undefined);
+        setChatgpt(result.chatgpt ?? null);
         const selected = result.image_models.find((model) => model.id === result.settings.model_id);
-        const required = ["prompt", ...(selected?.asset_ids ?? [])];
+        const required = [...(selected?.asset_ids ?? [])];
+        const promptReady = result.prompt_settings.provider === "chatgpt"
+          ? canUseChatGPT(result.chatgpt, result.prompt_settings.chatgpt_model)
+          : result.models?.find((model) => model.id === "prompt")?.available;
         if (
-          result.models && required.some((id) => !result.models?.find((model) => model.id === id)?.available)
+          result.models && (!promptReady || required.some((id) => !result.models?.find((model) => model.id === id)?.available))
         )
           setModelsOpen(true);
       } catch (error) {
@@ -231,11 +258,20 @@ export default function App() {
     }
   }
   async function submit() {
-    if (!project || busy || !text.trim()) return;
+    if (!project || busy || !promptReady || !text.trim()) return;
     await act(async () => {
+      scrollToBottom();
       await startGeneration("submit_request", project.id, text);
       setText("");
     });
+  }
+  function scrollToBottom() {
+    followLatest.current = true;
+    conversation.current?.scrollTo({
+      top: conversation.current.scrollHeight,
+      behavior: "instant",
+    });
+    setAtBottom(true);
   }
   async function startGeneration(method: string, ...args: unknown[]) {
     const next = await call<Job>(method, ...args);
@@ -362,20 +398,13 @@ export default function App() {
           </button>
         </div>
       )}
-      <footer inert={modalOpen}>
+      <footer ref={composerArea} inert={modalOpen}>
         {!atBottom && (
           <button
             className="scroll-bottom"
             aria-label={t("scrollBottom")}
             title={t("scrollBottom")}
-            onClick={() => {
-              followLatest.current = true;
-              conversation.current?.scrollTo({
-                top: conversation.current.scrollHeight,
-                behavior: "instant",
-              });
-              setAtBottom(true);
-            }}
+            onClick={scrollToBottom}
           >
             <ArrowDown size={18} aria-hidden="true" />
           </button>
@@ -389,6 +418,22 @@ export default function App() {
           </div>
         )}
         <div className="composer-tools">
+          {promptSettings && <label className="prompt-provider-select">
+            <span className="sr-only">{t("dialogs:chatgpt.provider")}</span>
+            <select aria-label={t("dialogs:chatgpt.provider")}
+              value={promptSettings.provider ?? "local"} disabled={busy}
+              onChange={(event) => {
+                const provider = event.target.value;
+                void act(async () => setPromptSettings(await call<PromptSettings>("select_prompt_provider", provider)));
+              }}>
+              <option value="local" disabled={models.length > 0 && !models.find((model) => model.id === "prompt")?.available}>
+                {t("dialogs:chatgpt.local")}
+              </option>
+              <option value="chatgpt" disabled={!canUseChatGPT(chatgpt, promptSettings.chatgpt_model)}>
+                ChatGPT
+              </option>
+            </select>
+          </label>}
           <button
             className="new-project"
             disabled={busy || !project}
@@ -446,7 +491,7 @@ export default function App() {
             className="send-button"
             aria-label={job ? t("stop") : t("send")}
             title={job ? (stopping ? t("stopping") : t("stopGeneration")) : t("send")}
-            disabled={job ? stopping : busy || !text.trim() || !project}
+            disabled={job ? stopping : busy || !promptReady || !text.trim() || !project}
           >
             {job ? (
               <Square size={17} fill="currentColor" aria-hidden="true" />
@@ -456,11 +501,13 @@ export default function App() {
           </button>
         </form>
       </footer>
-      {settingsOpen && settings && promptSettings && (
+      {settingsOpen && settings && promptSettings && !chatgpt?.welcome_pending && (
         <SettingsDialog
           settings={settings}
           imageModels={imageModels}
           promptSettings={promptSettings}
+          chatgpt={chatgpt}
+          localReady={!!models.find((model) => model.id === "prompt")?.available}
           onClose={() => setSettingsOpen(false)}
           onSave={async (draft, promptDraft) => {
             setSettings(
@@ -477,8 +524,28 @@ export default function App() {
           initialModelId={settings.model_id}
           onUpdate={setModels}
           onClose={() => setModelsOpen(false)}
+          chatgpt={chatgpt}
+          suspended={!!chatgpt?.welcome_pending}
+          promptSettings={promptSettings ?? undefined}
+          onChatGPTStatus={setChatgpt}
+          onConfigurePrompt={async (values) => {
+            const saved = await call<PromptSettings>("configure_prompt_writer", values);
+            setPromptSettings(saved);
+            return saved;
+          }}
         />
       )}
+      {chatgpt?.welcome_pending && <Modal title={t("dialogs:chatgpt.welcomeTitle")}
+        onClose={() => void act(async () => setChatgpt(await call<ChatGPTStatus>("dismiss_chatgpt_welcome")))}>
+        <p>{t("dialogs:chatgpt.welcomeBody")}</p>
+        <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">
+          {t("dialogs:chatgpt.manageUsage")}
+        </a>
+        <div className="modal-actions"><button type="button" disabled={acting}
+          onClick={() => void act(async () => setChatgpt(await call<ChatGPTStatus>("dismiss_chatgpt_welcome")))}>
+          {t("dialogs:chatgpt.gotIt")}
+        </button></div>
+      </Modal>}
       {details && (
         <PromptDialog
           details={details}

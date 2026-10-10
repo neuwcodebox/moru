@@ -48,6 +48,7 @@ Release에는 `vite build` 결과물만 포함하며 Node.js 런타임은 포함
 - CUDA 활성화
 - 작은 GGUF Instruct 모델
 - 자연어 → 이미지 프롬프트 생성/수정 전용
+- 선택적 ChatGPT: SIWC OAuth + Responses API, PyJWT[crypto] 서명 검증, Windows DPAPI 토큰 저장
 
 ### 이미지 생성
 
@@ -121,7 +122,9 @@ ComfyUI는 일반 pip dependency로 느슨하게 따라가지 않고 검증한 c
 │  │   └─ React static UI          │
 │  ├─ Application Service          │
 │  ├─ SQLite                       │
-│  └─ Prompt LLM / CUDA            │
+│  └─ Prompt provider              │
+│      ├─ Local LLM / CUDA         │
+│      └─ ChatGPT / HTTPS          │
 │                                  │
 │  Hidden Image Worker             │
 │  └─ ComfyUI core / CUDA          │
@@ -154,11 +157,11 @@ src/app/web/
 
 pywebview가 해당 UI를 앱 창으로 연다.
 
-외부 브라우저를 실행하지 않는다.
+메인 UI는 외부 브라우저를 실행하지 않는다. ChatGPT OAuth 로그인은 시스템 브라우저를 사용한다.
 
 ### 5.2 React ↔ Python
 
-HTTP 서버를 만들지 않는다.
+메인 UI용 HTTP 서버를 만들지 않는다. ChatGPT 로그인 동안만 `127.0.0.1`의 임시 OAuth 콜백 리스너를 사용한다.
 
 pywebview의 JS bridge를 사용한다.
 
@@ -197,6 +200,7 @@ Python main process에서 background executor/task queue를 사용한다.
 
 ```text
 queued
+loading_prompt_model
 prompting
 loading_model
 generating
@@ -214,6 +218,9 @@ MVP에서는 단일 generation queue만 허용한다.
 ---
 
 ## 7. Prompt LLM
+
+아래 상세 지침·실행 방식은 로컬 LLM을 설명한다. ChatGPT는 동일한 create/refine 역할을
+수행하며 계정·HTTP 구현은 [ChatGPT 프롬프트 제공자](#chatgpt-프롬프트-제공자)에 별도로 설명한다.
 
 ### 7.1 역할
 
@@ -261,7 +268,7 @@ SYSTEM
 
 GGUF 채팅 템플릿을 렌더링한 뒤 tokenizer로 입력 토큰 수를 계산한다. context_size - max_tokens를 초과하면 오래된 완전한 user/assistant 쌍부터 제거한다. 현재 기준과 새 요청까지 초과하면 PROMPT_CONTEXT_TOO_LONG 오류를 반환한다. 현재 입력을 조용히 자르거나 다른 모델을 사용하지 않는다.
 
-시스템 지침은 이미지 생성 모델용 영어 positive prompt 작성으로 표현한다. 모델 이름을 지침에 넣지 않는다. 관련 booru 태그와 관계·위치의 자연어 묘사를 혼합하고, 소문자/공백 태그 및 요청된 아티스트의 @ 접두사를 사용한다. Aesthetic 설정일 때 score_* 제외 지침을 추가한다. 비라틴 문자로 작성된 최종 응답은 오류로 처리해 이미지 모델에 넘기지 않는다. 참고: https://huggingface.co/circlestone-labs/Anima#prompting
+로컬 LLM의 시스템 지침은 이미지 생성 모델용 영어 positive prompt 작성으로 표현한다. 모델 이름을 지침에 넣지 않는다. 관련 booru 태그와 관계·위치의 자연어 묘사를 혼합하고, 소문자/공백 태그 및 요청된 아티스트의 @ 접두사를 사용한다. Aesthetic 설정일 때 score_* 제외 지침을 추가한다. 비라틴 문자로 작성된 최종 응답은 오류로 처리해 이미지 모델에 넘기지 않는다. 참고: https://huggingface.co/circlestone-labs/Anima#prompting
 
 기준 이미지의 실제 프롬프트가 현재 상태의 canonical representation이다.
 
@@ -297,7 +304,7 @@ Prompt 작성 성능을 우선하며 고난도 reasoning 성능은 요구하지 
 
 ## 9. GPU 메모리 정책
 
-Prompt LLM과 이미지 모델 모두 GPU를 사용한다.
+로컬 Prompt LLM과 이미지 모델은 GPU를 사용한다. ChatGPT 프롬프트 작성은 GPU 예산을 예약하지 않는다.
 
 `Application`은 두 엔진의 좁은 메모리 계약으로 추론 단계 전 VRAM을 확보한다.
 CUDA 측정과 ComfyUI 모델 해제는 이미지 worker 안에서 수행하며 main에 PyTorch를 로드하지 않는다.
@@ -519,7 +526,9 @@ FP4 파일을 먼저 탐색하고 기존 FP16 파일도 허용한다. 명시적�
 `bootstrap.image_models`로 표시 이름·계열·버전·필요 asset ID·기본값을 React에 전달한다.
 `ImageModelSelect`는 계열/버전 표시만 공유한다. 생성 설정은 App의 Settings를 저장하고,
 모델 준비는 `initialModelId`로 초기화한 로컬 `viewedModelId`로 표시할 파일만 바꾼다.
-모델 준비에는 Settings나 저장 callback을 전달하지 않으며 `update_settings`를 호출하지 않는다.
+이미지 파일 탐색에는 Settings나 저장 callback을 전달하지 않으며 파일 준비로 `update_settings`를 호출하지 않는다.
+프롬프트 작성 방식의 탐색 상태는 별도로 유지한다. GPT 모델 준비는
+`configure_prompt_writer` callback으로 반영하고 활성 제공자는 변경하지 않는다.
 파일 준비는 기존 path/download bridge로 즉시 반영한다. 탐색 중 다른 asset의 진행/실패
 다운로드를 유지한다. 한국어 메뉴와 팝업 이름은 `모델 준비`, 영어는 `Model setup`이다.
 App의 시작 검사도 카탈로그의 선택 모델과 prompt asset만 요구한다.
@@ -935,7 +944,7 @@ Mock LLM + Mock Image Worker:
 - 메인 UI는 대화창 하나로 유지한다.
 - Prompt LLM은 Agent로 만들지 않는다.
 - 자연어 요청을 보내면 항상 이미지까지 생성한다.
-- Prompt LLM은 GPU를 기본으로 사용한다.
+- 로컬 Prompt LLM은 GPU를 기본으로 사용하며 ChatGPT 프롬프트 작성은 로컬 추론 자원을 사용하지 않는다.
 - ComfyUI는 내부 inference dependency일 뿐 사용자에게 노출하지 않는다.
 - ComfyUI UI/노드 편집기를 앱에 포함하지 않는다.
 - 내부 worker는 앱이 자동 시작·종료한다.
@@ -1005,7 +1014,7 @@ LLM을 우회하며 불변 이미지 기록의 설정은 바꾸지 않는다.
 문서 전체를 읽어 넣거나 외부 검색 결과를 실행 중 컨텍스트에 주입하지 않는다.
 현재 참고표의 범위와 실제 tokenizer로 측정한 예산은
 [태그 지침 적용 기록](reviews/2026-10-05-danbooru-tag-reference.md)에 기록한다.
-생성 설정의 고급 영역에서 두 한도와 thinking 사용 여부, 추론 수준을
+생성 설정에서 로컬 LLM을 선택하면 접힌 고급 영역에서 두 한도와 thinking 사용 여부, 추론 수준을
 변경할 수 있다. 불변 `PromptSettings`는 이미지 설정과 함께 preferences에 원자적으로
 저장되며 작업 접수 시 고정한다. 현재 작업에는 저장 후 변경한 값을 적용하지 않는다.
 컨텍스트 또는 모델 경로가 변경되면 다음 LLM 호출에서 모델을 다시 로드한다.
@@ -1017,9 +1026,12 @@ LLM 응답은 내부에서 스트리밍으로 소비하며 토큰마다 취소 �
 취소 시 completion generator를 닫고 이미지 생성으로 넘어가지 않는다.
 프로젝트 소유 `PromptProgress` callback은 엔진 경계에서 thinking과 프롬프트를 분리한다.
 Application은 사고 내용을 버리고 최종 프롬프트 스트림만 Job에 임시 저장한다.
-기존 polling bridge는 `thinking_enabled`와 `prompt_text`로 placeholder를 갱신한다.
-사고 내용은 bridge로 전달하지 않는다. 최종 프롬프트가 나오기 전에는 `생각 중…`,
-이후에는 `프롬프트 작성 중…` 상태를 표시한다.
+로컬 모델 적재가 필요하면 VRAM 확보부터 `loading_prompt_model`을 표시한다. 엔진의 `on_ready`
+callback은 준비 완료 후 추론 직전에 `prompting`으로 전환한다. 적재된 모델을 재사용하면 로딩 단계는 생략하며
+적재 실패·취소 시에는 추론 시작을 알리지 않는다. ChatGPT도 같은 준비 완료 계약을 따른다.
+polling bridge는 작업 상태·`thinking_enabled`·`prompt_text`로 placeholder를 갱신한다.
+사고 내용은 bridge로 전달하지 않는다. 추론 중 thinking이 켜져 있고 최종 프롬프트가 아직 없으면
+`생각 중…`, 그 외의 프롬프트 추론은 `프롬프트 작성 중…` 상태로 표시한다.
 제어 태그가 토큰 경계에서 나뉘어도 표시하지 않으며, 정상 종료된 전체 응답에서만
 이미지 생성용 최종 프롬프트를 추출한다. 임시 텍스트는 DB·로그에 저장하지 않고
 성공·실패·취소 후 Job에서도 지운다. 표시용 프롬프트는 최대 65536자로 제한한다.
@@ -1112,11 +1124,74 @@ Modal의 선택적인 초점 복귀 callback으로 뷰어 종료 후 탐색한 �
 현재 요구사항과 기술 설계는 docs/SPEC.md와 docs/TECH.md로 유지하고 이력 문서와 구분한다.
 
 앱은 viewport 높이에 고정하고 대화 flex 영역에 `min-height: 0`을 적용한다.
+하단 입력 영역은 대화 위에 겹쳐 배치하며 도구 영역의 배경은 투명하게 둔다. ResizeObserver로 입력 영역 높이를
+측정해 대화 하단 여백을 확보한다. 버튼 사이의 빈 공간은 대화의 클릭·스크롤을 가로막지 않는다.
 body의 overflow는 숨겨 페이지 전체 스크롤을 막고, 긴 대화는 대화 영역 안에서 스크롤한다.
 복사 버튼의 접근성용 숨김 문구는 버튼을 containing block으로 삼도록 배치해
 대화 밖의 페이지 scroll height를 늘리지 않게 한다.
-대화 스크롤은 맨 아래를 따라가는 상태에서만 자동 이동한다. ResizeObserver로 이미지와 텍스트의 크기 변화를 추적하며, 위로 스크롤하면 입력창 중앙 상단의 플로팅 버튼으로 맨 아래로 이동한다. 실시간 프롬프트는 placeholder의 이미지 canvas 안에 표시하며 사고 내용은 표시하지 않는다.
+자연어 요청을 전송하면 bridge 응답을 기다리지 않고 즉시 맨 아래로 이동해 최신 대화 따라가기를 활성화한다.
+그 외 대화 업데이트는 맨 아래를 따라가는 상태에서만 자동 이동한다. ResizeObserver로 이미지와 텍스트의 크기 변화를
+추적하며, 위로 스크롤하면 입력창 중앙 상단의 플로팅 버튼으로 맨 아래로 이동한다. 실시간 프롬프트는
+placeholder의 이미지 canvas 안에 표시하며 사고 내용은 표시하지 않는다.
 
+
+## ChatGPT 프롬프트 제공자
+
+`PromptSettings.provider`와 `chatgpt_model`을 preferences에 저장하고 작업 접수 시 기존
+불변 설정과 함께 고정한다. 기존 설정은 `local` 기본값으로 읽는다. `PromptProviders`는
+기존 `PromptGenerator` 계약으로 `LlamaPrompts` 또는 `ChatGPTPrompts`에 위임한다.
+ChatGPT 선택 시 로컬 LLM을 unload하고 memory_required는 0이다. Application은 이 경우
+이미지 worker의 reserve_memory를 호출하지 않는다. 이미지 생성·Fork·수동 생성 경계는 유지한다.
+
+`chatgpt_messages`는 짧은 모델별 지침과 기존 실제 대화·기준 프롬프트 구성을 사용한다.
+두 엔진의 이력 구성과 출력 검증은 `prompt_text.py`에서 공유한다. ChatGPT 구현은 로컬
+추론 모듈에 의존하지 않으며 각 엔진의 지침과 추론·스트림 처리는 해당 구현에 둔다.
+`ChatGPTHttp`는 표준 라이브러리 HTTPS/SSE로 `POST https://api.openai.com/v1/responses`에
+instructions·전체 input·선택 모델·store:false·stream:true만 보낸다. 로컬 추론 옵션은 전달하지 않는다.
+답변 delta만 표시하고 response.completed 확인 후 기존 final_prompt로 검증한다.
+거절·실패·불완전·중단은 이미지 생성으로 이어지지 않는다. 취소는 socket과 stream을 닫는다.
+admission 401만 갱신 후 한 번 재요청하며 스트리밍 중 실패는 재요청하지 않는다.
+모델 목록은 GET /v1/models의 models에서 visibility:list인 slug/display_name을 서버 순서로 표시한다.
+
+`ChatGPTAuth`는 최초 dynamic_agent_client·영구 host UUID·PKCE S256·state·nonce를 사용한다.
+발급 client ID로 코드를 교환하고 OIDC discovery/JWKS와 PyJWT[crypto]로 RS256 서명·issuer·
+audience·만료·nonce를 검증한다. 이 의존성은 표준 라이브러리에 없는 JWT 서명 검증을 위해 추가한다.
+기본 브라우저를 열기 전에 임의 포트의 127.0.0.1 HTTPServer를 시작하고 콜백·취소·5분 만료 시 닫는다.
+계정은 client ID와 검증된 subject로 구분하고 재로그인 시 기존 매핑을 유지한다.
+구독 scope가 없으면 로그인은 보관하되 추론을 허용하지 않는다.
+
+`CredentialStore`는 `%LOCALAPPDATA%/Moru/chatgpt.dpapi`에 host·등록·토큰·만료를 사용자
+범위 DPAPI로 암호화해 원자적으로 저장한다. UI에는 토큰·host·subject를 전달하지 않으며
+callback URL을 기록하지 않는다. 사용자 저장소의 OS 파일 잠금과 RLock으로 refresh를 직렬화하고
+갱신 전 최신 저장값을 읽는다. 성공 시 access·refresh·scope·만료를 함께 교체한다.
+일시적 실패는 토큰을 보존하고 terminal refresh 실패만 토큰을 지운다. 로그아웃은 discovery의
+revocation endpoint 호출 후 토큰을 지우되 계정 매핑과 host는 유지한다. 원격 해제 실패는 UI에 전달한다.
+
+bridge는 로그인·상태·취소·연결 해제·계정 선택·모델 목록·제공자 선택을 제공한다.
+ModelsDialog는 준비할 방식과 GPT 모델 선택을 유지하며 선택한 방식의 파일 준비 또는 ChatGPTAccount만 표시한다.
+모델 준비와 생성 설정은 모두 이미지 영역을 먼저 표시하고 구분선 뒤에 프롬프트 영역을 둔다.
+고급 설정은 프롬프트 영역 안에 두며 별도 구분선을 사용하지 않는다.
+`configure_prompt_writer`는 provider 변경을 거부하고 준비 상태를 요구하지 않은 채 옵션만 저장한다.
+idle 잠금 안에서 최신 설정을 읽어 저장하여 동시 제공자 선택을 덮어쓰지 않는다.
+GPT 모델 선택은 즉시 저장하며 실패 시 이전 선택을 유지한다. 숨겨진 로컬 모델의 진행/실패 다운로드도
+다른 모델의 다운로드 영역에 표시하여 취소할 수 있게 한다.
+첫 로그인 안내 중에는 ModelsDialog의 렌더링을 일시 중단하고 준비 선택을 유지하여, 안내를 닫으면
+선택했던 ChatGPT 설정으로 돌아온다. 두 모달의 focus trap을 동시에 활성화하지 않는다.
+SettingsDialog는 준비된 제공자 선택과 이미지 생성 옵션을 표시하고, 접힌 고급 설정에 PromptOptions를 둔다.
+최근 요청 수는 공통으로 표시하고 로컬 전용 추론 옵션은 ChatGPT 선택 시 숨긴다. 제공자를 바꿔도
+draft를 유지하며 모든 닫기 경로에서 변경된 이미지·프롬프트 설정을 `update_settings`에 전달한다.
+저장 성공 후에만 닫으며 변경이 없으면 bridge 호출을 생략한다. 폼 검증은 닫기 시점에 수행하고
+숨겨진 고급 필드가 잘못되면 해당 영역을 펼친다. 저장 중에는 fieldset을 비활성화하며 ref로 중복 호출을 막는다.
+검증·저장 실패 시 draft와 팝업을 유지한다. 저장 버튼과 계정·파일 준비 기능은 제공하지 않는다.
+입력 영역에는 고정 폭의 제공자 선택만 두고 조건부 안내 문단은 넣지 않는다. ChatGPTAccount는
+상태별 로그인·재로그인·권한 허용을 구분하고 연결 완료 시 계정 추가·로그아웃만 표시한다.
+카드 상단은 계정 라벨과 사용량 링크를 한 행에 두며 제공자 제목은 반복하지 않는다.
+로컬 파일 영역도 선택된 제공자 이름을 중복 표시하지 않고 두 모델 준비 영역 사이에 구분선을 둔다.
+모델 선택과 새로고침 아이콘은 한 행에 배치한다. 전송·정책 설명은 접힌 이용 안내에 둔다.
+환영 모달은 구독·전송 안내를 제공하며 확인은 계정별로 저장한다. 인증·거절·사용량·통신 오류는 안정적인 코드로 번역하며
+자동 제공자 전환은 없다. 실제 로그인·구독 추론 검증은 수동 통합 검증으로 분리한다.
+프로토콜은 [SIWC 공식 문서](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)와
+[Responses 제한](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)을 따른다.
 
 ## 개발 및 검증
 
