@@ -6,15 +6,18 @@ import pytest
 from moru.config import ModelPaths
 from moru.domain import PromptSettings, PromptTurn
 from moru.errors import MoruError
+from moru.prompts.completion import (
+    PromptParagraph,
+    ThinkingBudget,
+    read_completion,
+    stream_text,
+)
 from moru.prompts.local import (
     CREATE_SYSTEM,
     REFINE_SYSTEM,
     LlamaPrompts,
-    PromptParagraph,
-    ThinkingBudget,
     fit_messages,
     prompt_messages,
-    read_completion,
 )
 
 
@@ -334,7 +337,9 @@ def test_non_english_script_is_not_forwarded_to_the_image_model(content):
     assert error.value.code == "PROMPT_NON_ENGLISH_RESPONSE"
 
 
-@pytest.mark.parametrize("content", ["", "   ", "notes</think>", "Final image prompt:"])
+@pytest.mark.parametrize(
+    "content", ["", "   ", "notes</think>", "Final image prompt:", "Final answer:"]
+)
 def test_missing_final_prompt_reports_an_empty_response(content):
     with pytest.raises(MoruError) as error:
         read_completion(completion(content), Event())
@@ -406,6 +411,7 @@ def test_final_answer_cue_is_removed_from_both_live_text_and_the_image_prompt():
 
 def test_paragraph_boundary_does_not_end_thinking_or_the_prefilled_final_answer_cue():
     tokens = {1: b"<think>notes\n\n", 2: b"</think>", 3: b"Final image prompt:\n", 4: b"\n"}
+
     def decoder(ids, **kwargs):
         return b"".join(tokens.get(token, b"") for token in ids)
 
@@ -419,6 +425,7 @@ def test_paragraph_boundary_does_not_end_thinking_or_the_prefilled_final_answer_
 @pytest.mark.parametrize("thinking", [True, False])
 def test_a_complete_answer_ends_at_its_paragraph_boundary(thinking):
     tokens = {1: b"notes</think>", 2: b"black cat, moonlight", 3: b"\n\nWait"}
+
     def decoder(ids, **kwargs):
         return b"".join(tokens.get(token, b"") for token in ids)
 
@@ -426,7 +433,10 @@ def test_a_complete_answer_ends_at_its_paragraph_boundary(thinking):
     processor([9], Scores([0.0, 0.0, 0.0, 1.0]))
     generated = [9, 1, 2] if thinking else [9, 2]
     assert processor(generated, Scores([0.0, 0.0, 0.0, 1.0])) == [
-        0.0, float("-inf"), float("-inf"), float("-inf")
+        0.0,
+        float("-inf"),
+        float("-inf"),
+        float("-inf"),
     ]
 
 
@@ -460,7 +470,10 @@ def test_analysis_after_a_completed_prompt_is_not_displayed_or_forwarded(thinkin
         "Final image prompt:\nblack cat, moonlight\n\nWait"
     )
     prompt = read_completion(
-        completion(content), Event(), thinking, lambda *text: snapshots.append(text),
+        completion(content),
+        Event(),
+        thinking,
+        lambda *text: snapshots.append(text),
     )
     assert prompt == "black cat, moonlight"
     assert snapshots[-1] == ("notes" if thinking else "", "black cat, moonlight")
@@ -486,3 +499,10 @@ def test_reasoning_level_changes_the_completion_budget_without_reloading_the_mod
         processor([9], Scores([1.0] * 5))
         assert processor([9] + [1] * (budget - 2), Scores([1.0] * 5))[3] == 0.0
     load.assert_called_once()
+
+
+@pytest.mark.parametrize("prefix", ["Final answer:", "Final image prompt:"])
+def test_final_answer_cues_are_removed_from_streamed_and_completed_text(prefix):
+    content = f"notes</think>\n\n{prefix}\nnight, sky"
+    assert read_completion(completion(content), Event(), True) == "night, sky"
+    assert stream_text(content, True) == ("notes", "night, sky")

@@ -6,7 +6,6 @@ import importlib.util
 import logging
 import os
 import sys
-from contextlib import closing
 from pathlib import Path
 from threading import Event, RLock
 
@@ -17,17 +16,23 @@ from moru.errors import MoruError
 from moru.memory_budget import prompt_memory_required
 from moru.models import image_model
 from moru.ports import PromptProgress
+from moru.prompts.completion import PromptParagraph, ThinkingBudget, read_completion
 from moru.prompts.instructions import (
     CREATE_SYSTEM,
     NATURAL_CREATE_SYSTEM,
     NATURAL_REFINE_SYSTEM,
     REFINE_SYSTEM,
 )
+from moru.prompts.tag_search import (
+    QUERY_SYSTEM,
+    REFERENCE_TOKENS,
+    TagSearch,
+    add_tag_references,
+    parse_queries,
+)
 from moru.prompts.text import (
-    PROMPT_PREFIX,
-    answer_text,
+    ANSWER_PREFIX,
     conversation_messages,
-    final_prompt,
 )
 
 log = logging.getLogger(__name__)
@@ -60,104 +65,11 @@ def fit_messages(messages, count_tokens, input_limit):
     return messages
 
 
-class ThinkingBudget:
-    """End reasoning at its token allowance without truncating the final prompt."""
-
-    def __init__(self, end_tokens: list[int], budget: int, suffix_tokens: list[int] | None = None):
-        if not end_tokens:
-            raise MoruError("THINKING_UNSUPPORTED")
-        self._end_tokens = end_tokens
-        self._closing_tokens = end_tokens + (suffix_tokens or [])
-        self._budget = budget
-        self._input_length: int | None = None
-        self._forcing = False
-
-    def __call__(self, input_ids, scores):
-        if self._input_length is None:
-            self._input_length = len(input_ids)
-        generated = list(input_ids[self._input_length :])
-        end_length = len(self._end_tokens)
-        if not self._forcing and any(
-            generated[index : index + end_length] == self._end_tokens
-            for index in range(len(generated) - end_length + 1)
-        ):
-            return scores
-        forced_index = len(generated) - self._budget
-        if 0 <= forced_index < len(self._closing_tokens):
-            self._forcing = True
-            scores[:] = float("-inf")
-            scores[self._closing_tokens[forced_index]] = 0.0
-        return scores
-
-
-class PromptParagraph:
-    """Finish at the answer's paragraph boundary before the model resumes explaining."""
-
-    def __init__(self, detokenize, eos: int, thinking: bool):
-        self._detokenize = detokenize
-        self._eos = eos
-        self._thinking = thinking
-        self._input_length: int | None = None
-
-    def __call__(self, input_ids, scores):
-        if self._input_length is None:
-            self._input_length = len(input_ids)
-        generated = list(input_ids[self._input_length :])
-        content = self._detokenize(generated, special=True).decode("utf-8", errors="ignore")
-        _, marker, answer = content.partition("</think>")
-        prompt = answer_text(answer if marker else content) if marker or not self._thinking else ""
-        if prompt and (
-            "\n" in prompt
-            or b"\n" in self._detokenize([int(scores.argmax())], special=True)
-        ):
-            scores[:] = float("-inf")
-            scores[self._eos] = 0.0
-        return scores
-
-
-def stream_text(content: str, thinking: bool) -> tuple[str, str]:
-    reasoning, marker, prompt = content.partition("</think>")
-    if marker:
-        return (
-            reasoning.removeprefix("<think>").strip(),
-            answer_text(prompt).partition("\n")[0],
-        )
-    # Keep incomplete control tags out of the live text when a tag spans tokens.
-    for tag in ("<think>", "</think>"):
-        for length in range(1, len(tag)):
-            if content.endswith(tag[:length]):
-                content = content[:-length]
-                break
-    if thinking or content.startswith("<think>"):
-        return content.removeprefix("<think>").strip(), ""
-    return "", answer_text(content).partition("\n")[0]
-
-
-def read_completion(
-    chunks, cancelled: Event, thinking=False, progress: PromptProgress | None = None
-) -> str:
-    content = ""
-    finished = False
-    with closing(chunks):
-        for chunk in chunks:
-            check_cancelled(cancelled)
-            choice = chunk["choices"][0]
-            if choice.get("finish_reason") == "length":
-                raise MoruError("PROMPT_OUTPUT_TOO_LONG")
-            finished = choice.get("finish_reason") == "stop"
-            content += choice["delta"].get("content") or ""
-            if progress is not None:
-                progress(*stream_text(content, thinking))
-        check_cancelled(cancelled)
-    if not finished:
-        raise MoruError("PROMPT_RESPONSE_INTERRUPTED")
-    return final_prompt(content)
-
-
 class LlamaPrompts:
-    def __init__(self, paths: ModelPaths, *, load_llama=None):
+    def __init__(self, paths: ModelPaths, *, load_llama=None, tag_search: TagSearch | None = None):
         self._paths = paths
         self._load_llama = load_llama
+        self._tag_search = tag_search
         self._llm = None
         self._loaded_path = None
         self._context_size = None
@@ -249,8 +161,16 @@ class LlamaPrompts:
         llm.chat_handler = self._thinking_handlers[enabled]
 
     def _complete(
-        self, messages, settings: PromptSettings, cancelled: Event, progress: PromptProgress | None,
+        self,
+        messages,
+        settings: PromptSettings,
+        cancelled: Event,
+        progress: PromptProgress | None,
         on_ready=None,
+        *,
+        search_tags=False,
+        on_source=None,
+        on_stage=None,
     ) -> str:
         with self._lock:
             check_cancelled(cancelled)
@@ -258,62 +178,121 @@ class LlamaPrompts:
             try:
                 check_cancelled(cancelled)
                 self._configure_thinking(llm, settings.thinking)
-                formatter = self._formatters.get(settings.thinking)
 
                 def count_tokens(items):
-                    if formatter is not None:
-                        rendered = formatter(messages=items)
-                        return len(
-                            llm.tokenize(
-                                rendered.prompt.encode(),
-                                add_bos=not rendered.added_special,
-                                special=True,
-                            )
-                        )
-                    # Unsupported templates with thinking enabled use llama.cpp's handler.
-                    return sum(len(llm.tokenize(item["content"].encode())) + 16 for item in items)
+                    return self._count_tokens(llm, items, settings.thinking)
 
-                messages = fit_messages(
-                    messages, count_tokens, settings.context_size - settings.max_tokens
-                )
-                processors = None
-                if settings.thinking:
-                    end_tokens = llm.tokenize(b"</think>", add_bos=False, special=True)
-                    # A final-answer cue prevents continuation of an interrupted analysis sentence.
-                    suffix_tokens = llm.tokenize(
-                        f"\n\n{PROMPT_PREFIX}\n".encode(), add_bos=False
-                    )
-                    processors = [
-                        ThinkingBudget(
-                            end_tokens,
-                            max(0, settings.thinking_budget - len(end_tokens) - len(suffix_tokens)),
-                            suffix_tokens,
-                        )
-                    ]
-                eos = llm.token_eos()
-                if isinstance(eos, int) and eos >= 0:
-                    processors = (processors or []) + [
-                        PromptParagraph(llm.detokenize, eos, settings.thinking)
-                    ]
+                input_limit = settings.context_size - settings.max_tokens
+                use_search = search_tags and self._tag_search is not None
+                reserve = 0
+                if use_search:
+                    # Reserve lookup space before planning so both passes see the same history.
+                    core_tokens = count_tokens([messages[0], messages[-1]])
+                    reserve = min(REFERENCE_TOKENS, max(0, input_limit - core_tokens))
+                messages = fit_messages(messages, count_tokens, input_limit - reserve)
                 check_cancelled(cancelled)
                 if on_ready is not None:
                     on_ready()
-                response = llm.create_chat_completion(
-                    messages=messages,
-                    temperature=0.6 if settings.thinking else 0.7,
-                    top_p=0.95 if settings.thinking else 0.8,
-                    top_k=20,
-                    min_p=0.0,
-                    repeat_penalty=1.1,
-                    max_tokens=settings.max_tokens,
-                    stream=True,
-                    logits_processor=processors,
-                )
-                return read_completion(response, cancelled, settings.thinking, progress)
+                if use_search:
+                    references, found_count = self._search(
+                        llm,
+                        messages,
+                        settings,
+                        cancelled,
+                        on_source,
+                        on_stage,
+                    )
+                    base_tokens = count_tokens(messages)
+                    messages = add_tag_references(messages, references, count_tokens, input_limit)
+                    log.info(
+                        "local tag references found_tags=%d added_tokens=%d",
+                        found_count,
+                        max(0, count_tokens(messages) - base_tokens),
+                    )
+                    check_cancelled(cancelled)
+                    if on_stage is not None:
+                        on_stage("prompting", found_count)
+                check_cancelled(cancelled)
+                return self._infer(llm, messages, settings, cancelled, progress)
             except MoruError:
                 raise
             except Exception as exc:
                 raise MoruError("PROMPT_LLM_FAILED") from exc
+
+    def _count_tokens(self, llm, messages, thinking):
+        formatter = self._formatters.get(thinking)
+        if formatter is not None:
+            rendered = formatter(messages=messages)
+            return len(
+                llm.tokenize(
+                    rendered.prompt.encode(),
+                    add_bos=not rendered.added_special,
+                    special=True,
+                )
+            )
+        return sum(len(llm.tokenize(item["content"].encode())) + 16 for item in messages)
+
+    def _search(self, llm, messages, settings, cancelled, on_source, on_stage):
+        if on_stage is not None:
+            on_stage("searching_tags", 0)
+        check_cancelled(cancelled)
+        queries_input = [{"role": "system", "content": QUERY_SYSTEM}, *messages[1:]]
+        try:
+            if self._count_tokens(llm, queries_input, settings.thinking) > (
+                settings.context_size - settings.max_tokens
+            ):
+                raise MoruError("PROMPT_CONTEXT_TOO_LONG")
+            reply = self._infer(llm, queries_input, settings, cancelled, None)
+        except MoruError as exc:
+            if exc.code not in (
+                "PROMPT_OUTPUT_TOO_LONG",
+                "PROMPT_CONTEXT_TOO_LONG",
+                "PROMPT_EMPTY_RESPONSE",
+                "PROMPT_INVALID_RESPONSE",
+                "PROMPT_NON_ENGLISH_RESPONSE",
+            ):
+                raise
+            check_cancelled(cancelled)
+            log.warning("local tag query plan rejected code=%s", exc.code)
+            return (), 0
+        try:
+            queries = parse_queries(reply)
+        except ValueError:
+            log.warning("local tag query plan rejected code=invalid_query_format")
+            return (), 0
+        check_cancelled(cancelled)
+        log.info("local tag search planned query_count=%d", len(queries))
+        return self._tag_search.lookup(queries, cancelled, on_source, on_stage)
+
+    def _infer(self, llm, messages, settings, cancelled, progress):
+        processors = []
+        if settings.thinking:
+            end_tokens = llm.tokenize(b"</think>", add_bos=False, special=True)
+            suffix = f"\n\n{ANSWER_PREFIX}\n".encode()
+            suffix_tokens = llm.tokenize(suffix, add_bos=False)
+            processors.append(
+                ThinkingBudget(
+                    end_tokens,
+                    max(0, settings.thinking_budget - len(end_tokens) - len(suffix_tokens)),
+                    suffix_tokens,
+                )
+            )
+        eos = llm.token_eos()
+        if isinstance(eos, int) and eos >= 0:
+            processors.append(PromptParagraph(llm.detokenize, eos, settings.thinking))
+        check_cancelled(cancelled)
+        response = llm.create_chat_completion(
+            messages=messages,
+            temperature=0.6 if settings.thinking else 0.7,
+            top_p=0.95 if settings.thinking else 0.8,
+            top_k=20,
+            min_p=0.0,
+            repeat_penalty=1.1,
+            max_tokens=settings.max_tokens,
+            stream=True,
+            logits_processor=processors or None,
+        )
+        return read_completion(response, cancelled, settings.thinking, progress)
 
     def create(
         self,
@@ -334,6 +313,9 @@ class LlamaPrompts:
             cancelled or Event(),
             progress,
             on_ready,
+            search_tags=not image_model(model_id).natural_prompt,
+            on_source=on_source,
+            on_stage=on_stage,
         )
 
     def refine(
@@ -356,6 +338,9 @@ class LlamaPrompts:
             cancelled or Event(),
             progress,
             on_ready,
+            search_tags=not image_model(model_id).natural_prompt,
+            on_source=on_source,
+            on_stage=on_stage,
         )
 
     def unload(self):

@@ -54,6 +54,10 @@ class PromptGenerator(Protocol):
         ...
 
 
+class TagSearcher(Protocol):
+    def search_tags(self, query: str, limit: int, cancelled: Event) -> list[str]: ...
+
+
 class ImageGenerator(Protocol):
     def reserve_memory(self, required_bytes: int, cancelled: Event) -> None:
         """Release image VRAM as needed before loading the prompt model."""

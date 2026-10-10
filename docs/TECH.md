@@ -226,12 +226,12 @@ MVP에서는 단일 generation queue만 허용한다.
 
 ### 7.1 역할
 
-Prompt LLM은 Agent가 아니다.
-
-도구 호출, 계획, 일반 채팅을 하지 않는다.
+로컬 LLM은 이미지 프롬프트와 검색어를 작성한다. 단보루 조회·결과 정리·재시도는
+애플리케이션이 수행하며, 검색어 작성과 최종 프롬프트 작성은 각각 한 번 호출한다.
 
 역할:
 
+- Anima용 검색어 일괄 작성
 - 새 이미지 프롬프트 작성
 - 기존 이미지 프롬프트 자연어 수정
 
@@ -273,6 +273,37 @@ GGUF 채팅 템플릿을 렌더링한 뒤 tokenizer로 입력 토큰 수를 계�
 로컬 LLM의 시스템 지침은 이미지 생성 모델용 영어 positive prompt 작성으로 표현한다. 모델 이름을 지침에 넣지 않는다. 관련 booru 태그와 관계·위치의 자연어 묘사를 혼합하고, 소문자/공백 태그 및 요청된 아티스트의 @ 접두사를 사용한다. Aesthetic 설정일 때 score_* 제외 지침을 추가한다. 비라틴 문자로 작성된 최종 응답은 오류로 처리해 이미지 모델에 넘기지 않는다. 참고: https://huggingface.co/circlestone-labs/Anima#prompting
 
 기준 이미지의 실제 프롬프트가 현재 상태의 canonical representation이다.
+
+### 7.4 로컬 태그 검색
+
+`prompts/tag_search.py`가 쿼리 지침·형식 검증·선택적 조회·참고 자료 구성을 담당한다.
+`LlamaPrompts`는 모델 적재·재사용과 두 작성 단계를 연결하며, `prompts/completion.py`는
+추론 종료·한 문단 종료·스트림 읽기를 담당한다. 검색어 작성과 최종 작성은 같은 적재 모델을 사용한다.
+검색 단계는 짧은 전용 system과 현재 프롬프트·최신 요청·보존한 이력을 사용하며,
+전체 작성 지침이나 정적 태그표를 넣지 않는다. 영어 검색 개념을 쉼표로 구분한 한 줄로 받고,
+정규화·중복 제거 후 최대 5개만 검색한다. 조회할 개념이 없으면 `none`을 반환한다.
+검색과 최종 작성은 같은 추론 함수·사용자 설정을 사용한다. 출력·thinking 예산과 sampling,
+추론 종료 제어·한 문단 종료·영어 응답 검증을 공유하며 별도 JSON 문법이나 검색 전용 한도는 없다.
+추론 종료 시 공통 `Final answer:` 안내를 사용하고, 응답에서 안내와 사고 과정을 제거한다.
+
+`TagSearch`는 `ports.TagSearcher`의 `search_tags` 계약으로 검색어마다 최대 8개 후보 이름을 받는다.
+외부 조회·후보 검증과 진행·소스 전달을 분리하며, 조회 불가는 반환 자료의 타입 대신 명시적으로 판정한다.
+`get_tag_info`와 `get_related_tags`는 호출하지 않는다. 두 제공자는 desktop 조립 단계에서
+같은 카탈로그·HTTP 캐시·속도 제한을 공유하며, 조회 기한과 429 재시도는
+[단보루 HTTP 정책](#chatgpt-프롬프트-제공자)을 따른다.
+
+최종 작성 입력에는 정적 지침과 검색어별 후보 목록을 넣는다. 참고 자료는 최대 256토큰을
+예약하고 실제 채팅 템플릿의 tokenizer로 전체 입력·출력 예약 공간 안에 들어오는 후보만 추가한다.
+개념별로 후보를 하나씩 배정하고 중복 태그는 한 번만 전달한다. 예약 때문에 이력이 넘치면
+오래된 완전한 턴부터 제외하며 두 단계에 같은 이력을 전달한다. 현재 프롬프트·최신 요청은 보존한다.
+최종 작성의 출력·thinking 설정은 바꾸지 않는다.
+
+쿼리 형식 오류·빈 응답·비영어 응답·출력 초과는 코드만 로그에 남기고 최종 작성을 계속한다.
+조회 불가는 소스에 기록하고 이후 조회를 멈추며 확보한 후보는 활용한다. 추론 엔진 오류와
+취소는 전파한다. 검색용 원문과 사고 과정은 progress·소스·로그에 전달하지 않는다.
+검색어 개수·찾은 태그 수·추가 입력 토큰 수만 진단 로그에 기록한다.
+`on_ready`는 첫 추론 직전에 한 번 알리고 `on_stage`와 `on_source`로 기존 진행 표시·소스 저장을 사용한다.
+FLUX.2는 검색 단계 없이 기존 자연어 프롬프트를 작성한다.
 
 ---
 
@@ -1041,7 +1072,7 @@ GPU 및 실제 WebView2 검증은 `scripts/smoke_*.py`에 분리되어 있으며
 오류 메시지나 로그에 추가하지 않는다.
 기본 프롬프트 모델은 HauhauCS Qwen3.5-4B Uncensored Aggressive Q4_K_M이다.
 기본 context는 4096, 출력 한도는 2048 tokens로 설정한다.
-프롬프트 작성 지침은 CUDA 추론 코드와 분리한 `prompt_instructions.py`에서 관리한다.
+프롬프트 작성 지침은 CUDA 추론 코드와 분리한 `prompts/instructions.py`에서 관리한다.
 해석·보강(`ENHANCE`) 규칙과 Anima의 출력·구성·검토 규칙을 함께 전달한다.
 FLUX는 같은 해석·보강 규칙에 자연어 문장 작성 지침을 붙인다. 모델 정의의 `natural_prompt`로
 생성·수정 지침을 선택하며 FLUX에는 Anima 태그 참고표를 전달하지 않는다.
@@ -1054,7 +1085,8 @@ FLUX는 같은 해석·보강 규칙에 자연어 문장 작성 지침을 붙인
 refine은 기존 프롬프트와 변경 요청으로 전체 프롬프트를 작성한다. regenerate와 수동 생성은
 LLM을 우회하며 불변 이미지 기록의 설정은 바꾸지 않는다.
 규칙의 조사 근거, 태그 선택표와 상세 예시는 [프롬프트 작성 지침](PROMPT_GUIDE.md)에 둔다.
-문서 전체를 읽어 넣거나 외부 검색 결과를 실행 중 컨텍스트에 주입하지 않는다.
+문서 전체를 컨텍스트에 넣지 않는다. 온라인 조회 후보는 [로컬 태그 검색](#74-로컬-태그-검색)의
+한도 안에서 참고 어휘로 추가한다.
 현재 참고표의 범위와 실제 tokenizer로 측정한 예산은
 [태그 지침 적용 기록](reviews/2026-10-05-danbooru-tag-reference.md)에 기록한다.
 생성 설정에서 로컬 LLM을 선택하면 접힌 고급 영역에서 두 한도와 thinking 사용 여부, 추론 수준을
@@ -1323,8 +1355,10 @@ npm run build
 ```
 
 실제 모델/GPU 검증과 portable 빌드는 프로젝트 루트에서 별도로 실행한다.
+`smoke_tag_queries.py`는 검색어 추론만 실행하며 HTTP 조회·최종 프롬프트·이미지 생성은 생략한다.
 
 ```powershell
+uv run --extra inference python scripts/smoke_tag_queries.py
 uv run --extra inference python scripts/smoke_runtime.py --prompt --reasoning-level low
 uv run --extra inference python scripts/smoke_runtime.py --image aesthetic --width 1024 --height 1024
 uv run --extra inference python scripts/smoke_runtime.py --prompt --image flux --width 1024 --height 1024

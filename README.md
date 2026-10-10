@@ -57,8 +57,11 @@ Reopen a project later and continue where you left off.
 
 ## Local images, your choice of prompt writer
 
-Choose a prompt writer that suits how you want to work. A local LLM runs on your computer
-and works offline once the models are ready. Your requests and prompts stay on your computer.
+Choose a prompt writer that suits how you want to work. A local LLM writes prompts on your
+computer and works offline once the models are ready. For Anima, it can look up Danbooru tag
+candidates online using locally extracted search concepts. Your full requests, prompts,
+conversation history, and images stay on your computer. If lookup is unavailable, writing
+continues with the built-in tag vocabulary.
 
 To use ChatGPT, sign in with your account and choose an available GPT model. This requires
 an internet connection and uses no local model for prompt writing. Your request, base prompt,

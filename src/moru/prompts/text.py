@@ -5,7 +5,7 @@ import unicodedata
 from moru.domain import PromptTurn
 from moru.errors import MoruError
 
-PROMPT_PREFIX = "Final image prompt:"
+ANSWER_PREFIX = "Final answer:"
 
 
 def conversation_messages(
@@ -39,6 +39,9 @@ def final_prompt(content: str) -> str:
 
 def answer_text(content: str) -> str:
     content = content.strip()
-    if PROMPT_PREFIX.startswith(content):
-        return ""
-    return content.removeprefix(PROMPT_PREFIX).strip()
+    for prefix in (ANSWER_PREFIX, "Final image prompt:"):
+        if prefix.startswith(content):
+            return ""
+        if content.startswith(prefix):
+            return content.removeprefix(prefix).strip()
+    return content

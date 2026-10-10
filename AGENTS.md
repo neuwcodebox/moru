@@ -128,6 +128,7 @@ Keep documentation proportional to the change:
 
 Keep the current requirements and architecture in `docs/SPEC.md` and `docs/TECH.md`.
 Keep `README.md` at the level of product introduction, main workflows, and getting started.
+Always update `README.md` (English) and `README.ko.md` (Korean) together with equivalent content.
 Put detailed UI operations and individual change notes in the specification or review records.
 
 A change is done only when:

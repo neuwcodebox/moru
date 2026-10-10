@@ -25,6 +25,7 @@ from moru.images.client import ImageWorker
 from moru.language import model_file_filter, startup_language, startup_message
 from moru.prompts.local import LlamaPrompts
 from moru.prompts.providers import PromptProviders
+from moru.prompts.tag_search import TagSearch
 from moru.repository import Repository
 from moru.service import Application
 
@@ -105,12 +106,17 @@ def _run_desktop(root, comfy_root, arguments):
         )
         chatgpt_http = ChatGPTHttp()
         chatgpt_auth = ChatGPTAuth(CredentialStore(credential_path()), http=chatgpt_http)
+        tag_catalog = DanbooruTags(DanbooruHttp())
         chatgpt_prompts = ChatGPTPrompts(
-            chatgpt_auth, chatgpt_http, tag_tools=DanbooruTools(DanbooruTags(DanbooruHttp())),
+            chatgpt_auth,
+            chatgpt_http,
+            tag_tools=DanbooruTools(tag_catalog),
         )
         application = Application(
             Repository(root / "data/anima.db"),
-            PromptProviders(LlamaPrompts(paths), chatgpt_prompts),
+            PromptProviders(
+                LlamaPrompts(paths, tag_search=TagSearch(tag_catalog)), chatgpt_prompts
+            ),
             ImageWorker(paths, comfy_root),
             root / "data",
         )
