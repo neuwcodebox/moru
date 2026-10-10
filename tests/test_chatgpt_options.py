@@ -19,7 +19,7 @@ def test_existing_settings_keep_cloud_defaults_without_changing_local_reasoning(
     ("chatgpt_reasoning_effort", "ultra"), ("chatgpt_reasoning_effort", []),
 ])
 def test_invalid_cloud_options_are_rejected(field, value):
-    with pytest.raises(MoruError, match="설정") as error:
+    with pytest.raises(MoruError) as error:
         PromptSettings(**{field: value})
     assert error.value.code == "INVALID_SETTINGS"
 

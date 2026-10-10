@@ -1,8 +1,7 @@
 from threading import Event
 
 import pytest
-from test_chatgpt_prompts import SETTINGS, Auth, delta
-from test_chatgpt_tag_tools import Responses, Tools, call, completed, final_turn
+from support.chatgpt import SETTINGS, Auth, Responses, Tools, call, completed, delta, final_turn
 
 from moru.chatgpt.prompts import ChatGPTPrompts
 from moru.errors import MoruError

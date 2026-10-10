@@ -3,7 +3,7 @@ from threading import Event
 from unittest.mock import Mock
 
 import pytest
-from test_prompting import completion
+from support.llama import completion
 
 from moru.api import Api
 from moru.config import ModelPaths

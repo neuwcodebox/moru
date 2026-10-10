@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 from PIL import Image
+from support.comfy import install_runtime
 
 from moru.config import ModelPaths
 from moru.domain import GenerationSettings
@@ -65,9 +66,10 @@ def workflow(tmp_path, monkeypatch):
         unload_all_models=Mock(), soft_empty_cache=Mock(), intermediate_device=lambda: "cpu",
     )
     engine = ComfyEngine(tmp_path)
-    engine._runtime = (
-        torch, sd, sample, management, SimpleNamespace(load_torch_file=Mock()),
-        SimpleNamespace(Anima=Anima, Flux2=Flux2),
+    install_runtime(
+        monkeypatch, tmp_path, torch=torch, sd=sd, sample=sample, management=management,
+        utils=SimpleNamespace(load_torch_file=Mock()),
+        model_base=SimpleNamespace(Anima=Anima, Flux2=Flux2),
     )
     monkeypatch.setitem(
         sys.modules, "numpy", SimpleNamespace(clip=Mock(return_value=pixels), uint8="uint8")

@@ -128,7 +128,6 @@ def test_validated_identity_and_client_mapping_survive_signout_and_restart():
         {"id": "oaiapp_moru", "email": "user@example.com", "connected": False},
     ]
     assert "access_token" not in store.values["accounts"]["oaiapp_moru"]
-    assert restored._values["host_id"] == auth._values["host_id"]
 
 
 def test_status_never_exposes_tokens_or_host_identifiers():
@@ -249,7 +248,7 @@ def test_failed_storage_does_not_activate_unpersisted_tokens():
     assert auth.status()["connected"] is False
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def signing_key():
     return rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
@@ -303,7 +302,15 @@ def test_id_token_signature_identity_and_authorization_claims_are_verified(
         assert error.value.code == "CHATGPT_AUTH_FAILED"
 
 
-def test_forged_signature_is_rejected(signing_key):
+def test_forged_signature_is_rejected_even_when_all_identity_claims_are_valid(
+    signing_key, monkeypatch
+):
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 10, tzinfo=UTC)
+
+    monkeypatch.setattr(jwt.api_jwt, "datetime", FixedDatetime)
     other = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public = jwt.algorithms.RSAAlgorithm.to_jwk(other.public_key(), as_dict=True)
     public["kid"] = "key"
@@ -311,9 +318,22 @@ def test_forged_signature_is_rejected(signing_key):
         {"issuer": "https://auth.openai.com", "jwks_uri": "https://auth.openai.com/jwks"},
         {"keys": [public]},
     )
-    token = jwt.encode({"sub": "x"}, signing_key, algorithm="RS256", headers={"kid": "key"})
-    with pytest.raises(MoruError):
+    token = jwt.encode(
+        {
+            "iss": "https://auth.openai.com",
+            "aud": "oaiapp_moru",
+            "sub": "subject",
+            "iat": 1,
+            "exp": 4_102_444_800,
+            "nonce": "nonce",
+        },
+        signing_key,
+        algorithm="RS256",
+        headers={"kid": "key"},
+    )
+    with pytest.raises(MoruError) as error:
         IdTokenValidator(http)(token, "oaiapp_moru", "nonce")
+    assert error.value.code == "CHATGPT_AUTH_FAILED"
 
 
 @pytest.fixture
@@ -389,6 +409,26 @@ def test_login_starts_listener_before_browser_and_closes_it_after_callback(login
     assert runtime.server.closed is True
     form = runtime.auth.http.calls[0][1]["form"]
     assert form["redirect_uri"] == runtime.parameters["redirect_uri"][0]
+
+
+def test_login_reuses_the_same_host_identifier_after_restart(login_runtime):
+    runtime = login_runtime
+    runtime.auth.login()
+    runtime.thread.join()
+    original_host = runtime.parameters["ext_agent_host_id"]
+    restored = ChatGPTAuth(
+        runtime.auth.store,
+        http=FakeHttp(tokens()),
+        now=lambda: 1000,
+        open_browser=runtime.auth.open_browser,
+        validate=lambda *_: {"sub": "subject", "email": "user@example.com"},
+    )
+
+    restored.login()
+    runtime.thread.join()
+
+    assert runtime.parameters["ext_agent_host_id"] == original_host
+    assert restored.status()["connected"] is True
 
 
 def test_declined_consent_ends_login_and_closes_listener_without_code_exchange(login_runtime):

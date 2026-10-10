@@ -38,7 +38,7 @@ it("keeps observing an accepted job when the initial conversation refresh fails"
   expect(result.current.job?.id).toBe("j1");
   expect(callbacks.onError).toHaveBeenCalledWith(expect.objectContaining({ code: "DATABASE_FAILED" }));
   api.get_job.mockResolvedValue(success({ ...queued, state: "completed" }));
-  await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+  await act(async () => { await vi.advanceTimersToNextTimerAsync(); });
   expect(result.current.job).toBeNull();
   expect(callbacks.onProject).toHaveBeenCalledWith(project);
   expect(callbacks.onComplete).toHaveBeenCalledOnce();
@@ -54,7 +54,7 @@ it("retries a completed job's conversation refresh before enabling another gener
 
   expect(result.current.job?.id).toBe("j1");
   expect(callbacks.onComplete).not.toHaveBeenCalled();
-  await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+  await act(async () => { await vi.advanceTimersToNextTimerAsync(); });
   expect(result.current.job).toBeNull();
   expect(callbacks.onComplete).toHaveBeenCalledOnce();
 });
@@ -87,5 +87,7 @@ it("ignores pending progress after unmounting and stops scheduling polls", async
 
   expect(callbacks.onProject).not.toHaveBeenCalled();
   expect(callbacks.onComplete).not.toHaveBeenCalled();
-  expect(vi.getTimerCount()).toBe(0);
+  api.get_job.mockClear();
+  await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+  expect(api.get_job).not.toHaveBeenCalled();
 });

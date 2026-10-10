@@ -10,8 +10,10 @@ from moru.language import model_file_filter, startup_language, startup_message
 from moru.repository import Repository
 
 
-def test_ui_language_defaults_to_korean_and_persists_separately_from_generation_settings(app):
-    api = Api(app)
+def test_ui_language_defaults_to_korean_and_persists_separately_from_generation_settings(
+    persistent_app,
+):
+    api = Api(persistent_app)
     before = api.bootstrap()["value"]
     assert before["language"] == "ko"
 
@@ -21,9 +23,9 @@ def test_ui_language_defaults_to_korean_and_persists_separately_from_generation_
     for key in ("project", "settings", "prompt_settings"):
         assert after[key] == before[key]
 
-    app.repository.close()
-    app.repository = Repository(app.data_dir / "anima.db")
-    assert Api(app).bootstrap()["value"]["language"] == "en"
+    persistent_app.repository.close()
+    persistent_app.repository = Repository(persistent_app.data_dir / "anima.db")
+    assert Api(persistent_app).bootstrap()["value"]["language"] == "en"
 
 
 @pytest.mark.parametrize("value", ["fr", "en-US", "", None, 1, {}, []])

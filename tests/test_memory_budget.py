@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from support.comfy import install_runtime
 
 from moru.domain import GenerationSettings, PromptSettings
 from moru.images.engine import ComfyEngine
@@ -36,7 +37,7 @@ def test_prompt_budget_increases_with_context_and_file_size(tmp_path):
     (GIB, 0, True), (4 * GIB, 0, False), (GIB, 3 * GIB, False),
 ])
 def test_image_preflight_counts_its_reclaimable_weights_not_just_free_vram(
-    tmp_path, available, allocated, expected
+    tmp_path, monkeypatch, available, allocated, expected
 ):
     path = tmp_path / "model"
     path.write_bytes(b"fake weights")
@@ -44,19 +45,19 @@ def test_image_preflight_counts_its_reclaimable_weights_not_just_free_vram(
     management = SimpleNamespace(get_torch_device=lambda: "gpu",
                                  get_free_memory=lambda _: available)
     engine = ComfyEngine(tmp_path)
-    engine._runtime = torch, None, None, management, None, None
+    install_runtime(monkeypatch, tmp_path, torch=torch, management=management)
     assert engine.needs_prompt_unload(GenerationSettings(), {"diffusion": str(path)}) is expected
 
 
 @pytest.mark.parametrize("free,evicted", [(GIB, True), (8 * GIB, False)])
 def test_prompt_reservation_evicts_only_when_needed_and_returns_allocator_cache(
-    tmp_path, free, evicted
+    tmp_path, monkeypatch, free, evicted
 ):
     management = SimpleNamespace(get_torch_device=lambda: "gpu", get_free_memory=lambda _: free,
                                  free_memory=Mock(), soft_empty_cache=Mock())
     torch = SimpleNamespace(cuda=SimpleNamespace(mem_get_info=lambda _: (8 * GIB, 12 * GIB)))
     engine = ComfyEngine(tmp_path)
-    engine._runtime = torch, None, None, management, None, None
+    install_runtime(monkeypatch, tmp_path, torch=torch, management=management)
     engine.reserve_memory(4 * GIB)
     assert management.free_memory.called is evicted
     management.soft_empty_cache.assert_called_once()
@@ -128,7 +129,7 @@ def test_cancelled_preflight_does_not_start_an_image_worker(tmp_path, monkeypatc
 
     worker = ImageWorker(ModelPaths(tmp_path), tmp_path)
     start = Mock()
-    monkeypatch.setattr(worker, "_start", start)
+    monkeypatch.setattr("moru.images.client.subprocess.Popen", start)
     cancelled = Event()
     cancelled.set()
     with pytest.raises(MoruError) as error:

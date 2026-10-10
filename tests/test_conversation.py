@@ -1,15 +1,8 @@
 import pytest
+from support.application import generate
 
 from moru.domain import GenerationSettings
 from moru.errors import MoruError
-
-
-def generate(app, project_id, text="소녀를 그려줘"):
-    job = app.submit_request(project_id, text)
-    app.scheduler.run_next()
-    result = app.get_job(job.id)
-    assert result.state == "completed"
-    return app.repository.get_image(result.image_id)
 
 
 def test_first_request_creates_root_and_next_request_refines_its_actual_prompt(app):
@@ -143,64 +136,35 @@ def test_explicit_seed_and_settings_are_snapshotted_when_request_is_submitted(ap
     assert image.settings.steps == 8
 
 
-def test_fixed_seed_does_not_require_a_random_seed_source(tmp_path):
-    from unittest.mock import Mock
+def test_fixed_seed_does_not_require_a_random_seed_source(make_app):
+    def unavailable_seed():
+        pytest.fail("A fixed seed must not read randomness")
 
-    from conftest import FakeImages, FakePrompts, ManualExecutor
+    app = make_app(new_seed=unavailable_seed)
+    app.update_settings(GenerationSettings(seed=123))
 
-    from moru.repository import Repository
-    from moru.service import Application
+    image = generate(app, app.create_project().id)
 
-    executor = ManualExecutor()
-    random_seed = Mock(side_effect=RuntimeError("random source unavailable"))
-    application = Application(
-        Repository(tmp_path / "test.db"),
-        FakePrompts(),
-        FakeImages(),
-        tmp_path,
-        executor=executor,
-        new_seed=random_seed,
-    )
-    try:
-        application.update_settings(GenerationSettings(seed=123))
-        project = application.create_project()
-        job = application.submit_request(project.id, "girl")
-        executor.run_next()
-        assert application.get_job(job.id).state == "completed"
-        random_seed.assert_not_called()
-    finally:
-        application.close()
+    assert image.settings.seed == 123
 
 
-def test_an_existing_image_file_is_preserved_when_a_generated_id_collides(tmp_path):
-    from conftest import FakeImages, FakePrompts, ManualExecutor
+def test_an_existing_image_file_is_preserved_when_a_generated_id_collides(make_app, tmp_path):
+    from itertools import count
 
-    from moru.repository import Repository
-    from moru.service import Application
-
-    executor = ManualExecutor()
-    ids = iter(["project", "request", "job", "existing"])
-    images = FakeImages()
+    numbers = count(1)
+    collision = False
+    app = make_app(new_id=lambda: "existing" if collision else str(next(numbers)))
     original = tmp_path / "images/existing.png"
     original.parent.mkdir()
     original.write_bytes(b"existing immutable image")
-    application = Application(
-        Repository(tmp_path / "test.db"),
-        FakePrompts(),
-        images,
-        tmp_path,
-        executor=executor,
-        new_id=lambda: next(ids),
-    )
-    try:
-        project = application.create_project()
-        job = application.submit_request(project.id, "girl")
-        executor.run_next()
-        assert application.get_job(job.id).error_code == "IMAGE_SAVE_FAILED"
-        assert original.read_bytes() == b"existing immutable image"
-        assert images.inputs == []
-    finally:
-        application.close()
+    job = app.submit_request(app.create_project().id, "girl")
+    collision = True
+
+    app.scheduler.run_next()
+
+    assert app.get_job(job.id).error_code == "IMAGE_SAVE_FAILED"
+    assert original.read_bytes() == b"existing immutable image"
+    assert app.images.inputs == []
 
 
 def test_cancelling_queued_generation_preserves_history_and_allows_retry(app):
@@ -234,15 +198,22 @@ def test_repeated_oom_fails_explicitly_without_cpu_or_different_model_fallback(a
     assert app.repository.active_path(project.id) == []
 
 
-def test_generations_and_branch_mutations_cannot_overlap(app):
+@pytest.mark.parametrize("operation", ["submit", "new_project", "fork"])
+def test_generations_and_branch_mutations_cannot_overlap(app, operation):
     project = app.create_project()
+    root = generate(app, project.id)
     app.submit_request(project.id, "風景")
-    with pytest.raises(MoruError, match="진행 중"):
-        app.submit_request(project.id, "다른 이미지")
-    with pytest.raises(MoruError, match="진행 중"):
-        app.create_project()
-    with pytest.raises(MoruError, match="진행 중"):
-        app.fork(project.id, None)
+    actions = {
+        "submit": lambda: app.submit_request(project.id, "다른 이미지"),
+        "new_project": app.create_project,
+        "fork": lambda: app.fork(project.id, root.id),
+    }
+
+    with pytest.raises(MoruError) as error:
+        actions[operation]()
+
+    assert error.value.code == "GENERATION_BUSY"
+    assert app.repository.active_path(project.id) == [root]
 
 
 def test_fork_cannot_cross_project_boundaries(app):

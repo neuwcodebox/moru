@@ -1,6 +1,5 @@
 import i18n from "./i18n";
-import { beforeEach } from "vitest";
-import { afterEach } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 
 Object.defineProperty(HTMLElement.prototype, "scrollTo", {
@@ -11,6 +10,10 @@ Object.defineProperty(HTMLElement.prototype, "scrollTo", {
   },
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  delete window.pywebview;
+});
 
 beforeEach(async () => { await i18n.changeLanguage("ko"); });

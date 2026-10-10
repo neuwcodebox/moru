@@ -1,11 +1,9 @@
-import copy
 import json
-from contextlib import contextmanager
 from dataclasses import replace
 from threading import Event
 
 import pytest
-from test_chatgpt_prompts import SETTINGS, Auth, delta
+from support.chatgpt import SETTINGS, Auth, Responses, Tools, call, completed, delta, final_turn
 
 from moru.chatgpt.http import ChatGPTHttpError
 from moru.chatgpt.prompts import ChatGPTPrompts
@@ -14,62 +12,6 @@ from moru.danbooru.http import TagLookupError
 from moru.danbooru.tags import DanbooruTags
 from moru.errors import MoruError
 from moru.prompts.providers import PromptProviders
-
-
-class Responses:
-    def __init__(self, *turns):
-        self.turns = iter(turns)
-        self.calls = []
-        self.closed = 0
-
-    @contextmanager
-    def stream(self, token, payload, cancelled):
-        self.calls.append((token, copy.deepcopy(payload)))
-        try:
-            events = next(self.turns)
-            if isinstance(events, Exception):
-                raise events
-            yield iter(events)
-        finally:
-            self.closed += 1
-
-
-class Tools:
-    def __init__(self, result=None):
-        self.calls = []
-        self.result = ["crossed_arms"] if result is None else result
-
-    def definitions(self):
-        return DanbooruTools(None).definitions()
-
-    def execute(self, name, arguments, cancelled):
-        self.calls.append((name, arguments))
-        return self.result
-
-
-def call(name="search_tags", arguments=None, *, call_id="call_1", namespace="danbooru"):
-    return {
-        "type": "function_call",
-        "id": "fc_1",
-        "call_id": call_id,
-        "namespace": namespace,
-        "name": name,
-        "arguments": json.dumps(
-            {"query": "arms crossed", "limit": 20} if arguments is None else arguments
-        ),
-        "status": "completed",
-    }
-
-
-def completed(*items):
-    return {
-        "type": "response.completed",
-        "response": {"status": "completed", "output": list(items)},
-    }
-
-
-def final_turn():
-    return [delta("1girl, crossed_arms, grey_hair"), completed()]
 
 
 @pytest.mark.parametrize("operation", ["create", "refine"])
@@ -346,7 +288,7 @@ def test_sources_record_actual_tool_inputs_and_results_without_reasoning_or_skip
 
 
 def test_real_catalog_adapter_results_reach_the_generated_image_sources(app):
-    from test_danbooru import Catalog, tag
+    from support.danbooru import Catalog, tag
 
     catalog = Catalog([{"value": "crossed_arms", "tag": tag("crossed_arms")}])
     http = Responses([completed(call())], final_turn())
@@ -479,7 +421,7 @@ def test_writer_receives_usage_guidance_and_user_intent_constraints_for_lookup_r
 
 
 def test_wiki_usage_and_examples_reach_the_writer_without_becoming_task_instructions():
-    from test_danbooru import Catalog, tag
+    from support.danbooru import Catalog, tag
 
     body = (
         "A visual motif. Use with [[companion_tag]] when its stated condition applies. "

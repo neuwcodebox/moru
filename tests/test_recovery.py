@@ -1,19 +1,19 @@
-from test_conversation import generate
+from support.application import generate
 
 from moru.domain import GenerationSettings
 from moru.repository import Repository
 
 
-def test_restart_recovers_copied_sessions_selected_versions_and_settings(app, tmp_path):
-    project = app.create_project()
-    root = generate(app, project.id)
-    job = app.generate_from_prompt(root.id, "manual version")
-    app.scheduler.run_next()
-    variant = app.get_job(job.id).image_id
-    app.select_version(project.id, root.id)
-    copied = app.fork(project.id, root.id)
-    app.update_settings(GenerationSettings(seed=123))
-    app.close()
+def test_restart_recovers_copied_sessions_selected_versions_and_settings(persistent_app, tmp_path):
+    project = persistent_app.create_project()
+    root = generate(persistent_app, project.id)
+    job = persistent_app.generate_from_prompt(root.id, "manual version")
+    persistent_app.scheduler.run_next()
+    variant = persistent_app.get_job(job.id).image_id
+    persistent_app.select_version(project.id, root.id)
+    copied = persistent_app.fork(project.id, root.id)
+    persistent_app.update_settings(GenerationSettings(seed=123))
+    persistent_app.close()
 
     repository = Repository(tmp_path / "anima.db")
     try:
@@ -31,9 +31,9 @@ def test_restart_recovers_copied_sessions_selected_versions_and_settings(app, tm
         repository.close()
 
 
-def test_interrupted_requests_become_retryable_on_restart(app, tmp_path):
-    project = app.create_project()
-    job = app.submit_request(project.id, "風景")
+def test_interrupted_requests_become_retryable_on_restart(persistent_app, tmp_path):
+    project = persistent_app.create_project()
+    job = persistent_app.submit_request(project.id, "風景")
     # A second connection simulates opening the DB after an abrupt process termination.
     repository = Repository(tmp_path / "anima.db")
     try:

@@ -1,0 +1,100 @@
+"""Controlled application boundaries shared by behavior tests."""
+
+from concurrent.futures import Executor, Future
+
+from PIL import Image
+
+from moru.errors import MoruError
+
+
+class ManualExecutor(Executor):
+    """A controlled scheduler, no threads, sleeps, clocks or inference engines."""
+
+    def __init__(self):
+        self.tasks = []
+
+    def submit(self, fn, /, *args, **kwargs):
+        future = Future()
+        self.tasks.append((future, fn, args, kwargs))
+        return future
+
+    def run_next(self):
+        future, fn, args, kwargs = self.tasks.pop(0)
+        try:
+            future.set_result(fn(*args, **kwargs))
+        except BaseException as exc:
+            future.set_exception(exc)
+        return future.result()
+
+    def shutdown(self, wait=True, *, cancel_futures=False):
+        while self.tasks:
+            self.run_next()
+
+
+class FakePrompts:
+    def __init__(self):
+        self.inputs = []
+        self.unloads = 0
+        self.settings = []
+        self.contexts = []
+        self.required_memory = 0
+
+    def memory_required(self, settings):
+        return self.required_memory
+
+    def create(
+        self, text, settings, cancelled, progress, *, on_ready=None, on_stage=None, **context
+    ):
+        if on_ready is not None:
+            on_ready()
+        self.contexts.append(context)
+        self.settings.append(settings)
+        self.inputs.append(("create", text))
+        return "silver-haired girl, daytime"
+
+    def refine(
+        self, prompt, text, settings, cancelled, progress, *,
+        on_ready=None, on_stage=None, **context
+    ):
+        if on_ready is not None:
+            on_ready()
+        self.contexts.append(context)
+        self.settings.append(settings)
+        self.inputs.append(("refine", prompt, text))
+        return "silver-haired girl, nighttime"
+
+    def unload(self):
+        self.unloads += 1
+
+
+class FakeImages:
+    def __init__(self):
+        self.inputs = []
+        self.failures = []
+        self.closed = False
+        self.reservations = []
+        self.release_prompt = False
+
+    def reserve_memory(self, required_bytes, cancelled):
+        self.reservations.append(required_bytes)
+
+    def needs_prompt_unload(self, settings, cancelled):
+        return self.release_prompt
+
+    def generate(self, prompt, settings, output_path, progress, cancelled):
+        self.inputs.append((prompt, settings))
+        if self.failures:
+            raise MoruError(self.failures.pop(0))
+        progress("generating", settings.steps, settings.steps)
+        Image.new("RGB", (settings.width, settings.height), (20, 40, 60)).save(output_path)
+
+    def close(self):
+        self.closed = True
+
+
+def generate(app, project_id, text="소녀를 그려줘"):
+    job = app.submit_request(project_id, text)
+    app.scheduler.run_next()
+    result = app.get_job(job.id)
+    assert result.state == "completed", result.error_code
+    return app.repository.get_image(result.image_id)

@@ -133,24 +133,28 @@ def test_prompt_settings_apply_to_next_job_without_changing_an_accepted_request(
 def test_failed_prompt_settings_read_leaves_a_retryable_request_and_releases_generation_slot(
     app, monkeypatch
 ):
-    from unittest.mock import Mock
-
     project = app.create_project()
-    original = app.get_prompt_settings
-    monkeypatch.setattr(app, "get_prompt_settings", Mock(side_effect=MoruError("DATABASE_FAILED")))
+    original = app.repository.get_preference
+
+    def unavailable(key, default=None):
+        if key == "prompt_settings":
+            raise MoruError("DATABASE_FAILED")
+        return original(key, default)
+
+    monkeypatch.setattr(app.repository, "get_preference", unavailable)
     with pytest.raises(MoruError):
         app.submit_request(project.id, "girl")
     request = app.repository.unfinished_requests(project.id)[0]
     assert request.status == "failed"
     assert request.error_code == "GENERATION_FAILED"
-    monkeypatch.setattr(app, "get_prompt_settings", original)
+    monkeypatch.setattr(app.repository, "get_preference", original)
     app.retry_request(request.id)
     app.scheduler.run_next()
     assert app.repository.get_request(request.id).status == "completed"
 
 
-def test_prompt_settings_are_restored_after_application_restart(app, tmp_path):
-    from conftest import FakeImages, FakePrompts, ManualExecutor
+def test_prompt_settings_are_restored_after_application_restart(persistent_app, tmp_path):
+    from support.application import FakeImages, FakePrompts, ManualExecutor
 
     from moru.repository import Repository
     from moru.service import Application
@@ -158,8 +162,8 @@ def test_prompt_settings_are_restored_after_application_restart(app, tmp_path):
     changed = PromptSettings(
         context_size=4096, max_tokens=2048, thinking=False, tag_search_enabled=False
     )
-    app.update_settings(GenerationSettings(steps=12), changed)
-    app.close()
+    persistent_app.update_settings(GenerationSettings(steps=12), changed)
+    persistent_app.close()
     restored = Application(
         Repository(tmp_path / "anima.db"),
         FakePrompts(),
@@ -202,7 +206,7 @@ def test_prompt_settings_are_restored_after_application_restart(app, tmp_path):
 def test_stored_prompt_settings_are_preserved_without_default_migrations(
     tmp_path, stored, expected
 ):
-    from conftest import FakeImages, FakePrompts, ManualExecutor
+    from support.application import FakeImages, FakePrompts, ManualExecutor
 
     from moru.repository import Repository
     from moru.service import Application

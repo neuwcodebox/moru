@@ -1,7 +1,7 @@
 from unittest.mock import Mock
 
 import pytest
-from test_conversation import generate
+from support.application import generate
 
 from moru.api import Api
 from moru.config import ModelPaths
@@ -15,8 +15,8 @@ from moru.prompts.providers import PromptProviders
 def test_prompt_loading_is_reported_until_inference_and_resident_models_skip_it(
     app, tmp_path, reload_reason
 ):
-    from conftest import FakePrompts
-    from test_prompting import completion
+    from support.application import FakePrompts
+    from support.llama import completion
 
     paths = ModelPaths(tmp_path)
     paths.get("prompt").parent.mkdir(parents=True, exist_ok=True)

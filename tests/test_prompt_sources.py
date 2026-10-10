@@ -3,8 +3,7 @@ import sqlite3
 from dataclasses import replace
 
 import pytest
-from conftest import FakePrompts
-from test_conversation import generate
+from support.application import FakePrompts, generate
 
 from moru.api import Api
 from moru.domain import PromptSource
@@ -54,18 +53,18 @@ def test_reference_information_is_saved_with_the_generated_image_and_exposed_by_
     }
 
 
-def test_sources_survive_repository_reopening_and_session_forks(app):
-    app.prompts = ReferencingPrompts()
-    project = app.create_project()
-    image = generate(app, project.id)
-    fork = app.fork(project.id, image.id)
-    copied = app.repository.get_image(fork.active_leaf_id)
+def test_sources_survive_repository_reopening_and_session_forks(persistent_app):
+    persistent_app.prompts = ReferencingPrompts()
+    project = persistent_app.create_project()
+    image = generate(persistent_app, project.id)
+    fork = persistent_app.fork(project.id, image.id)
+    copied = persistent_app.repository.get_image(fork.active_leaf_id)
     assert copied.id != image.id and copied.sources == image.sources
-    path = app.data_dir / "anima.db"
-    app.repository.close()
-    app.repository = Repository(path)
-    assert app.repository.get_image(image.id).sources == (SOURCE,)
-    assert app.repository.get_image(copied.id).sources == (SOURCE,)
+    path = persistent_app.data_dir / "anima.db"
+    persistent_app.repository.close()
+    persistent_app.repository = Repository(path)
+    assert persistent_app.repository.get_image(image.id).sources == (SOURCE,)
+    assert persistent_app.repository.get_image(copied.id).sources == (SOURCE,)
 
 
 def test_regeneration_preserves_references_for_the_same_prompt_and_edits_start_without_them(app):
@@ -89,13 +88,13 @@ def test_new_images_and_old_history_without_references_return_an_empty_source_li
     assert Api(app).get_image_sources(image.id) == {"ok": True, "value": []}
 
 
-def test_existing_database_adds_sources_without_rewriting_immutable_images(app):
-    image = generate(app, app.create_project().id)
-    path = app.data_dir / "anima.db"
-    app.repository.close()
+def test_existing_database_adds_sources_without_rewriting_immutable_images(persistent_app):
+    image = generate(persistent_app, persistent_app.create_project().id)
+    path = persistent_app.data_dir / "anima.db"
+    persistent_app.repository.close()
     with sqlite3.connect(path) as db:
         db.execute("ALTER TABLE images DROP COLUMN sources")
-    app.repository = Repository(path)
-    restored = app.repository.get_image(image.id)
+    persistent_app.repository = Repository(path)
+    restored = persistent_app.repository.get_image(image.id)
     assert restored == replace(image, sources=())
-    assert Api(app).get_image_sources(image.id)["value"] == []
+    assert Api(persistent_app).get_image_sources(image.id)["value"] == []

@@ -1,9 +1,9 @@
-from contextlib import contextmanager
 from dataclasses import replace
 from io import BytesIO
 from threading import Event
 
 import pytest
+from support.chatgpt import SETTINGS, Auth, StreamHttp, delta
 
 from moru.chatgpt.http import ChatGPTHttpError, sse_events
 from moru.chatgpt.instructions import prompt_messages
@@ -11,38 +11,6 @@ from moru.chatgpt.prompts import ChatGPTPrompts
 from moru.domain import PromptSettings, PromptTurn
 from moru.errors import MoruError
 from moru.prompts.providers import PromptProviders
-
-SETTINGS = PromptSettings(provider="chatgpt", chatgpt_model="account-model")
-
-
-class Auth:
-    def __init__(self):
-        self.refreshes = []
-
-    def access_token(self, *, rejected_token=None):
-        self.refreshes.append(rejected_token)
-        return "renewed" if rejected_token else "access"
-
-
-class StreamHttp:
-    def __init__(self, events):
-        self.events = events
-        self.calls = []
-        self.closed = False
-
-    @contextmanager
-    def stream(self, token, payload, cancelled):
-        self.calls.append((token, payload))
-        try:
-            if isinstance(self.events, Exception):
-                raise self.events
-            yield iter(self.events)
-        finally:
-            self.closed = True
-
-
-def delta(text="1girl, silver hair, moonlight"):
-    return {"type": "response.output_text.delta", "delta": text}
 
 
 @pytest.mark.parametrize("operation", ["create", "refine"])
@@ -203,7 +171,7 @@ def test_sse_comments_and_multiline_data_are_decoded_and_done_is_ignored():
 
 
 def test_provider_is_fixed_at_acceptance_and_cloud_does_not_reserve_vram(app):
-    from conftest import FakePrompts
+    from support.application import FakePrompts
 
     local = app.prompts
     cloud = FakePrompts()
@@ -227,7 +195,7 @@ def test_provider_is_fixed_at_acceptance_and_cloud_does_not_reserve_vram(app):
 @pytest.mark.parametrize("provider", ["local", "chatgpt"])
 @pytest.mark.parametrize("operation", ["create", "refine"])
 def test_chosen_provider_receives_history_image_model_and_readiness_callback(provider, operation):
-    from conftest import FakePrompts
+    from support.application import FakePrompts
 
     local, cloud = FakePrompts(), FakePrompts()
     prompts = PromptProviders(local, cloud)

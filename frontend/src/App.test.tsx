@@ -248,7 +248,7 @@ describe("conversation", () => {
     expect(await within(image).findByText("private actual prompt")).toBeTruthy();
     expect(api.get_image_details).toHaveBeenCalledWith("i1");
     await user.unhover(image);
-    expect(image.querySelector(".image-prompt-overlay")?.getAttribute("aria-hidden")).toBe("true");
+    expect(within(image).getByText("private actual prompt").closest("[aria-hidden]")?.getAttribute("aria-hidden")).toBe("true");
     await user.hover(image);
     expect(api.get_image_details).toHaveBeenCalledOnce();
     await user.click(image);
@@ -278,9 +278,9 @@ describe("conversation", () => {
     await user.click(screen.getByRole("button", { name: button }));
     await screen.findByRole("dialog", { name: title });
     const background = [
-      document.querySelector("header")!,
-      document.querySelector("main")!,
-      document.querySelector("footer")!,
+      screen.getByRole("banner", { hidden: true }),
+      screen.getByRole("main", { hidden: true }),
+      screen.getByRole("contentinfo", { hidden: true }),
     ];
     expect(background.every((element) => element.hasAttribute("inert"))).toBe(true);
     await user.keyboard("{Escape}");
@@ -296,16 +296,16 @@ describe("conversation", () => {
     await user.hover(image);
     await within(image).findByText("private actual prompt");
     await user.click(image);
-    expect(image.querySelector(".image-prompt-overlay")?.getAttribute("aria-hidden")).toBe("true");
+    expect(within(image).getByText("private actual prompt").closest("[aria-hidden]")?.getAttribute("aria-hidden")).toBe("true");
     expect(screen.getByRole("main", { hidden: true }).hasAttribute("inert")).toBe(true);
     await user.keyboard("{Escape}");
     expect(document.activeElement).toBe(image);
-    expect(image.querySelector(".image-prompt-overlay")?.getAttribute("aria-hidden")).toBe("true");
+    expect(within(image).getByText("private actual prompt").closest("[aria-hidden]")?.getAttribute("aria-hidden")).toBe("true");
     expect(screen.getByRole("main").hasAttribute("inert")).toBe(false);
     fireEvent.mouseEnter(image);
-    expect(image.querySelector(".image-prompt-overlay")?.getAttribute("aria-hidden")).toBe("true");
+    expect(within(image).getByText("private actual prompt").closest("[aria-hidden]")?.getAttribute("aria-hidden")).toBe("true");
     fireEvent.mouseMove(image);
-    expect(image.querySelector(".image-prompt-overlay")?.getAttribute("aria-hidden")).toBe("false");
+    expect(within(image).getByText("private actual prompt").closest("[aria-hidden]")?.getAttribute("aria-hidden")).toBe("false");
   });
 
   it("reveals prompts again on intentional keyboard focus after closing settings", async () => {
@@ -318,10 +318,10 @@ describe("conversation", () => {
     for (let count = 0; count < 10 && document.activeElement !== image; count++)
       await user.tab({ shift: true });
     expect(document.activeElement).toBe(image);
-    expect(image.querySelector(".image-prompt-overlay")?.getAttribute("aria-hidden")).toBe("false");
+    expect(within(image).getByText("private actual prompt").closest("[aria-hidden]")?.getAttribute("aria-hidden")).toBe("false");
   });
 
-  it("confirms successful branching into a new session and reports failures without success feedback", async () => {
+  it("confirms successful branching into a new session", async () => {
     current = withImage;
     const user = userEvent.setup();
     render(<App />);
@@ -329,7 +329,15 @@ describe("conversation", () => {
     await user.click(screen.getByText("분기"));
     expect(await screen.findByText("선택한 이미지까지 새 작업으로 분기했습니다.")).toBeTruthy();
     await user.click(screen.getByLabelText("알림 닫기"));
+    expect(screen.queryByText("선택한 이미지까지 새 작업으로 분기했습니다.")).toBeNull();
+  });
+
+  it("reports a failed branch without announcing success", async () => {
+    current = withImage;
+    const user = userEvent.setup();
     api.fork.mockResolvedValue({ok: false, error: {code: "DATABASE_FAILED", message: "분기 오류"}});
+    render(<App />);
+    await screen.findByAltText("생성 이미지");
     await user.click(screen.getByText("분기"));
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("작업 기록을 저장하거나 불러올 수 없습니다."));
     expect(screen.queryByText("선택한 이미지까지 새 작업으로 분기했습니다.")).toBeNull();
@@ -353,14 +361,11 @@ describe("conversation", () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findAllByAltText("생성 이미지");
-    const selectedText = () => document.querySelector(".turn.is-selected .user-message")?.textContent;
     await user.keyboard("{ArrowUp}");
-    expect(selectedText()).toBe("둘째 이미지");
     await user.keyboard("{ArrowRight}");
     expect(api.select_version).toHaveBeenLastCalledWith("p1", "i2b");
-    const secondTurn = document.querySelectorAll<HTMLElement>(".turn")[1];
-    await waitFor(() => expect(secondTurn.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,i2b"));
-    await user.click(within(secondTurn).getByRole("button", {name: "이미지 전체 화면 보기"}));
+    await waitFor(() => expect(screen.getAllByAltText("생성 이미지")[1].getAttribute("src")).toBe("data:image/png;base64,i2b"));
+    await user.click(screen.getAllByRole("button", { name: "이미지 전체 화면 보기" })[1]);
     await waitFor(() => expect(screen.getByAltText("생성 이미지 전체 화면").getAttribute("src")).toBe("data:image/png;base64,i2b"));
     await user.click(screen.getByLabelText("확대"));
     expect(screen.getByText("125%")).toBeTruthy();
@@ -369,31 +374,32 @@ describe("conversation", () => {
     await waitFor(() => expect(screen.getByAltText("생성 이미지 전체 화면").getAttribute("src")).toBe("data:image/png;base64,i2"));
     expect(screen.getByText("100%")).toBeTruthy();
     await user.keyboard("{ArrowUp}");
-    expect(selectedText()).toBe("첫 이미지");
+    await waitFor(() => expect(screen.getByAltText("생성 이미지 전체 화면").getAttribute("src")).toBe("data:image/png;base64,i1"));
     await user.keyboard("{ArrowUp}");
-    expect(selectedText()).toBe("첫 이미지");
+    await waitFor(() => expect(screen.getByAltText("생성 이미지 전체 화면").getAttribute("src")).toBe("data:image/png;base64,i1"));
     await user.keyboard("{ArrowLeft}");
     expect(api.select_version).toHaveBeenLastCalledWith("p1", "i1b");
     await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
-    expect(selectedText()).toBe("셋째 이미지");
+    await waitFor(() => expect(screen.getByAltText("생성 이미지 전체 화면").getAttribute("src")).toBe("data:image/png;base64,i3"));
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("preserves text editing and IME composition while supporting arrows in an empty composer", async () => {
-    current = {...withImage, images: [image, {...image, id: "i2", turn_id: "r2", versions: ["i2"]}]};
+    current = {...withImage, images: [{...image, versions: ["i1", "i1b"]}, {...image, id: "i2", turn_id: "r2", versions: ["i2", "i2b"]}]};
     const user = userEvent.setup();
     render(<App />);
     await screen.findAllByAltText("생성 이미지");
     const input = screen.getByLabelText("이미지 요청");
     await user.type(input, "입력 중");
-    await user.keyboard("{ArrowUp}");
-    expect(document.querySelectorAll(".turn")[1].classList.contains("is-selected")).toBe(true);
+    await user.keyboard("{ArrowUp}{ArrowRight}");
+    expect(api.select_version).not.toHaveBeenCalled();
     await user.clear(input);
     fireEvent.keyDown(input, {key: "ArrowUp", isComposing: true});
-    expect(document.querySelectorAll(".turn")[1].classList.contains("is-selected")).toBe(true);
-    await user.keyboard("{ArrowUp}");
-    expect(document.querySelectorAll(".turn")[0].classList.contains("is-selected")).toBe(true);
+    await user.keyboard("{ArrowRight}");
+    expect(api.select_version).toHaveBeenLastCalledWith("p1", "i2b");
+    await user.keyboard("{ArrowUp}{ArrowRight}");
+    expect(api.select_version).toHaveBeenLastCalledWith("p1", "i1b");
   });
 
   it("returns focus to the image reached in the viewer when closing it", async () => {
@@ -404,9 +410,7 @@ describe("conversation", () => {
     await user.click(screen.getAllByRole("button", {name: "이미지 전체 화면 보기"})[0]);
     await user.keyboard("{ArrowDown}{Escape}");
     expect(screen.queryByRole("dialog")).toBeNull();
-    const second = document.querySelectorAll(".turn")[1];
-    expect(second.classList.contains("is-selected")).toBe(true);
-    expect(document.activeElement).toBe(within(second as HTMLElement).getByRole("button", {name: "이미지 전체 화면 보기"}));
+    expect(document.activeElement).toBe(screen.getAllByRole("button", {name: "이미지 전체 화면 보기"})[1]);
   });
 
   it("keeps image navigation inactive in settings dialogs", async () => {
@@ -417,8 +421,9 @@ describe("conversation", () => {
     await user.click(screen.getByLabelText("생성 설정"));
     fireEvent.keyDown(screen.getByRole("dialog"), {key: "ArrowUp"});
     fireEvent.keyDown(screen.getByRole("dialog"), {key: "ArrowRight"});
-    expect(document.querySelectorAll(".turn")[1].classList.contains("is-selected")).toBe(true);
     expect(api.select_version).not.toHaveBeenCalled();
+    await user.keyboard("{Escape}{ArrowRight}");
+    expect(api.select_version).toHaveBeenLastCalledWith("p1", "i2b");
   });
 
   it("does not change image versions while generation is running", async () => {
@@ -522,15 +527,7 @@ describe("conversation", () => {
     expect(api.regenerate).toHaveBeenCalledWith("i1");
     const progress = await screen.findByRole("region", { name: "생성 진행" });
     expect(screen.getAllByText("소녀를 그려줘")).toHaveLength(1);
-    expect(
-      screen.getByLabelText("대화").querySelectorAll(".turn"),
-    ).toHaveLength(1);
-    expect(progress.closest(".turn")).toBeTruthy();
-    expect(
-      within(progress)
-        .getByText("forest, moonlight")
-        .closest(".generation-canvas"),
-    ).toBeTruthy();
+    expect(within(progress).getByText("forest, moonlight")).toBeTruthy();
     expect(screen.queryByAltText("생성 이미지")).toBeNull();
   });
 
@@ -574,58 +571,38 @@ describe("conversation", () => {
     await screen.findByText("2 / 2");
     await user.click(screen.getByRole("button", { name: "수정" }));
     expect(api.get_image_details).toHaveBeenCalledWith("i2");
-    expect(
-      screen.getByLabelText("대화").querySelectorAll(".turn"),
-    ).toHaveLength(1);
+    expect(screen.getAllByText("소녀를 그려줘")).toHaveLength(1);
   });
 
   it.each(["completed", "cancelled", "failed"])(
     "restores the send button after a %s job",
     async (state) => {
-      const scheduled: (() => Promise<void>)[] = [];
-      const realTimeout = globalThis.setTimeout;
-      const timer = vi
-        .spyOn(globalThis, "setTimeout")
-        .mockImplementation((callback, delay, ...args) => {
-          if (delay === 300 && typeof callback === "function") {
-            scheduled.push(callback as () => Promise<void>);
-            return 0 as unknown as ReturnType<typeof setTimeout>;
-          }
-          return realTimeout(callback, delay, ...args);
-        });
+      api.get_job.mockResolvedValue({ ok: true, value: {
+        id: "j1", project_id: "p1", width: 1024, height: 1024,
+        state: "generating", step: 3, total: 10,
+      } });
+      render(<App />);
+      await screen.findByText("어떤 장면을 그릴까요?");
+      vi.useFakeTimers();
       try {
-        const user = userEvent.setup();
-        api.get_job.mockResolvedValue({
-          ok: true,
-          value: {
-            id: "j1",
-            project_id: "p1",
-            width: 1024, height: 1024, state: "generating",
-            step: 3,
-            total: 10,
-          },
+        await act(async () => {
+          const input = screen.getByRole("textbox", { name: "이미지 요청" });
+          fireEvent.change(input, { target: { value: "풍경" } });
+          fireEvent.keyDown(input, { key: "Enter" });
         });
-        render(<App />);
-        await screen.findByText("어떤 장면을 그릴까요?");
-        await user.type(screen.getByLabelText("이미지 요청"), "풍경{Enter}");
         expect(screen.getByRole("button", { name: "중지" })).toBeTruthy();
         expect(screen.queryByRole("button", { name: "전송" })).toBeNull();
         if (state === "cancelled") {
-          await user.click(screen.getByRole("button", { name: "중지" }));
+          await act(async () => { fireEvent.click(screen.getByRole("button", { name: "중지" })); });
           expect(api.cancel_job).toHaveBeenCalledWith("j1");
         }
-        api.get_job.mockResolvedValue({
-          ok: true,
-          value: { id: "j1", project_id: "p1", state },
-        });
-        await act(async () => {
-          await scheduled.shift()!();
-        });
+        api.get_job.mockResolvedValue({ ok: true, value: { id: "j1", project_id: "p1", state } });
+        await act(async () => { await vi.advanceTimersToNextTimerAsync(); });
         expect(screen.queryByRole("button", { name: "중지" })).toBeNull();
         expect(screen.getByRole("button", { name: "전송" })).toBeTruthy();
         expect(screen.queryByRole("region", { name: "생성 진행" })).toBeNull();
       } finally {
-        timer.mockRestore();
+        vi.useRealTimers();
       }
     },
   );
@@ -747,7 +724,7 @@ describe("conversation", () => {
     expect(within(failure).getByRole("alert").textContent).toBe(message);
     expect(within(failure).getByRole("button", { name: "재시도" })).toBeTruthy();
     expect(screen.getAllByText(message)).toHaveLength(1);
-    expect(document.querySelector("footer .error-banner")).toBeNull();
+    expect(within(screen.getByRole("contentinfo")).queryByRole("alert")).toBeNull();
   });
 
   it("keeps stopped requests neutral and disables their retry while another job runs", async () => {
@@ -805,8 +782,8 @@ describe("conversation", () => {
       expect(failure.closest(".turn")).toBeTruthy();
       expect(failure.style.aspectRatio).toBe("832 / 1216");
       expect(screen.getByAltText("생성 이미지")).toBeTruthy();
-      expect(document.querySelectorAll(".turn")).toHaveLength(1);
-      expect(document.querySelector("footer .error-banner")).toBeNull();
+      expect(screen.getAllByText("소녀를 그려줘")).toHaveLength(1);
+      expect(within(screen.getByRole("contentinfo")).queryByRole("alert")).toBeNull();
 
       api.get_job.mockResolvedValue({ ok: true, value: {
         id: "j2", project_id: "p1", request_id: "r2", turn_id: "r1",

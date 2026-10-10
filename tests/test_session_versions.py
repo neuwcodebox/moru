@@ -1,7 +1,7 @@
 import sqlite3
 
 import pytest
-from test_conversation import generate
+from support.application import generate
 
 from moru.api import Api
 from moru.domain import PromptSettings, PromptTurn
@@ -121,39 +121,33 @@ def test_copying_through_a_later_turn_preserves_previous_version_choices_and_set
     assert len(app.repository.conversation(project.id)) == 3
 
 
-def test_failed_session_copy_rolls_back_the_new_session_and_current_project(tmp_path):
-    from conftest import FakeImages, FakePrompts, ManualExecutor
+def test_failed_session_copy_rolls_back_the_new_session_and_current_project(make_app):
+    from itertools import count
 
-    from moru.service import Application
-
-    ids = iter(["project", "request", "job", "image", "copy", "request", "copied-image"])
-    scheduler = ManualExecutor()
-    app = Application(
-        Repository(tmp_path / "test.db"),
-        FakePrompts(),
-        FakeImages(),
-        tmp_path,
-        executor=scheduler,
-        new_id=lambda: next(ids),
-    )
-    try:
-        project = app.create_project()
-        job = app.submit_request(project.id, "forest")
-        scheduler.run_next()
-        with pytest.raises(MoruError) as failure:
-            app.fork(project.id, app.get_job(job.id).image_id)
-        assert failure.value.code == "DATABASE_FAILED"
-        assert [item.id for item in app.repository.list_projects()] == [project.id]
-        assert app.current_project().id == project.id
-    finally:
-        app.close()
-
-
-def test_latest_schema_restores_selected_versions_without_migrating_records(app, tmp_path):
+    numbers = count(1)
+    collision = None
+    app = make_app(new_id=lambda: collision or str(next(numbers)))
     project = app.create_project()
-    root = generate(app, project.id)
-    revised = variant(app, root, "moonlight")
-    app.close()
+    image = generate(app, project.id)
+    # The copy can create its project, but its first request collides with saved history.
+    collision = image.request_id
+
+    with pytest.raises(MoruError) as failure:
+        app.fork(project.id, image.id)
+
+    assert failure.value.code == "DATABASE_FAILED"
+    assert app.repository.list_projects() == [app.repository.get_project(project.id)]
+    assert app.current_project().id == project.id
+    assert app.repository.active_path(project.id) == [image]
+
+
+def test_latest_schema_restores_selected_versions_without_migrating_records(
+    persistent_app, tmp_path,
+):
+    project = persistent_app.create_project()
+    root = generate(persistent_app, project.id)
+    revised = variant(persistent_app, root, "moonlight")
+    persistent_app.close()
     database = tmp_path / "anima.db"
     repository = Repository(database)
     try:
@@ -172,10 +166,10 @@ def test_invalid_history_counts_are_rejected(value):
         PromptSettings(history_turns=value)
 
 
-def test_incompatible_schema_fails_explicitly_without_rewriting_history(app, tmp_path):
-    project = app.create_project()
-    root = generate(app, project.id)
-    app.close()
+def test_incompatible_schema_fails_explicitly_without_rewriting_history(persistent_app, tmp_path):
+    project = persistent_app.create_project()
+    root = generate(persistent_app, project.id)
+    persistent_app.close()
     database = tmp_path / "anima.db"
     with sqlite3.connect(database) as db:
         db.execute("ALTER TABLE requests DROP COLUMN turn_id")

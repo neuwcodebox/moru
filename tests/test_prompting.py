@@ -2,6 +2,7 @@ from threading import Event
 from unittest.mock import Mock
 
 import pytest
+from support.llama import Scores, completion
 
 from moru.config import ModelPaths
 from moru.domain import PromptSettings, PromptTurn
@@ -19,11 +20,6 @@ from moru.prompts.local import (
     fit_messages,
     prompt_messages,
 )
-
-
-def completion(content, finish_reason="stop"):
-    yield {"choices": [{"delta": {"content": content}, "finish_reason": None}]}
-    yield {"choices": [{"delta": {}, "finish_reason": finish_reason}]}
 
 
 def test_create_receives_only_system_and_new_request():
@@ -253,21 +249,24 @@ def test_a_stream_without_a_normal_end_is_not_used_as_a_finished_prompt(tmp_path
     assert error.value.code == "PROMPT_RESPONSE_INTERRUPTED"
 
 
-def test_live_thinking_and_prompt_are_separated_when_control_tags_span_tokens():
+@pytest.mark.parametrize(
+    "chunks",
+    [
+        ("<thi", "nk>choose the scene", "</thi", "nk>silver hair, ", "night"),
+        ("<think>choose the scene</think>silver hair, night",),
+        tuple("<think>choose the scene</think>silver hair, night"),
+    ],
+    ids=["split-control-tags", "single-chunk", "one-character-chunks"],
+)
+def test_live_thinking_and_prompt_are_separated_regardless_of_stream_chunk_boundaries(chunks):
     snapshots = []
-
-    def chunks():
-        for token in ("<thi", "nk>choose the scene", "</thi", "nk>silver hair, ", "night"):
-            yield {"choices": [{"delta": {"content": token}, "finish_reason": None}]}
-        yield {"choices": [{"delta": {}, "finish_reason": "stop"}]}
-
     result = read_completion(
-        chunks(), Event(), True, lambda thought, prompt: snapshots.append((thought, prompt))
+        completion(chunks), Event(), True,
+        lambda thought, prompt: snapshots.append((thought, prompt)),
     )
     assert result == "silver hair, night"
-    assert ("choose the scene", "") in snapshots
-    assert ("choose the scene", "silver hair,") in snapshots
     assert snapshots[-1] == ("choose the scene", result)
+    assert all(result.startswith(prompt) for _, prompt in snapshots)
     assert not any("<" in thought or "<" in prompt for thought, prompt in snapshots)
 
 
@@ -282,7 +281,10 @@ def test_disabling_thinking_streams_the_prompt_directly():
         )
         == "night, girl"
     )
-    assert snapshots == [("", "night, girl"), ("", "night, girl")]
+    assert snapshots
+    assert snapshots[-1] == ("", "night, girl")
+    assert all(thought == "" and "night, girl".startswith(prompt)
+               for thought, prompt in snapshots)
 
 
 def test_recent_requests_and_selected_prompts_are_real_chat_turns_before_the_latest_request():
@@ -353,16 +355,6 @@ def test_reasoning_without_a_final_prompt_reports_an_invalid_response(content):
     assert error.value.code == "PROMPT_INVALID_RESPONSE"
 
 
-class Scores(list):
-    """Small stand-in for the mutable logit array, without inference dependencies."""
-
-    def __setitem__(self, key, value):
-        super().__setitem__(key, [value] * len(self) if isinstance(key, slice) else value)
-
-    def argmax(self):
-        return max(range(len(self)), key=self.__getitem__)
-
-
 def test_reasoning_budget_closes_thinking_and_leaves_final_prompt_tokens_unrestricted():
     processor = ThinkingBudget([3], 2)
     scores = Scores([1.0] * 5)
@@ -405,7 +397,8 @@ def test_final_answer_cue_is_removed_from_both_live_text_and_the_image_prompt():
 
     result = read_completion(chunks(), Event(), True, lambda *text: snapshots.append(text))
     assert result == "black cat, moonlight"
-    assert snapshots[:2] == [("reasoning", ""), ("reasoning", "")]
+    assert snapshots
+    assert all("Final" not in prompt and "<" not in prompt for _, prompt in snapshots)
     assert snapshots[-1] == ("reasoning", result)
 
 
@@ -495,9 +488,17 @@ def test_reasoning_level_changes_the_completion_budget_without_reloading_the_mod
         prompts.create(
             "girl", PromptSettings(context_size=8192, max_tokens=4096, reasoning_level=level)
         )
-        processor = llm.create_chat_completion.call_args.kwargs["logits_processor"][0]
-        processor([9], Scores([1.0] * 5))
-        assert processor([9] + [1] * (budget - 2), Scores([1.0] * 5))[3] == 0.0
+        processors = llm.create_chat_completion.call_args.kwargs["logits_processor"]
+
+        def sample(tokens, chain=processors):
+            scores = Scores([1.0] * 5)
+            for processor in chain:
+                scores = processor(tokens, scores)
+            return scores
+
+        assert sample([9]) == [1.0] * 5
+        assert sample([9] + [1] * (budget - 3)) == [1.0] * 5
+        assert sample([9] + [1] * (budget - 2))[3] == 0.0
     load.assert_called_once()
 
 

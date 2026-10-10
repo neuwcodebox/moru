@@ -1,5 +1,5 @@
 import pytest
-from test_conversation import generate
+from support.application import generate
 
 from moru.domain import GenerationSettings
 

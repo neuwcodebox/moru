@@ -1,28 +1,12 @@
 from threading import Event
 
 import pytest
+from support.danbooru import Catalog, tag
 
 from moru.chatgpt.tools import DanbooruTools
 from moru.danbooru.http import TagLookupError
 from moru.danbooru.tags import DanbooruTags
 from moru.errors import MoruError
-
-
-class Catalog:
-    def __init__(self, *replies):
-        self.replies = iter(replies)
-        self.calls = []
-
-    def get(self, path, params, cancelled):
-        self.calls.append((path, params))
-        value = next(self.replies)
-        if isinstance(value, Exception):
-            raise value
-        return value
-
-
-def tag(name, **extra):
-    return {"name": name, "post_count": 100, "is_deprecated": False, **extra}
 
 
 def test_search_returns_only_distinct_usable_canonical_names_with_a_bounded_limit():

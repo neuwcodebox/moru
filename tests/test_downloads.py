@@ -4,7 +4,7 @@ from threading import Event
 from unittest.mock import Mock
 
 import pytest
-from conftest import ManualExecutor
+from support.application import ManualExecutor
 
 from moru.config import ModelPaths
 from moru.downloads import ModelAsset, ModelDownloads, download_model, model_manifest
