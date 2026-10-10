@@ -10,10 +10,10 @@ import webview
 from moru.api import Api
 from moru.config import ModelPaths, application_root
 from moru.downloads import ModelDownloads
-from moru.prompting import LlamaPrompts
+from moru.images.client import ImageWorker
+from moru.prompts.local import LlamaPrompts
 from moru.repository import Repository
 from moru.service import Application
-from moru.worker_client import ImageWorker
 
 
 def main():

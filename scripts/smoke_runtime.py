@@ -11,8 +11,8 @@ from moru.config import ModelPaths, application_root
 from moru.desktop import configure_logging
 from moru.domain import GenerationSettings, PromptSettings
 from moru.errors import MoruError
-from moru.prompting import LlamaPrompts
-from moru.worker_client import ImageWorker
+from moru.images.client import ImageWorker
+from moru.prompts.local import LlamaPrompts
 
 
 def main():

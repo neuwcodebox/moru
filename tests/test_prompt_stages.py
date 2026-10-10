@@ -4,9 +4,9 @@ import pytest
 from test_chatgpt_prompts import SETTINGS, Auth, delta
 from test_chatgpt_tag_tools import Responses, Tools, call, completed, final_turn
 
-from moru.chatgpt_prompts import ChatGPTPrompts
+from moru.chatgpt.prompts import ChatGPTPrompts
 from moru.errors import MoruError
-from moru.prompt_providers import PromptProviders
+from moru.prompts.providers import PromptProviders
 
 
 def record_phase_changes(stages):

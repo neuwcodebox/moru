@@ -25,14 +25,14 @@ import type {
   ImageModel,
   Settings,
 } from "./api";
-import Lightbox from "./Lightbox";
-import PromptDialog from "./PromptDialog";
-import SourcesDialog from "./SourcesDialog";
-import SettingsDialog from "./SettingsDialog";
-import ModelsDialog from "./ModelsDialog";
-import Conversation from "./Conversation";
-import Modal from "./Modal";
-import { canUseChatGPT } from "./promptAvailability";
+import Lightbox from "./features/conversation/Lightbox";
+import PromptDialog from "./features/conversation/PromptDialog";
+import SourcesDialog from "./features/conversation/SourcesDialog";
+import SettingsDialog from "./features/settings/SettingsDialog";
+import ModelsDialog from "./features/models/ModelsDialog";
+import Conversation from "./features/conversation/Conversation";
+import Modal from "./components/Modal";
+import { canUseChatGPT } from "./features/chatgpt/availability";
 
 export default function App() {
   const { t, i18n } = useTranslation();

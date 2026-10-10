@@ -8,8 +8,8 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from moru.chatgpt_auth import AuthorizationAttempt, ChatGPTAuth, IdTokenValidator
-from moru.chatgpt_http import ChatGPTHttpError
+from moru.chatgpt.auth import AuthorizationAttempt, ChatGPTAuth, IdTokenValidator
+from moru.chatgpt.http import ChatGPTHttpError
 from moru.errors import MoruError
 
 
@@ -368,8 +368,8 @@ def login_runtime(monkeypatch):
         runtime.parameters = parse_qs(urlsplit(url).query)
         return True
 
-    monkeypatch.setattr("moru.chatgpt_auth.HTTPServer", Server)
-    monkeypatch.setattr("moru.chatgpt_auth.Thread", DeferredThread)
+    monkeypatch.setattr("moru.chatgpt.auth.HTTPServer", Server)
+    monkeypatch.setattr("moru.chatgpt.auth.Thread", DeferredThread)
     runtime.auth = ChatGPTAuth(
         MemoryStore(),
         http=FakeHttp(tokens()),

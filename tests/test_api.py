@@ -7,8 +7,8 @@ from moru.api import Api
 from moru.config import ModelPaths
 from moru.domain import GenerationSettings, PromptSettings
 from moru.downloads import ModelDownloads
-from moru.prompt_providers import PromptProviders
-from moru.prompting import LlamaPrompts
+from moru.prompts.local import LlamaPrompts
+from moru.prompts.providers import PromptProviders
 
 
 @pytest.mark.parametrize("reload_reason", ["first_request", "chatgpt_switch", "context_change"])

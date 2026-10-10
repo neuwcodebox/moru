@@ -2,8 +2,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from moru.comfy_engine import image_frame
 from moru.errors import MoruError
+from moru.images.engine import image_frame
 
 
 class DecodedPixels:

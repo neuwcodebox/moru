@@ -1,6 +1,6 @@
 import pytest
 
-from moru.flux2_schedule import flux2_sigmas
+from moru.images.schedule import flux2_sigmas
 
 
 def test_four_step_schedule_matches_the_official_1024_square_workflow():

@@ -474,7 +474,7 @@ Anima는 diffusion/encoder/VAE를 분리 로드한다. 로드된 모델의 계�
 로드 캐시는 계열과 경로를 함께 비교하며 전환 시 이전 모델을 unload한다.
 FLUX.2도 분리 로드하며 encoder에 `CLIPType.FLUX2`를 지정한다. diffusion은 `model_base.Flux2`,
 VAE는 128채널/16배 구조인지 확인한다. Euler, Steps 4, CFG 1을 기본으로 하고 positive를
-영점화한 negative와 128채널/16배 latent를 사용한다. `flux2_schedule.py`는 고정 revision의
+영점화한 negative와 128채널/16배 latent를 사용한다. `images/schedule.py`는 고정 revision의
 `Flux2Scheduler`와 같은 해상도·Steps별 sigma를 계산해 core sampler에 전달한다.
 ComfyUI 노드·서버는 로드하지 않는다. 진행·취소·OOM 처리·원자적 PNG 저장은 두 계열이
 기존 경로를 공유하며 사용자 Steps·CFG·Seed는 그대로 전달한다.
@@ -964,6 +964,40 @@ Mock LLM + Mock Image Worker:
 
 ## 31. 구현 및 고정 런타임
 
+구현은 역할별 패키지로 구성한다. 도메인·유스케이스·공통 인터페이스와 실행 진입점은
+루트에 두고, 제공자와 외부 엔진의 구현은 아래 폴더에서 관리한다.
+
+```text
+src/moru/
+├── chatgpt/      # 인증·자격 증명·HTTP·Responses 작성·스트림·도구 실행
+├── danbooru/     # 태그 조회·HTTP 캐시·기한·재시도
+├── prompts/      # 로컬 LLM·지침·공통 텍스트·제공자 라우팅
+├── images/       # ComfyUI 엔진·워커·IPC 클라이언트·샘플링 일정
+├── domain.py
+├── ports.py
+├── service.py
+├── repository.py
+├── desktop.py
+├── api.py
+└── …
+
+frontend/src/
+├── features/
+│   ├── chatgpt/       # Account·PromptOptions·사용 가능 조건
+│   ├── models/        # 모델 준비·이미지 모델 선택
+│   ├── settings/      # 생성 설정·공통 및 로컬 프롬프트 옵션
+│   └── conversation/  # 대화·진행·이미지·프롬프트·소스 보기
+├── components/        # 공통 Modal·CopyButton·PromptText
+├── App.tsx
+├── api.ts
+├── i18n.ts
+└── …
+```
+
+UI 컴포넌트 테스트는 해당 기능 폴더에 함께 둔다. 패키지 초기화 파일은 엔진이나
+통신을 실행하지 않으며, `desktop.py`에서 실제 구현을 조합해 기존 인터페이스로 전달한다.
+`cancellation.py`의 공통 취소 검사는 태그 HTTP 계층이 프롬프트 텍스트 처리에 의존하지 않게 한다.
+
 애플리케이션 패키지는 `src/moru/`이며 UI 리소스는 `src/moru/web/index.html`이다.
 React/Vite 빌드에서 JS와 CSS를 HTML에 포함하여 HTTP 서버 없이 로드한다.
 개발 시 `uv run --extra inference python -m moru` 또는 `python -m app`을 사용한다.
@@ -1152,17 +1186,17 @@ placeholder의 이미지 canvas 안에 표시하며 사고 내용은 표시하�
 ChatGPT 선택 시 로컬 LLM을 unload하고 memory_required는 0이다. Application은 이 경우
 이미지 worker의 reserve_memory를 호출하지 않는다. 이미지 생성·Fork·수동 생성 경계는 유지한다.
 
-`chatgpt_messages`는 짧은 모델별 지침과 기존 실제 대화·기준 프롬프트 구성을 사용한다.
-두 엔진의 이력 구성과 출력 검증은 `prompt_text.py`에서 공유한다. ChatGPT 구현은 로컬
+`chatgpt/instructions.py`의 `prompt_messages`는 짧은 모델별 지침과 기존 실제 대화·기준 프롬프트 구성을 사용한다.
+두 엔진의 이력 구성과 출력 검증은 `prompts/text.py`에서 공유한다. ChatGPT 구현은 로컬
 추론 모듈에 의존하지 않으며 각 엔진의 지침과 추론·스트림 처리는 해당 구현에 둔다.
 `ChatGPTHttp`는 표준 라이브러리 HTTPS/SSE로 `POST https://api.openai.com/v1/responses`에
 instructions·전체 input·선택 모델·store:false·stream:true를 보낸다. 로컬 추론 옵션은 전달하지 않는다.
 `chatgpt_reasoning_effort` 기본값은 `default`이며 선택한 경우에만 `reasoning.effort`를 보낸다.
-`chatgpt_options.py`는 공식 문서로 확인한 모델과 날짜별 snapshot의 추론 수준을 제공하고,
+`chatgpt/options.py`는 공식 문서로 확인한 모델과 날짜별 snapshot의 추론 수준을 제공하고,
 알 수 없는 계정 모델 별칭은 기본값만 허용한다. bridge의 `get_chatgpt_reasoning_efforts`는
 네트워크 없이 같은 기준을 UI에 전달하며 실제 계정 정책에 따른 API 거절도 오류로 표시한다.
 
-`chatgpt_stream.py`는 SSE의 답변과 완료 output을 읽고 거절·실패·불완전·중단을 구분한다.
+`chatgpt/stream.py`는 SSE의 답변과 완료 output을 읽고 거절·실패·불완전·중단을 구분한다.
 완료 이벤트의 output이 빈 배열이면 앞서 받은 `response.output_item.done` 항목을 보존한다.
 도구 호출·암호화된 추론·최종 답변을 잃지 않으며, 잘못된 타입의 output은 기존처럼 거부한다.
 완료 항목의 의미는 [OpenAI 공식 SSE 문서](https://developers.openai.com/api/reference/resources/responses/streaming-events)를 따른다.
@@ -1197,7 +1231,8 @@ wiki 설명은 최대 3,000자로 제한하며 개수·점수·분류 등 작성
 
 `ChatGPTPrompts`는 전체 input에 완료 output과 call_id별 function_call_output을 덧붙여
 다음 Responses 요청을 보낸다. `reasoning.encrypted_content`를 요청하고 추론 항목도 재전달하며,
-previous_response_id는 사용하지 않는다. 도구 실행은 요청당 최대 8회·4라운드로 제한하고,
+previous_response_id는 사용하지 않는다. `chatgpt/tool_session.py`의 `TagToolSession`이 호출 검증·
+실행 횟수·조회 중단 이유와 소스 기록을 맡는다. 도구 실행은 요청당 최대 8회·4라운드로 제한하고,
 한도 또는 조회 실패 후에는 tool_choice:none으로 최종 작성을 요청한다.
 잘못된 인자와 조회 불가는 명시적인 도구 오류 결과로 전달한다. 단보루 조회 실패는 프롬프트
 생성 실패가 아니며 제공자를 바꾸지 않는다. 취소와 Responses 자체의 오류는 기존 실패 경로를 따른다.
@@ -1236,7 +1271,7 @@ callback URL을 기록하지 않는다. 사용자 저장소의 OS 파일 잠금�
 revocation endpoint 호출 후 토큰을 지우되 계정 매핑과 host는 유지한다. 원격 해제 실패는 UI에 전달한다.
 
 bridge는 로그인·상태·취소·연결 해제·계정 선택·모델 목록·제공자 선택을 제공한다.
-ModelsDialog는 준비할 방식과 GPT 모델 선택을 유지하며 선택한 방식의 파일 준비 또는 ChatGPTAccount만 표시한다.
+ModelsDialog는 준비할 방식과 GPT 모델 선택을 유지하며 선택한 방식의 파일 준비 또는 `features/chatgpt/Account`만 표시한다.
 모델 준비와 생성 설정은 모두 이미지 영역을 먼저 표시하고 구분선 뒤에 프롬프트 영역을 둔다.
 고급 설정은 프롬프트 영역 안에 두며 별도 구분선을 사용하지 않는다.
 `configure_prompt_writer`는 provider 변경을 거부하고 준비 상태를 요구하지 않은 채 옵션만 저장한다.
@@ -1246,13 +1281,13 @@ GPT 모델 선택은 즉시 저장하며 실패 시 이전 선택을 유지한�
 첫 로그인 안내 중에는 ModelsDialog의 렌더링을 일시 중단하고 준비 선택을 유지하여, 안내를 닫으면
 선택했던 ChatGPT 설정으로 돌아온다. 두 모달의 focus trap을 동시에 활성화하지 않는다.
 SettingsDialog는 준비된 제공자 선택과 이미지 생성 옵션을 표시하고, 접힌 고급 설정에 PromptOptions를 둔다.
-최근 요청 수는 공통으로 표시하고 ChatGPT 선택 시 `ChatGPTPromptOptions`의 추론 수준을 표시한다.
+최근 요청 수는 공통으로 표시하고 ChatGPT 선택 시 `features/chatgpt/PromptOptions`의 추론 수준을 표시한다.
 로컬 전용 추론 옵션은 숨기며 두 제공자의 값을 따로 보관한다. 제공자를 바꿔도
 draft를 유지하며 모든 닫기 경로에서 변경된 이미지·프롬프트 설정을 `update_settings`에 전달한다.
 저장 성공 후에만 닫으며 변경이 없으면 bridge 호출을 생략한다. 폼 검증은 닫기 시점에 수행하고
 숨겨진 고급 필드가 잘못되면 해당 영역을 펼친다. 저장 중에는 fieldset을 비활성화하며 ref로 중복 호출을 막는다.
 검증·저장 실패 시 draft와 팝업을 유지한다. 저장 버튼과 계정·파일 준비 기능은 제공하지 않는다.
-입력 영역에는 고정 폭의 제공자 선택만 두고 조건부 안내 문단은 넣지 않는다. ChatGPTAccount는
+입력 영역에는 고정 폭의 제공자 선택만 두고 조건부 안내 문단은 넣지 않는다. `features/chatgpt/Account`는
 상태별 로그인·재로그인·권한 허용을 구분하고 연결 완료 시 계정 추가·로그아웃만 표시한다.
 카드 상단은 계정 라벨과 사용량 링크를 한 행에 두며 제공자 제목은 반복하지 않는다.
 로컬 파일 영역도 선택된 제공자 이름을 중복 표시하지 않고 두 모델 준비 영역 사이에 구분선을 둔다.

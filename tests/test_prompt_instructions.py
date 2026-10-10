@@ -3,8 +3,8 @@
 import pytest
 
 from moru.domain import PromptTurn
-from moru.prompt_instructions import TAG_REFERENCE
-from moru.prompting import prompt_messages
+from moru.prompts.instructions import TAG_REFERENCE
+from moru.prompts.local import prompt_messages
 
 
 @pytest.mark.parametrize("base", [None, "cat, sleeping"])

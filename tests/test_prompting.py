@@ -6,7 +6,7 @@ import pytest
 from moru.config import ModelPaths
 from moru.domain import PromptSettings, PromptTurn
 from moru.errors import MoruError
-from moru.prompting import (
+from moru.prompts.local import (
     CREATE_SYSTEM,
     REFINE_SYSTEM,
     LlamaPrompts,

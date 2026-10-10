@@ -9,10 +9,10 @@ from unittest.mock import Mock
 import pytest
 from PIL import Image
 
-from moru.comfy_engine import ComfyEngine
 from moru.config import ModelPaths
 from moru.domain import GenerationSettings
 from moru.errors import MoruError
+from moru.images.engine import ComfyEngine
 
 
 class Anima:
@@ -134,7 +134,7 @@ def test_failed_image_save_preserves_existing_output_and_removes_partial_file(
 
         monkeypatch.setattr(Image.Image, "save", fail_save)
     else:
-        monkeypatch.setattr("moru.comfy_engine.os.replace", Mock(side_effect=OSError("locked")))
+        monkeypatch.setattr("moru.images.engine.os.replace", Mock(side_effect=OSError("locked")))
 
     with pytest.raises(MoruError) as error:
         generate(workflow, model_id)

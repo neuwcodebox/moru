@@ -8,7 +8,7 @@ import pytest
 
 from moru.domain import GenerationSettings
 from moru.errors import MoruError
-from moru.worker_client import ImageWorker
+from moru.images.client import ImageWorker
 
 
 class InlineThread:
@@ -27,10 +27,10 @@ def install_workers(tmp_path, monkeypatch, responses):
     for process in processes:
         process.poll.return_value = None
     jobs = [Mock() for _ in processes]
-    monkeypatch.setattr("moru.worker_client.Thread", InlineThread)
-    monkeypatch.setattr("moru.worker_client.WindowsJob", Mock(side_effect=jobs))
-    monkeypatch.setattr("moru.worker_client.subprocess.Popen", Mock(side_effect=processes))
-    monkeypatch.setattr("moru.worker_client.uuid.uuid4", lambda: SimpleNamespace(hex="request"))
+    monkeypatch.setattr("moru.images.client.Thread", InlineThread)
+    monkeypatch.setattr("moru.images.client.WindowsJob", Mock(side_effect=jobs))
+    monkeypatch.setattr("moru.images.client.subprocess.Popen", Mock(side_effect=processes))
+    monkeypatch.setattr("moru.images.client.uuid.uuid4", lambda: SimpleNamespace(hex="request"))
     paths = Mock(root=tmp_path)
     paths.image_payload.return_value = {}
     return ImageWorker(paths, tmp_path), processes, jobs

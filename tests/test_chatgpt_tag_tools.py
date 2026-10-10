@@ -6,13 +6,13 @@ from threading import Event
 import pytest
 from test_chatgpt_prompts import SETTINGS, Auth, delta
 
-from moru.chatgpt_http import ChatGPTHttpError
-from moru.chatgpt_prompts import ChatGPTPrompts
-from moru.danbooru import DanbooruTags
-from moru.danbooru_http import TagLookupError
+from moru.chatgpt.http import ChatGPTHttpError
+from moru.chatgpt.prompts import ChatGPTPrompts
+from moru.chatgpt.tools import DanbooruTools
+from moru.danbooru.http import TagLookupError
+from moru.danbooru.tags import DanbooruTags
 from moru.errors import MoruError
-from moru.prompt_providers import PromptProviders
-from moru.prompt_tools import DanbooruTools
+from moru.prompts.providers import PromptProviders
 
 
 class Responses:

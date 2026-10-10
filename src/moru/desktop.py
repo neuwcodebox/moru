@@ -10,23 +10,23 @@ from pathlib import Path
 
 from moru.api import Api
 from moru.application_lock import application_lock
-from moru.chatgpt_auth import ChatGPTAuth
-from moru.chatgpt_credentials import CredentialStore, credential_path
-from moru.chatgpt_http import ChatGPTHttp
-from moru.chatgpt_prompts import ChatGPTPrompts
+from moru.chatgpt.auth import ChatGPTAuth
+from moru.chatgpt.credentials import CredentialStore, credential_path
+from moru.chatgpt.http import ChatGPTHttp
+from moru.chatgpt.prompts import ChatGPTPrompts
+from moru.chatgpt.tools import DanbooruTools
 from moru.clipboard import copy_image, copy_text
 from moru.config import ModelPaths, application_root
-from moru.danbooru import DanbooruTags
-from moru.danbooru_http import DanbooruHttp
+from moru.danbooru.http import DanbooruHttp
+from moru.danbooru.tags import DanbooruTags
 from moru.diagnostics import PrivateTracebackFormatter
 from moru.downloads import ModelDownloads
+from moru.images.client import ImageWorker
 from moru.language import model_file_filter, startup_language, startup_message
-from moru.prompt_providers import PromptProviders
-from moru.prompt_tools import DanbooruTools
-from moru.prompting import LlamaPrompts
+from moru.prompts.local import LlamaPrompts
+from moru.prompts.providers import PromptProviders
 from moru.repository import Repository
 from moru.service import Application
-from moru.worker_client import ImageWorker
 
 
 def configure_logging(root: Path):
@@ -60,7 +60,7 @@ def main() -> None:
     if arguments.internal_image_worker:
         if not arguments.parent_pid:
             parser.error("internal worker requires parent pid")
-        from moru.image_worker import run
+        from moru.images.worker import run
 
         run(root, comfy_root, arguments.parent_pid)
         return

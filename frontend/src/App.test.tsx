@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 import App from "./App";
 import { imageModels } from "./modelFixtures";
-import Lightbox from "./Lightbox";
+import Lightbox from "./features/conversation/Lightbox";
 import type { Project, PromptSettings, Settings } from "./api";
 
 const settings: Settings = {

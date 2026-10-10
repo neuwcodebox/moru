@@ -144,7 +144,7 @@ class Api:
 
     @endpoint
     def get_chatgpt_reasoning_efforts(self, model):
-        from moru.chatgpt_options import reasoning_efforts
+        from moru.chatgpt.options import reasoning_efforts
 
         return reasoning_efforts(model)
 
@@ -187,7 +187,7 @@ class Api:
                 raise MoruError("CHATGPT_SIGN_IN_REQUIRED")
             if not status["plan_enabled"]:
                 raise MoruError("CHATGPT_NOT_ELIGIBLE")
-            from moru.chatgpt_options import validate_chatgpt_options
+            from moru.chatgpt.options import validate_chatgpt_options
 
             validate_chatgpt_options(settings)
         elif self._models is not None:

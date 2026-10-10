@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from moru.api import Api
-from moru.chatgpt_options import reasoning_efforts, validate_chatgpt_options
+from moru.chatgpt.options import reasoning_efforts, validate_chatgpt_options
 from moru.domain import PromptSettings
 from moru.errors import MoruError
 

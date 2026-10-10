@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from moru.chatgpt_credentials import CredentialStore, credential_path
+from moru.chatgpt.credentials import CredentialStore, credential_path
 from moru.errors import MoruError
 
 

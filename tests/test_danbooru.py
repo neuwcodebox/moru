@@ -2,10 +2,10 @@ from threading import Event
 
 import pytest
 
-from moru.danbooru import DanbooruTags
-from moru.danbooru_http import TagLookupError
+from moru.chatgpt.tools import DanbooruTools
+from moru.danbooru.http import TagLookupError
+from moru.danbooru.tags import DanbooruTags
 from moru.errors import MoruError
-from moru.prompt_tools import DanbooruTools
 
 
 class Catalog:

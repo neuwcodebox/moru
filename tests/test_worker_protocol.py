@@ -6,8 +6,8 @@ from unittest.mock import Mock
 import pytest
 
 from moru.errors import MoruError
-from moru.image_worker import serve
-from moru.worker_client import parse_worker_message, worker_command
+from moru.images.client import parse_worker_message, worker_command
+from moru.images.worker import serve
 
 
 def message(tmp_path, **changes):

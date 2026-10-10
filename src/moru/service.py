@@ -13,6 +13,7 @@ from threading import Event, RLock
 from PIL import Image as PngImage
 from PIL import UnidentifiedImageError
 
+from moru.cancellation import check_cancelled
 from moru.domain import GenerationSettings, Image, Project, PromptSettings, PromptTurn, Request
 from moru.errors import MoruError
 from moru.language import SUPPORTED_LANGUAGES, saved_language
@@ -245,18 +246,13 @@ class Application:
                 total=None,
             )
 
-    @staticmethod
-    def _check_cancelled(cancelled: Event):
-        if cancelled.is_set():
-            raise MoruError("GENERATION_CANCELLED")
-
     def _generate(
         self, job_id: str, request: Request, cancelled: Event, prompt_settings: PromptSettings
     ):
         output_path: Path | None = None
         try:
             log.info("generation started id=%s", job_id)
-            self._check_cancelled(cancelled)
+            check_cancelled(cancelled)
             sources = []
             prompt = self._prepare_prompt(
                 job_id,
@@ -265,7 +261,7 @@ class Application:
                 cancelled,
                 sources.append,
             )
-            self._check_cancelled(cancelled)
+            check_cancelled(cancelled)
             settings = request.settings
             if settings.seed is None:
                 settings = settings.resolve_seed(self._new_seed())
@@ -281,7 +277,7 @@ class Application:
                 self._progress(job_id, state, step, total)
 
             self._write_image(prompt, settings, output_path, progress, cancelled)
-            self._check_cancelled(cancelled)
+            check_cancelled(cancelled)
             image = Image(
                 image_id,
                 request.project_id,
@@ -296,7 +292,7 @@ class Application:
             )
             # Cancellation and persistence share a lock: committed success stays successful.
             with self._lock:
-                self._check_cancelled(cancelled)
+                check_cancelled(cancelled)
                 self.repository.complete_generation(image)
                 self._jobs[job_id] = replace(
                     self._jobs[job_id],
@@ -344,7 +340,7 @@ class Application:
         self._progress(job_id, "loading_prompt_model" if required_memory else ready_state)
         if settings.provider == "local" or required_memory:
             self.images.reserve_memory(required_memory, cancelled)
-        self._check_cancelled(cancelled)
+        check_cancelled(cancelled)
 
         def progress(_thinking, prompt):
             self._prompt_progress(job_id, prompt)
@@ -398,17 +394,17 @@ class Application:
         if self.images.needs_prompt_unload(settings, cancelled):
             log.info("releasing prompt model before image loading: VRAM budget exceeded")
             self.prompts.unload()
-        self._check_cancelled(cancelled)
+        check_cancelled(cancelled)
         try:
             self.images.generate(prompt, settings, output_path, progress, cancelled)
         except MoruError as exc:
             if exc.code != "CUDA_OOM":
                 raise
-            self._check_cancelled(cancelled)
+            check_cancelled(cancelled)
             log.info("releasing prompt model for image generation")
             self.prompts.unload()
             self.images.generate(prompt, settings, output_path, progress, cancelled)
-        self._check_cancelled(cancelled)
+        check_cancelled(cancelled)
         try:
             with PngImage.open(output_path) as png:
                 if png.format != "PNG" or png.size != (settings.width, settings.height):

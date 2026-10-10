@@ -6,8 +6,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from moru.comfy_engine import ComfyEngine
 from moru.domain import GenerationSettings, PromptSettings
+from moru.images.engine import ComfyEngine
 from moru.memory_budget import GIB, image_memory_required, prompt_memory_required
 
 
@@ -124,7 +124,7 @@ def test_cancellation_after_memory_reservation_does_not_start_prompt_inference(a
 def test_cancelled_preflight_does_not_start_an_image_worker(tmp_path, monkeypatch):
     from moru.config import ModelPaths
     from moru.errors import MoruError
-    from moru.worker_client import ImageWorker
+    from moru.images.client import ImageWorker
 
     worker = ImageWorker(ModelPaths(tmp_path), tmp_path)
     start = Mock()

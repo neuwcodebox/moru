@@ -3,7 +3,7 @@ from threading import Event
 
 import pytest
 
-from moru.danbooru_http import DanbooruHttp, TagLookupError
+from moru.danbooru.http import DanbooruHttp, TagLookupError
 from moru.errors import MoruError
 
 
@@ -209,7 +209,7 @@ def test_each_read_has_a_ten_second_deadline_even_if_the_socket_returns_late():
 
 
 def test_deadline_interrupts_the_body_socket_even_when_http_detaches_it(monkeypatch):
-    import moru.danbooru_http as transport
+    import moru.danbooru.http as transport
 
     class Done:
         def __init__(self):

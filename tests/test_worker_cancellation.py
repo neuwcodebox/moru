@@ -6,7 +6,7 @@ import pytest
 
 from moru.domain import GenerationSettings
 from moru.errors import MoruError
-from moru.worker_client import ImageWorker
+from moru.images.client import ImageWorker
 
 
 def test_cancellation_wins_when_worker_pipe_closes_during_observation(tmp_path, monkeypatch):

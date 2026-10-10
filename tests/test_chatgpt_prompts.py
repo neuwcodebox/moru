@@ -5,11 +5,12 @@ from threading import Event
 
 import pytest
 
-from moru.chatgpt_http import ChatGPTHttpError, sse_events
-from moru.chatgpt_prompts import ChatGPTPrompts, chatgpt_messages
+from moru.chatgpt.http import ChatGPTHttpError, sse_events
+from moru.chatgpt.instructions import prompt_messages
+from moru.chatgpt.prompts import ChatGPTPrompts
 from moru.domain import PromptSettings, PromptTurn
 from moru.errors import MoruError
-from moru.prompt_providers import PromptProviders
+from moru.prompts.providers import PromptProviders
 
 SETTINGS = PromptSettings(provider="chatgpt", chatgpt_model="account-model")
 
@@ -107,7 +108,7 @@ def test_cloud_refinement_preserves_canonical_prompt_and_selected_history():
 
 
 def test_flux_cloud_guidance_uses_sentences_without_tag_reference():
-    instructions, _ = chatgpt_messages("scene", model_id="flux2-klein-4b")
+    instructions, _ = prompt_messages("scene", model_id="flux2-klein-4b")
     assert "natural language" in instructions
     assert "Danbooru" not in instructions
 

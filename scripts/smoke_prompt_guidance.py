@@ -6,7 +6,7 @@ from pathlib import Path
 
 from moru.config import ModelPaths, application_root
 from moru.domain import PromptSettings
-from moru.prompting import LlamaPrompts
+from moru.prompts.local import LlamaPrompts
 
 CASES = (
     ("animals", "당근 옆에서 흰 토끼 세 마리가 자고 있어. 사람 없이.", None),
