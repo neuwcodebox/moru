@@ -1,6 +1,6 @@
 import { errorMessage } from "./errorMessages";
 import { useTranslation } from "react-i18next";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowUp,
   ArrowDown,
@@ -16,7 +16,6 @@ import type {
   Bootstrap,
   ChatGPTStatus,
   ImageDetails,
-  Job,
   ModelStatus,
   Project,
   ProjectInfo,
@@ -31,6 +30,7 @@ import SourcesDialog from "./features/conversation/SourcesDialog";
 import SettingsDialog from "./features/settings/SettingsDialog";
 import ModelsDialog from "./features/models/ModelsDialog";
 import Conversation from "./features/conversation/Conversation";
+import { useGeneration } from "./features/conversation/useGeneration";
 import Modal from "./components/Modal";
 import { canUseChatGPT } from "./features/chatgpt/availability";
 
@@ -44,9 +44,7 @@ export default function App() {
     null,
   );
   const [text, setText] = useState("");
-  const [job, setJob] = useState<Job | null>(null);
   const [acting, setActing] = useState(false);
-  const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [models, setModels] = useState<ModelStatus[]>([]);
@@ -61,6 +59,10 @@ export default function App() {
   const [notice, setNotice] = useState<{ id: string; text: string } | null>(null);
   const [sources, setSources] = useState<Record<string, string>>({});
   const input = useRef<HTMLTextAreaElement>(null);
+  const focusInput = useCallback(() => { input.current?.focus(); }, []);
+  const { job, stopping, startGeneration, cancelGeneration } = useGeneration({
+    onProject: setProject, onError: setError, onComplete: focusInput,
+  });
   const conversation = useRef<HTMLElement>(null);
   const composerArea = useRef<HTMLElement>(null);
   const followLatest = useRef(true);
@@ -191,43 +193,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!job) return;
-    const jobId = job.id;
-    let disposed = false;
-    let timer: ReturnType<typeof setTimeout>;
-    async function poll() {
-      try {
-        const result = await call<Job>("get_job", jobId);
-        if (disposed) return;
-        if (["completed", "failed", "cancelled"].includes(result.state)) {
-          const refreshed = await call<Project>(
-            "get_project",
-            result.project_id,
-          );
-          if (disposed) return;
-          setProject(refreshed);
-          setJob(null);
-          setStopping(false);
-          input.current?.focus();
-          return;
-        }
-        setJob(result);
-      } catch (error) {
-        if (!disposed)
-          setError(
-            error ?? { code: "PROGRESS_FAILED" },
-          );
-      }
-      if (!disposed) timer = setTimeout(poll, 300);
-    }
-    void poll();
-    return () => {
-      disposed = true;
-      clearTimeout(timer);
-    };
-  }, [job?.id]);
-
-  useEffect(() => {
     let disposed = false;
     for (const image of project?.images ?? []) {
       if (sources[image.id]) continue;
@@ -278,27 +243,6 @@ export default function App() {
     });
     setAtBottom(true);
   }
-  async function startGeneration(method: string, ...args: unknown[]) {
-    const next = await call<Job>(method, ...args);
-    setJob(next);
-    try {
-      setProject(await call<Project>("get_project", next.project_id));
-    } catch (error) {
-      // The request was accepted; keep observing its job instead of offering another submission.
-      setError(
-        error ?? { code: "CONVERSATION_LOAD_FAILED" },
-      );
-    }
-  }
-  function cancelGeneration() {
-    if (!job || stopping) return;
-    setStopping(true);
-    void call("cancel_job", job.id).catch((error) => {
-      setStopping(false);
-      setError(error ?? { code: "CANCEL_FAILED" });
-    });
-  }
-
   return (
     <div className="app">
       <header inert={modalOpen}>

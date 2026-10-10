@@ -217,6 +217,11 @@ MVP에서는 단일 generation queue만 허용한다.
 
 동시에 여러 이미지를 생성하지 않는다.
 
+React의 `features/conversation/useGeneration`은 생성 접수·진행 polling·취소 상태를 관리한다.
+App은 반환된 상태를 화면에 연결하고 완료 시 입력 초점을 복원한다. 접수 후 대화 조회가
+실패해도 작업을 계속 관찰하고, 완료 후 대화 갱신에 성공해야 생성 중 상태를 해제한다.
+훅 해제 시 진행 조회 타이머를 정리하고 대기 중인 조회 결과는 반영하지 않는다.
+
 ---
 
 ## 7. Prompt LLM
@@ -616,6 +621,10 @@ React에 모델 URL 목록을 따로 두지 않는다. 다운로드 실패 시 �
 
 SQLite + PNG를 사용한다.
 
+`images/files.py`는 생성 PNG의 형식·크기·무결성 검증과 저장 폴더 안의 이미지 읽기를 담당한다.
+Application은 이미지 생성 후 이 검증을 거쳐 기록을 저장하고, bridge는 같은 파일 경계로
+이미지 표시·클립보드용 bytes를 읽는다. 파일 오류는 기존 `IMAGE_SAVE_FAILED`로 전달한다.
+
 portable 기본값:
 
 ```text
@@ -678,6 +687,9 @@ select_version은 그 행의 selected_image_id와 프로젝트의 active_leaf_id
 ## 18. 자연어 생성과 세션 분기
 
 기준 이미지가 없으면 create, 있으면 refine을 호출한다. 최근 요청/선택된 프롬프트의 맥락은 현재 기준 행까지만 포함한다. 작업 도중 설정 변경은 해당 작업에 적용하지 않는다.
+
+Application의 `_prompt_history`가 최근 대화 맥락을 구성한다. 재시도에서는 이후 버전 선택과
+관계없이 요청 당시 기준 이미지의 프롬프트를 사용하며, 이후 행과 다른 세션은 제외한다.
 
 fork는 선택 행까지 요청과 이미지 record를 새 ID로 복사하고 current_project를 새 세션으로 바꾸는 하나의 SQLite transaction이다. 앞선 행의 이미지 버전과 선택 상태는 보존하며 목표 행에는 선택한 이미지만 복사한다. immutable PNG 파일은 공유한다. 복사 실패는 전체 transaction을 rollback한다.
 

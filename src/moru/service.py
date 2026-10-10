@@ -10,12 +10,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from threading import Event, RLock
 
-from PIL import Image as PngImage
-from PIL import UnidentifiedImageError
-
 from moru.cancellation import check_cancelled
 from moru.domain import GenerationSettings, Image, Project, PromptSettings, PromptTurn, Request
 from moru.errors import MoruError
+from moru.images.files import verify_png
 from moru.language import SUPPORTED_LANGUAGES, saved_language
 from moru.models import image_model
 from moru.ports import ImageGenerator, PromptGenerator
@@ -345,18 +343,8 @@ class Application:
         def progress(_thinking, prompt):
             self._prompt_progress(job_id, prompt)
 
-        history = []
-        if settings.history_turns and request.base_image_id:
-            base_turn = self.repository.image_turn(request.base_image_id)
-            for original, selected, _ in self.repository.conversation(request.project_id):
-                if original.id == base_turn:
-                    selected = self.repository.get_image(request.base_image_id)
-                history.append(PromptTurn(original.text, selected.prompt))
-                if original.id == base_turn:
-                    break
-            history = history[-settings.history_turns :]
         context = {
-            "history": tuple(history),
+            "history": self._prompt_history(request, settings.history_turns),
             "model_id": request.settings.model_id,
             "on_ready": lambda: self._progress(job_id, ready_state),
             "on_stage": lambda stage, count: self._prompt_stage(job_id, stage, count),
@@ -386,6 +374,21 @@ class Application:
         self._prompt_progress(job_id, prompt)
         return prompt
 
+    def _prompt_history(self, request: Request, limit: int) -> tuple[PromptTurn, ...]:
+        if not limit or request.base_image_id is None:
+            return ()
+        base = self.repository.get_image(request.base_image_id)
+        base_turn = self.repository.image_turn(base.id)
+        history = []
+        for original, selected, _ in self.repository.conversation(request.project_id):
+            # A retry keeps its original base even if the selected version has since changed.
+            if original.id == base_turn:
+                selected = base
+            history.append(PromptTurn(original.text, selected.prompt))
+            if original.id == base_turn:
+                break
+        return tuple(history[-limit:])
+
     def _prompt_progress(self, job_id, prompt):
         with self._lock:
             self._jobs[job_id] = replace(self._jobs[job_id], prompt_text=prompt[-65536:])
@@ -405,13 +408,7 @@ class Application:
             self.prompts.unload()
             self.images.generate(prompt, settings, output_path, progress, cancelled)
         check_cancelled(cancelled)
-        try:
-            with PngImage.open(output_path) as png:
-                if png.format != "PNG" or png.size != (settings.width, settings.height):
-                    raise MoruError("IMAGE_SAVE_FAILED")
-                png.verify()
-        except (OSError, UnidentifiedImageError, SyntaxError) as exc:
-            raise MoruError("IMAGE_SAVE_FAILED") from exc
+        verify_png(output_path, settings.width, settings.height)
 
     def close(self):
         with self._lock:

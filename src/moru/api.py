@@ -11,6 +11,7 @@ from moru.config import ModelPaths
 from moru.domain import GenerationSettings, PromptSettings
 from moru.downloads import ModelDownloads
 from moru.errors import MESSAGES, MoruError
+from moru.images.files import read_image
 from moru.models import MODEL_DEFAULTS, RETIRED_MODELS, image_model, image_model_catalog
 from moru.service import Application
 
@@ -402,12 +403,4 @@ class Api:
 
     def _image_bytes(self, image_id):
         image = self._app.repository.get_image(image_id)
-        root = self._app.data_dir.resolve()
-        path = (root / image.image_path).resolve()
-        if not path.is_relative_to(root):
-            raise MoruError("IMAGE_SAVE_FAILED")
-        try:
-            content = path.read_bytes()
-        except OSError as exc:
-            raise MoruError("IMAGE_SAVE_FAILED") from exc
-        return content
+        return read_image(self._app.data_dir, image.image_path)

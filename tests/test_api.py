@@ -291,6 +291,7 @@ def test_bootstrap_exposes_prompt_defaults_and_restores_saved_values(app):
         "provider": "local",
         "chatgpt_model": "",
         "chatgpt_reasoning_effort": "default",
+        "tag_search_enabled": True,
     }
     values = {
         "context_size": 8192, "max_tokens": 4096, "thinking": False,
@@ -298,7 +299,7 @@ def test_bootstrap_exposes_prompt_defaults_and_restores_saved_values(app):
         "provider": "local", "chatgpt_model": "",
     }
     assert api.update_settings({"steps": 12}, values)["ok"]
-    expected = {**values, "chatgpt_reasoning_effort": "default"}
+    expected = {**values, "chatgpt_reasoning_effort": "default", "tag_search_enabled": True}
     assert api.get_prompt_settings()["value"] == expected
     assert api.bootstrap()["value"]["prompt_settings"] == expected
 
@@ -479,6 +480,30 @@ def test_a_missing_png_is_reported_before_writing_the_clipboard(app):
     writer = Mock()
     result = Api(app, copy_image_to_clipboard=writer).copy_image(image.id)
     assert result["error"]["code"] == "IMAGE_SAVE_FAILED"
+    writer.assert_not_called()
+
+
+def test_images_outside_the_data_directory_are_not_exposed_to_the_bridge(app):
+    from dataclasses import replace
+    from unittest.mock import Mock
+
+    from moru.domain import Request
+
+    project = app.create_project()
+    original = generate(app, project.id)
+    app.repository.add_request(Request(
+        "outside-request", project.id, original.prompt, original.created_at, original.id,
+        "manual", original.settings,
+    ))
+    app.repository.complete_generation(replace(
+        original, id="outside-image", request_id="outside-request",
+        parent_image_id=original.id, image_path="../private.png", generation_method="manual",
+    ))
+    writer = Mock()
+    api = Api(app, copy_image_to_clipboard=writer)
+
+    assert api.get_image_source("outside-image")["error"]["code"] == "IMAGE_SAVE_FAILED"
+    assert api.copy_image("outside-image")["error"]["code"] == "IMAGE_SAVE_FAILED"
     writer.assert_not_called()
 
 

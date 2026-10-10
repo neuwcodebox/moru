@@ -1,5 +1,7 @@
 import sqlite3
 
+import pytest
+from PIL import Image
 from test_conversation import generate
 
 
@@ -32,3 +34,22 @@ def test_corrupt_image_is_not_saved_as_a_successful_history_record(app, tmp_path
     assert app.get_job(job.id).error_code == "IMAGE_SAVE_FAILED"
     assert app.repository.active_path(project.id) == []
     assert list((tmp_path / "images").glob("*.png")) == []
+
+
+@pytest.mark.parametrize("image_format, size", [("JPEG", (1024, 1024)), ("PNG", (64, 64))])
+def test_wrong_image_format_or_dimensions_preserve_existing_history(
+    app, tmp_path, image_format, size
+):
+    project = app.create_project()
+    previous = generate(app, project.id)
+
+    def wrong_result(prompt, settings, path, progress, cancel):
+        Image.new("RGB", size).save(path, format=image_format)
+
+    app.images.generate = wrong_result
+    job = app.submit_request(project.id, "a new scene")
+    app.scheduler.run_next()
+
+    assert app.get_job(job.id).error_code == "IMAGE_SAVE_FAILED"
+    assert app.repository.active_path(project.id) == [previous]
+    assert list((tmp_path / "images").glob("*.png")) == [tmp_path / previous.image_path]

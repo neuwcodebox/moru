@@ -60,6 +60,20 @@ def test_disabling_history_still_refines_the_selected_canonical_prompt(app):
     assert app.prompts.inputs[-1] == ("refine", root.prompt, "밤으로")
 
 
+def test_refining_an_earlier_row_excludes_later_rows_and_other_sessions_from_context(app):
+    project = app.create_project()
+    root = generate(app, project.id, "forest")
+    generate(app, project.id, "later flowers")
+    other = app.create_project()
+    generate(app, other.id, "unrelated city")
+    app.select_version(project.id, root.id)
+
+    generate(app, project.id, "moonlight")
+
+    assert app.prompts.contexts[-1]["history"] == (PromptTurn("forest", root.prompt),)
+    assert app.prompts.inputs[-1] == ("refine", root.prompt, "moonlight")
+
+
 def test_retry_uses_its_original_base_even_after_another_version_is_selected(app):
     project = app.create_project()
     root = generate(app, project.id)
