@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { PromptSettings } from "./api";
+import ChatGPTPromptOptions from "./ChatGPTPromptOptions";
 
 export default function PromptOptions({ settings, local, onChange }: {
   settings: PromptSettings;
@@ -51,5 +52,6 @@ export default function PromptOptions({ settings, local, onChange }: {
       <p className="hint">{t("settings.reasoningHint")}</p>
       <p className="hint">{t("settings.contextHint")}</p>
     </>}
+    {!local && <ChatGPTPromptOptions settings={settings} onChange={onChange} />}
   </>;
 }

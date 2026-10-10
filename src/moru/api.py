@@ -142,6 +142,12 @@ class Api:
         return self._chatgpt_prompts.models()
 
     @endpoint
+    def get_chatgpt_reasoning_efforts(self, model):
+        from moru.chatgpt_options import reasoning_efforts
+
+        return reasoning_efforts(model)
+
+    @endpoint
     def select_prompt_provider(self, provider):
         from dataclasses import replace
 
@@ -180,6 +186,9 @@ class Api:
                 raise MoruError("CHATGPT_SIGN_IN_REQUIRED")
             if not status["plan_enabled"]:
                 raise MoruError("CHATGPT_NOT_ELIGIBLE")
+            from moru.chatgpt_options import validate_chatgpt_options
+
+            validate_chatgpt_options(settings)
         elif self._models is not None:
             path = self._models.get("prompt")
             if not path.is_file() or not path.stat().st_size:

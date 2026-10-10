@@ -1,6 +1,7 @@
 """ChatGPT writes image prompts; rendering and history stay local."""
 
 from moru.chatgpt_http import ChatGPTHttpError, response_error
+from moru.chatgpt_options import validate_chatgpt_options
 from moru.errors import MoruError
 from moru.models import image_model
 from moru.prompt_text import check_cancelled, conversation_messages, final_prompt
@@ -52,6 +53,7 @@ class ChatGPTPrompts:
         check_cancelled(cancelled)
         if not settings.chatgpt_model:
             raise MoruError("INVALID_SETTINGS")
+        validate_chatgpt_options(settings)
         instructions, messages = chatgpt_messages(text, base, history, model_id)
         payload = {
             "model": settings.chatgpt_model,
@@ -60,6 +62,8 @@ class ChatGPTPrompts:
             "store": False,
             "stream": True,
         }
+        if settings.chatgpt_reasoning_effort != "default":
+            payload["reasoning"] = {"effort": settings.chatgpt_reasoning_effort}
         token = self.auth.access_token()
         check_cancelled(cancelled)
         if on_ready is not None:

@@ -290,6 +290,7 @@ def test_bootstrap_exposes_prompt_defaults_and_restores_saved_values(app):
         "reasoning_level": "medium",
         "provider": "local",
         "chatgpt_model": "",
+        "chatgpt_reasoning_effort": "default",
     }
     values = {
         "context_size": 8192, "max_tokens": 4096, "thinking": False,
@@ -297,8 +298,9 @@ def test_bootstrap_exposes_prompt_defaults_and_restores_saved_values(app):
         "provider": "local", "chatgpt_model": "",
     }
     assert api.update_settings({"steps": 12}, values)["ok"]
-    assert api.get_prompt_settings()["value"] == values
-    assert api.bootstrap()["value"]["prompt_settings"] == values
+    expected = {**values, "chatgpt_reasoning_effort": "default"}
+    assert api.get_prompt_settings()["value"] == expected
+    assert api.bootstrap()["value"]["prompt_settings"] == expected
 
 
 def test_model_defaults_exposed_to_the_ui_match_partial_settings_and_actual_generation(app):

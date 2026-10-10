@@ -14,7 +14,9 @@ export type PromptSettings = {
   reasoning_level: "low" | "medium" | "high";
   provider?: "local" | "chatgpt";
   chatgpt_model?: string;
+  chatgpt_reasoning_effort?: ChatGPTReasoningEffort | "default";
 };
+export type ChatGPTReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 export type PromptConfiguration = Partial<Omit<PromptSettings, "provider">>;
 export type ChatGPTModel = { slug: string; display_name: string };
 export type ChatGPTStatus = {

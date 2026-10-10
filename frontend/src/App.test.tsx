@@ -97,6 +97,7 @@ beforeEach(() => {
       success({ id: "j1", project_id: "p1", width: 1024, height: 1024, state: "queued" }),
     ),
     update_settings: vi.fn((values) => success(values)),
+    get_chatgpt_reasoning_efforts: vi.fn(() => success(["low", "medium", "high"])),
     configure_prompt_writer: vi.fn(async (values) => {
       const result = await api.bootstrap();
       const saved = { ...result.value.prompt_settings, ...values };
@@ -1347,21 +1348,27 @@ it("saves provider and inference drafts together when generation settings close"
   await user.clear(dialog.getByLabelText("생성 단계"));
   await user.type(dialog.getByLabelText("생성 단계"), "15");
   await user.selectOptions(dialog.getByLabelText("프롬프트 작성 모델"), "chatgpt");
-  for (const label of ["컨텍스트 크기", "출력 토큰 한도", "추론 사용", "추론 수준"]) {
+  for (const label of ["컨텍스트 크기", "출력 토큰 한도", "추론 사용"]) {
     expect(dialog.queryByLabelText(label)).toBeNull();
   }
+  await waitFor(() => expect(dialog.getByLabelText("추론 수준")).toHaveProperty("disabled", false));
+  expect(dialog.getByLabelText("추론 수준")).toHaveProperty("value", "default");
+  await user.selectOptions(dialog.getByLabelText("추론 수준"), "high");
   await user.clear(dialog.getByLabelText("최근 요청 수"));
   await user.type(dialog.getByLabelText("최근 요청 수"), "6");
   await user.selectOptions(dialog.getByLabelText("프롬프트 작성 모델"), "local");
   expect(dialog.getByLabelText("컨텍스트 크기")).toHaveProperty("value", "8192");
   expect(dialog.getByLabelText("최근 요청 수")).toHaveProperty("value", "6");
+  expect(dialog.getByLabelText("추론 수준")).toHaveProperty("value", "medium");
   await user.selectOptions(dialog.getByLabelText("프롬프트 작성 모델"), "chatgpt");
+  expect(dialog.getByLabelText("추론 수준")).toHaveProperty("value", "high");
   expect(api.update_settings).not.toHaveBeenCalled();
   expect(api.configure_prompt_writer).not.toHaveBeenCalled();
   await user.click(dialog.getByText("닫기", { selector: "button" }));
   expect(api.update_settings).toHaveBeenCalledExactlyOnceWith({ ...settings, steps: 15 }, {
     ...promptSettings, provider: "chatgpt", chatgpt_model: "available-gpt",
     context_size: 8192, history_turns: 6,
+    chatgpt_reasoning_effort: "high",
   });
   expect(screen.queryByRole("dialog", { name: "생성 설정" })).toBeNull();
   expect(api.get_chatgpt_models).not.toHaveBeenCalled();

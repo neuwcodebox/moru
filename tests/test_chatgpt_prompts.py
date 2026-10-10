@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from dataclasses import replace
 from io import BytesIO
 from threading import Event
 
@@ -41,6 +42,28 @@ class StreamHttp:
 
 def delta(text="1girl, silver hair, moonlight"):
     return {"type": "response.output_text.delta", "delta": text}
+
+
+@pytest.mark.parametrize("operation", ["create", "refine"])
+def test_gpt_reasoning_effort_does_not_use_local_reasoning_budget(operation):
+    http = StreamHttp([delta(), {"type": "response.completed"}])
+    settings = replace(SETTINGS, chatgpt_model="gpt-5.4", chatgpt_reasoning_effort="high",
+                       reasoning_level="low", thinking=False)
+    prompts = ChatGPTPrompts(Auth(), http)
+    args = ("girl", settings, Event(), lambda *_: None)
+    prompts.create(*args) if operation == "create" else prompts.refine("original scene", *args)
+    assert len(http.calls) == 1
+    assert http.calls[0][1]["reasoning"] == {"effort": "high"}
+
+
+def test_unsupported_reasoning_does_not_start_an_inference_request():
+    http = StreamHttp([])
+    with pytest.raises(MoruError) as error:
+        ChatGPTPrompts(Auth(), http).create(
+            "girl", replace(SETTINGS, chatgpt_reasoning_effort="high"), Event(), lambda *_: None,
+        )
+    assert error.value.code == "CHATGPT_UNSUPPORTED"
+    assert http.calls == []
 
 
 def test_chatgpt_streams_prompt_with_short_guidance_and_supported_fields_only():
@@ -251,3 +274,14 @@ def test_chatgpt_refusal_fails_job_without_falling_back_to_local_or_rendering(ap
     app.scheduler.run_next()
     assert app.get_job(job.id).error_code == "CHATGPT_REFUSED"
     assert app.images.inputs == [] and local.inputs == []
+
+
+@pytest.mark.parametrize("remote_code", ["unsupported_parameter", "unsupported_value"])
+def test_api_rejected_reasoning_fails_explicitly_without_retry_or_changed_effort(remote_code):
+    http = StreamHttp(ChatGPTHttpError(400, remote_code))
+    settings = replace(SETTINGS, chatgpt_model="gpt-5.4", chatgpt_reasoning_effort="high")
+    with pytest.raises(MoruError) as error:
+        ChatGPTPrompts(Auth(), http).create("girl", settings, Event(), lambda *_: None)
+    assert error.value.code == "CHATGPT_UNSUPPORTED"
+    assert len(http.calls) == 1
+    assert http.calls[0][1]["reasoning"] == {"effort": "high"}

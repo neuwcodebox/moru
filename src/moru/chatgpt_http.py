@@ -12,6 +12,8 @@ from urllib.request import Request, urlopen
 from moru.errors import MoruError
 
 ERROR_CODES = {
+    "unsupported_parameter": "CHATGPT_UNSUPPORTED",
+    "unsupported_value": "CHATGPT_UNSUPPORTED",
     "subscription_sharing_user_not_eligible": "CHATGPT_NOT_ELIGIBLE",
     "subscription_sharing_usage_limit_exceeded": "CHATGPT_USAGE_LIMIT",
     "subscription_sharing_unsupported_capability": "CHATGPT_UNSUPPORTED",

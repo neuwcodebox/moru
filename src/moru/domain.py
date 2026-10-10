@@ -24,6 +24,7 @@ class PromptSettings:
     reasoning_level: Literal["low", "medium", "high"] = "medium"
     provider: Literal["local", "chatgpt"] = "local"
     chatgpt_model: str = ""
+    chatgpt_reasoning_effort: str = "default"
 
     def __post_init__(self):
         if not isinstance(self.provider, str) or self.provider not in ("local", "chatgpt"):
@@ -31,6 +32,12 @@ class PromptSettings:
         if not isinstance(self.chatgpt_model, str) or len(self.chatgpt_model) > 200:
             raise MoruError("INVALID_SETTINGS")
         if self.provider == "chatgpt" and not self.chatgpt_model.strip():
+            raise MoruError("INVALID_SETTINGS")
+        if not isinstance(self.chatgpt_reasoning_effort, str) or (
+            self.chatgpt_reasoning_effort not in (
+                "default", "none", "minimal", "low", "medium", "high", "xhigh", "max",
+            )
+        ):
             raise MoruError("INVALID_SETTINGS")
         if type(self.context_size) is not int or not 1024 <= self.context_size <= 32768:
             raise MoruError("INVALID_SETTINGS")

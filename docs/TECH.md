@@ -1147,7 +1147,12 @@ ChatGPT 선택 시 로컬 LLM을 unload하고 memory_required는 0이다. Applic
 두 엔진의 이력 구성과 출력 검증은 `prompt_text.py`에서 공유한다. ChatGPT 구현은 로컬
 추론 모듈에 의존하지 않으며 각 엔진의 지침과 추론·스트림 처리는 해당 구현에 둔다.
 `ChatGPTHttp`는 표준 라이브러리 HTTPS/SSE로 `POST https://api.openai.com/v1/responses`에
-instructions·전체 input·선택 모델·store:false·stream:true만 보낸다. 로컬 추론 옵션은 전달하지 않는다.
+instructions·전체 input·선택 모델·store:false·stream:true를 보낸다. 로컬 추론 옵션은 전달하지 않는다.
+`chatgpt_reasoning_effort` 기본값은 `default`이며 선택한 경우에만 `reasoning.effort`를 보낸다.
+`chatgpt_options.py`는 공식 문서로 확인한 모델과 날짜별 snapshot의 추론 수준을 제공하고,
+알 수 없는 계정 모델 별칭은 기본값만 허용한다. bridge의 `get_chatgpt_reasoning_efforts`는
+네트워크 없이 같은 기준을 UI에 전달하며 실제 계정 정책에 따른 API 거절도 오류로 표시한다.
+
 답변 delta만 표시하고 response.completed 확인 후 기존 final_prompt로 검증한다.
 거절·실패·불완전·중단은 이미지 생성으로 이어지지 않는다. 취소는 socket과 stream을 닫는다.
 admission 401만 갱신 후 한 번 재요청하며 스트리밍 중 실패는 재요청하지 않는다.
@@ -1178,7 +1183,8 @@ GPT 모델 선택은 즉시 저장하며 실패 시 이전 선택을 유지한�
 첫 로그인 안내 중에는 ModelsDialog의 렌더링을 일시 중단하고 준비 선택을 유지하여, 안내를 닫으면
 선택했던 ChatGPT 설정으로 돌아온다. 두 모달의 focus trap을 동시에 활성화하지 않는다.
 SettingsDialog는 준비된 제공자 선택과 이미지 생성 옵션을 표시하고, 접힌 고급 설정에 PromptOptions를 둔다.
-최근 요청 수는 공통으로 표시하고 로컬 전용 추론 옵션은 ChatGPT 선택 시 숨긴다. 제공자를 바꿔도
+최근 요청 수는 공통으로 표시하고 ChatGPT 선택 시 `ChatGPTPromptOptions`의 추론 수준을 표시한다.
+로컬 전용 추론 옵션은 숨기며 두 제공자의 값을 따로 보관한다. 제공자를 바꿔도
 draft를 유지하며 모든 닫기 경로에서 변경된 이미지·프롬프트 설정을 `update_settings`에 전달한다.
 저장 성공 후에만 닫으며 변경이 없으면 bridge 호출을 생략한다. 폼 검증은 닫기 시점에 수행하고
 숨겨진 고급 필드가 잘못되면 해당 영역을 펼친다. 저장 중에는 fieldset을 비활성화하며 ref로 중복 호출을 막는다.
