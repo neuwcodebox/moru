@@ -70,6 +70,14 @@ export type Project = ProjectInfo & {
   images: ImageItem[];
   unfinished_requests: UnfinishedRequest[];
 };
+export type PromptSource = {
+  tool: "search_tags" | "get_tag_info" | "get_related_tags";
+  query: string;
+  result: string[]
+    | { name: string | null; description: string | null; deprecated?: boolean }
+    | { cooccurring: string[]; wiki_links: string[] }
+    | { error: string };
+};
 export type ImageDetails = { id: string; prompt: string; settings: Settings; model_name: string };
 export type Job = {
   id: string;
@@ -84,6 +92,7 @@ export type Job = {
   error_code: string | null;
   message?: string | null;
   thinking_enabled?: boolean;
+  found_tag_count?: number;
   prompt_text?: string;
   turn_id?: string | null;
 };

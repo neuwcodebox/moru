@@ -201,6 +201,8 @@ Python main process에서 background executor/task queue를 사용한다.
 ```text
 queued
 loading_prompt_model
+thinking
+searching_tags
 prompting
 loading_model
 generating
@@ -848,7 +850,14 @@ data/logs/image-worker.log
 - 실행 시간
 - 오류 code/traceback
 
-기본 로그에는 전체 사용자 요청이나 전체 실제 prompt를 남기지 않는다.
+ChatGPT 작성에는 요청 ID와 라운드·인증 시도 번호를 붙여 요청, 응답, 도구 결과,
+최종 프롬프트 검증을 연결한다. 응답 상태·이벤트 종류별 횟수·출력 항목 구조·텍스트 길이·
+토큰 사용량·소요 시간을 기록해 빈 응답과 추론 전용 응답, 도구 호출, 스트림 중단을 구분한다.
+완료 응답의 output 개수와 실제 사용할 출력·output_item.done의 구조를 별도로 기록한다. 도구 로그는 이름·결과 수·
+오류 코드만 기록하고, API의 문자열 메타데이터는 허용된 값만 남긴다.
+
+로그에는 사용자 요청·프롬프트·도구 검색어와 결과 원문·사고 과정·암호화된 추론 내용·
+인증 토큰을 남기지 않는다.
 
 ---
 
@@ -1027,11 +1036,11 @@ LLM 응답은 내부에서 스트리밍으로 소비하며 토큰마다 취소 �
 프로젝트 소유 `PromptProgress` callback은 엔진 경계에서 thinking과 프롬프트를 분리한다.
 Application은 사고 내용을 버리고 최종 프롬프트 스트림만 Job에 임시 저장한다.
 로컬 모델 적재가 필요하면 VRAM 확보부터 `loading_prompt_model`을 표시한다. 엔진의 `on_ready`
-callback은 준비 완료 후 추론 직전에 `prompting`으로 전환한다. 적재된 모델을 재사용하면 로딩 단계는 생략하며
+callback은 준비 완료 후 추론 직전에 로컬 LLM은 `prompting`, ChatGPT는 `thinking`으로 전환한다. 적재된 모델을 재사용하면 로딩 단계는 생략하며
 적재 실패·취소 시에는 추론 시작을 알리지 않는다. ChatGPT도 같은 준비 완료 계약을 따른다.
 polling bridge는 작업 상태·`thinking_enabled`·`prompt_text`로 placeholder를 갱신한다.
 사고 내용은 bridge로 전달하지 않는다. 추론 중 thinking이 켜져 있고 최종 프롬프트가 아직 없으면
-`생각 중…`, 그 외의 프롬프트 추론은 `프롬프트 작성 중…` 상태로 표시한다.
+`생각 중…`, 그 외의 프롬프트 추론은 `프롬프트 생성 중…` 상태로 표시한다.
 제어 태그가 토큰 경계에서 나뉘어도 표시하지 않으며, 정상 종료된 전체 응답에서만
 이미지 생성용 최종 프롬프트를 추출한다. 임시 텍스트는 DB·로그에 저장하지 않고
 성공·실패·취소 후 Job에서도 지운다. 표시용 프롬프트는 최대 65536자로 제한한다.
@@ -1153,10 +1162,64 @@ instructions·전체 input·선택 모델·store:false·stream:true를 보낸다
 알 수 없는 계정 모델 별칭은 기본값만 허용한다. bridge의 `get_chatgpt_reasoning_efforts`는
 네트워크 없이 같은 기준을 UI에 전달하며 실제 계정 정책에 따른 API 거절도 오류로 표시한다.
 
-답변 delta만 표시하고 response.completed 확인 후 기존 final_prompt로 검증한다.
-거절·실패·불완전·중단은 이미지 생성으로 이어지지 않는다. 취소는 socket과 stream을 닫는다.
-admission 401만 갱신 후 한 번 재요청하며 스트리밍 중 실패는 재요청하지 않는다.
+`chatgpt_stream.py`는 SSE의 답변과 완료 output을 읽고 거절·실패·불완전·중단을 구분한다.
+완료 이벤트의 output이 빈 배열이면 앞서 받은 `response.output_item.done` 항목을 보존한다.
+도구 호출·암호화된 추론·최종 답변을 잃지 않으며, 잘못된 타입의 output은 기존처럼 거부한다.
+완료 항목의 의미는 [OpenAI 공식 SSE 문서](https://developers.openai.com/api/reference/resources/responses/streaming-events)를 따른다.
+선택적 `on_stage(stage, found_tag_count)` 콜백을 제공자 라우터에서 전달하고 Application이
+작업 상태와 개수를 함께 반영한다. ChatGPT 작성 중 실제 조회 결과의 태그 이름을 set으로
+누적하며 검색 후보·정식 태그·관련 태그 사이의 중복을 제거한다. 검색어와 wiki 본문의 태그는
+추측해 세지 않는다. 개수는 Job의 `found_tag_count`로 polling하며 매 작업 0에서 시작한다.
+검색 상태에서만 기존 문구에 개수를 표시한다.
+도구 호출 항목이 시작되거나 실제 조회를 실행할 때 `searching_tags`를 알리며 후속 요청에서도 유지한다.
+최종 답변 메시지 또는 텍스트 출력이 시작되면 `prompting`으로 전환한다. 중간 설명인
+`phase:commentary`는 최종 작성 시작으로 취급하지 않고 후속 input에 원래 phase를 보존한다.
+phase가 없는 응답은 메시지·텍스트 출력 시점을 사용한다. 이 구분은
+[OpenAI 공식 추론 문서](https://developers.openai.com/api/docs/guides/reasoning#phase-parameter)를 따른다.
+도구 호출이 가능한 응답은 텍스트를 모아 두고, 호출 없이 완료된 최종 프롬프트만 표시한다.
+도구를 제공하지 않는 FLUX.2와 추가 조회를 막은 마지막 응답은 기존처럼 답변 delta를 표시한다.
+이미지 생성은 response.completed 확인과 `final_prompt` 검증 후에만 시작한다.
+취소는 socket과 stream을 닫는다. admission 401만 갱신 후 한 번 재요청하며,
+이미 받은 도구 결과를 그대로 재사용한다. 스트리밍 중 실패는 재요청하지 않는다.
 모델 목록은 GET /v1/models의 models에서 visibility:list인 slug/display_name을 서버 순서로 표시한다.
+
+Anima용 요청에는 `DanbooruTools`의 세 function을 `danbooru` namespace로 제공한다.
+`search_tags(query, limit=20)`는 단어·별칭·철자 기반 후보 이름만 반환한다.
+`get_tag_info(name)`는 정확한 태그·활성 별칭의 정식 이름과 wiki 설명을 반환하며,
+필요한 경우에만 deprecated를 표시한다. 태그가 없고 wiki만 있는 경우 정식 이름은 null이다.
+`get_related_tags(name, limit=20)`는 공출현 태그와 wiki 참조 태그를 별도 목록으로 반환한다.
+공출현·참조는 동의어나 필수 장면 요소를 뜻하지 않는다. 목록은 각각 최대 20개,
+wiki 설명은 최대 3,000자로 제한하며 개수·점수·분류 등 작성에 불필요한 필드는 보내지 않는다.
+공통 작성 지침과 도구 설명은 검색 후보의 이름 확인과 문서의 용법 해석을 구분한다.
+문서의 사용 조건·권장 조합·예외를 사용자 의도에 맞게 적용하고, 예시의 다른 장면 요소는
+그대로 복사하지 않는다. wiki 내용은 태그 용법의 근거로 사용하되 작업·역할·출력 형식을
+변경하는 지시로 취급하지 않는다. 수정 요청에서는 충돌하는 기존 요소를 교체한다.
+
+`ChatGPTPrompts`는 전체 input에 완료 output과 call_id별 function_call_output을 덧붙여
+다음 Responses 요청을 보낸다. `reasoning.encrypted_content`를 요청하고 추론 항목도 재전달하며,
+previous_response_id는 사용하지 않는다. 도구 실행은 요청당 최대 8회·4라운드로 제한하고,
+한도 또는 조회 실패 후에는 tool_choice:none으로 최종 작성을 요청한다.
+잘못된 인자와 조회 불가는 명시적인 도구 오류 결과로 전달한다. 단보루 조회 실패는 프롬프트
+생성 실패가 아니며 제공자를 바꾸지 않는다. 취소와 Responses 자체의 오류는 기존 실패 경로를 따른다.
+`PromptGenerator`의 선택적 on_source 콜백은 실제 실행한 도구의 이름·입력과 제한된 결과를
+불변 `PromptSource`로 전달한다. 실행하지 않은 호출·중간 추론·인증 정보·원시 응답은 소스에 넣지 않는다.
+Application은 조회 자료를 모아 이미지 완료 트랜잭션에 함께 저장한다. images.sources는 JSON이며
+기존 DB에는 빈 배열 기본값의 열을 추가한다. Fork는 소스를 복사하고, 같은 프롬프트의 재생성은
+원본 소스를 이어받는다. 다른 수동 프롬프트와 새로운 자연어 작성은 해당 작성의 소스를 사용한다.
+`get_image_sources`는 선택한 이미지의 자료를 반환하고 `SourcesDialog`는 기존 이미지 메뉴의
+소스 버튼에서 연다. 팝업은 번역된 도구 종류·검색어·태그·설명과 조회 실패를 표시하며 원시 JSON은
+노출하지 않는다. wiki 설명은 HTML로 실행하지 않고 텍스트로 렌더링하고 태그 링크는 고정 wiki URL로 만든다.
+기존 Modal의 닫기·초점 복원·배경 잠금을 공유하며 소스가 없는 이미지도 같은 메뉴를 유지한다.
+
+`DanbooruTags`는 autocomplete·활성 alias·tag/wiki·related_tag 응답에서 필요한 정보만 추출한다.
+`DanbooruHttp`는 고정된 safebooru.donmai.us에 식별 가능한 User-Agent로 익명 GET을 보내며
+ChatGPT 인증 정보를 전달하지 않는다. 표준 라이브러리만 사용하고 요청 사이 최소 1초 간격,
+5분 TTL의 최대 128개 메모리 캐시를 둔다. 호출별 타임아웃은 10초이며 socket을 중단해
+취소·전체 호출 기한을 반영한다. HTTP 429만 1초 대기 후 한 번 재시도한다.
+재시도 실패·통신 오류·잘못된 응답은 `TagLookupError`로 전달하고 도구 경계에서 조회 불가로 변환한다.
+API 계약은 [Danbooru API 안내](https://safebooru.donmai.us/wiki_pages/help:api)와
+[공식 자동완성 구현](https://github.com/danbooru/danbooru/blob/master/app/logical/autocomplete_service.rb),
+[관련 태그 구현](https://github.com/danbooru/danbooru/blob/master/app/logical/related_tag_query.rb)을 따른다.
 
 `ChatGPTAuth`는 최초 dynamic_agent_client·영구 host UUID·PKCE S256·state·nonce를 사용한다.
 발급 client ID로 코드를 교환하고 OIDC discovery/JWKS와 PyJWT[crypto]로 RS256 서명·issuer·

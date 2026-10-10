@@ -325,6 +325,8 @@ class LlamaPrompts:
         history: tuple[PromptTurn, ...] = (),
         model_id: str = "anima-turbo-v1.1",
         on_ready=None,
+        on_source=None,
+        on_stage=None,
     ) -> str:
         return self._complete(
             prompt_messages(text, history=history, model_id=model_id),
@@ -345,6 +347,8 @@ class LlamaPrompts:
         history: tuple[PromptTurn, ...] = (),
         model_id: str = "anima-turbo-v1.1",
         on_ready=None,
+        on_source=None,
+        on_stage=None,
     ) -> str:
         return self._complete(
             prompt_messages(text, prompt, history, model_id),

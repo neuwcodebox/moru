@@ -16,10 +16,13 @@ from moru.chatgpt_http import ChatGPTHttp
 from moru.chatgpt_prompts import ChatGPTPrompts
 from moru.clipboard import copy_image, copy_text
 from moru.config import ModelPaths, application_root
+from moru.danbooru import DanbooruTags
+from moru.danbooru_http import DanbooruHttp
 from moru.diagnostics import PrivateTracebackFormatter
 from moru.downloads import ModelDownloads
 from moru.language import model_file_filter, startup_language, startup_message
 from moru.prompt_providers import PromptProviders
+from moru.prompt_tools import DanbooruTools
 from moru.prompting import LlamaPrompts
 from moru.repository import Repository
 from moru.service import Application
@@ -102,7 +105,9 @@ def _run_desktop(root, comfy_root, arguments):
         )
         chatgpt_http = ChatGPTHttp()
         chatgpt_auth = ChatGPTAuth(CredentialStore(credential_path()), http=chatgpt_http)
-        chatgpt_prompts = ChatGPTPrompts(chatgpt_auth, chatgpt_http)
+        chatgpt_prompts = ChatGPTPrompts(
+            chatgpt_auth, chatgpt_http, tag_tools=DanbooruTools(DanbooruTags(DanbooruHttp())),
+        )
         application = Application(
             Repository(root / "data/anima.db"),
             PromptProviders(LlamaPrompts(paths), chatgpt_prompts),

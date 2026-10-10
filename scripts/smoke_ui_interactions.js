@@ -74,6 +74,51 @@
             throw new Error('Prompt extends beyond its image frame');
         return true;
     };
+    const checkSources = async (turn) => {
+        const sourcesButton = [...turn.querySelectorAll('.image-actions > button')]
+            .find(button => button.textContent.trim() === '소스');
+        sourcesButton.focus();
+        sourcesButton.click();
+        await waitFor(() => document.querySelector('.sources-dialog'));
+        const sourceDialog = document.querySelector('.sources-dialog');
+        if (!sourceDialog.textContent.includes('scene 3, version 2') ||
+            !sourceDialog.textContent.includes('crossed_arms') ||
+            sourceDialog.querySelectorAll('.prompt-source').length !== 3)
+            throw new Error('Sources are not tied to the selected image version');
+        if ([...sourceDialog.querySelectorAll('a')].some(link =>
+            !link.href.startsWith('https://safebooru.donmai.us/wiki_pages/')))
+            throw new Error('Unexpected reference URL');
+        await call('capture_view', 'sources_top');
+        const isolated = await checkModalScroll(sourceDialog, 'sources');
+        arrow('Escape');
+        await waitFor(() => !document.querySelector('.sources-dialog'));
+        await new Promise((resolve, reject) => {
+            if (document.activeElement === sourcesButton) return resolve();
+            const timeout = setTimeout(() => {
+                document.removeEventListener('focusin', focused);
+                reject(new Error('Source focus was not restored: ' + JSON.stringify({
+                    active: document.activeElement?.tagName,
+                    text: document.activeElement?.textContent?.slice(0, 40),
+                    connected: sourcesButton.isConnected,
+                    disabled: sourcesButton.disabled,
+                    inert: document.querySelector('.conversation').inert,
+                    documentFocus: document.hasFocus(),
+                })));
+            }, 15000);
+            function focused() {
+                if (document.activeElement === sourcesButton) {
+                    clearTimeout(timeout);
+                    document.removeEventListener('focusin', focused);
+                    resolve();
+                }
+            }
+            document.addEventListener('focusin', focused);
+        });
+        return isolated;
+    };
+    if (window.moruSourcesSmokeOnly) {
+        return {ok: true, sourcesDialog: await checkSources(turns()[2])};
+    }
     const first = turns()[0];
     first.scrollIntoView({block: 'center'});
     first.querySelector('.image-button').dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
@@ -184,12 +229,13 @@
     arrow('Escape');
     await waitFor(() => !document.querySelector('.modal'));
     if (conversation.scrollTop !== 0) throw new Error(`Closing settings moved the reading position to ${conversation.scrollTop}`);
-    [...document.querySelectorAll('header button')].find(button => button.textContent.includes('모델 설정')).click();
+    [...document.querySelectorAll('header button')].find(button => button.textContent.includes('모델 준비')).click();
     await waitFor(() => document.querySelectorAll('.model-row').length === 5);
     const modelsScrollIsolated = await checkModalScroll(document.querySelector('.modal'), 'models');
     arrow('Escape');
     await waitFor(() => !document.querySelector('.modal'));
     if (conversation.scrollTop !== 0) throw new Error('Closing model settings moved the reading position');
+    const sourcesDialog = await checkSources(third);
     await call('mark_stage', 'all dialog scrolls isolated');
     turns()[1].querySelectorAll('.image-actions > button')[3].click();
     await waitFor(() => document.querySelector('.action-toast'));
@@ -228,7 +274,7 @@
         stableCopyLayout, singleConversationScroll, centeredHoverPrompt, centeredGenerationPrompt,
         boundedPromptScroll: true, requestedPlaceholderRatio: true, viewerScrollIsolated: true,
         cursorZoomAnchored: true, viewportZoomAnchored: true,
-        settingsScrollIsolated, modelsScrollIsolated, promptDialogScrollIsolated,
+        settingsScrollIsolated, modelsScrollIsolated, promptDialogScrollIsolated, sourcesDialog,
         hoverResetAfterViewer: true, hoverPrompt: true, keyboardConversation: true, keyboardViewer: true,
         forkFeedback, forkedRows: forked.project.images.length,
         originalRows: original.images.length, newSession: forked.project.id !== original.id,

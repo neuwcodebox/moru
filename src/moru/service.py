@@ -38,6 +38,7 @@ class Job:
     thinking_enabled: bool = False
     prompt_text: str = ""
     turn_id: str | None = None
+    found_tag_count: int = 0
 
 
 class Application:
@@ -204,9 +205,10 @@ class Application:
         self._cancelled = Event()
         try:
             prompt_settings = self.get_prompt_settings()
-            job = replace(job, thinking_enabled=(
-                prompt_settings.provider == "local" and prompt_settings.thinking
-            ))
+            job = replace(
+                job,
+                thinking_enabled=(prompt_settings.provider == "local" and prompt_settings.thinking),
+            )
             self._jobs[job.id] = job
             self._executor.submit(self._generate, job.id, request, self._cancelled, prompt_settings)
         except Exception as exc:
@@ -233,6 +235,16 @@ class Application:
         with self._lock:
             self._jobs[job_id] = replace(self._jobs[job_id], state=state, step=step, total=total)
 
+    def _prompt_stage(self, job_id, stage, found_tag_count):
+        with self._lock:
+            self._jobs[job_id] = replace(
+                self._jobs[job_id],
+                state=stage,
+                found_tag_count=found_tag_count,
+                step=None,
+                total=None,
+            )
+
     @staticmethod
     def _check_cancelled(cancelled: Event):
         if cancelled.is_set():
@@ -245,7 +257,14 @@ class Application:
         try:
             log.info("generation started id=%s", job_id)
             self._check_cancelled(cancelled)
-            prompt = self._prepare_prompt(job_id, request, prompt_settings, cancelled)
+            sources = []
+            prompt = self._prepare_prompt(
+                job_id,
+                request,
+                prompt_settings,
+                cancelled,
+                sources.append,
+            )
             self._check_cancelled(cancelled)
             settings = request.settings
             if settings.seed is None:
@@ -273,6 +292,7 @@ class Application:
                 settings,
                 self._now(),
                 request.kind,
+                sources=tuple(sources),
             )
             # Cancellation and persistence share a lock: committed success stays successful.
             with self._lock:
@@ -311,12 +331,17 @@ class Application:
             with self._lock:
                 self._active_job = None
 
-    def _prepare_prompt(self, job_id, request, settings, cancelled) -> str:
+    def _prepare_prompt(self, job_id, request, settings, cancelled, on_source) -> str:
         if request.kind == "manual":
+            base = self.repository.get_image(request.base_image_id)
+            if request.text == base.prompt:
+                for source in base.sources:
+                    on_source(source)
             self._prompt_progress(job_id, request.text)
             return request.text
         required_memory = self.prompts.memory_required(settings)
-        self._progress(job_id, "loading_prompt_model" if required_memory else "prompting")
+        ready_state = "thinking" if settings.provider == "chatgpt" else "prompting"
+        self._progress(job_id, "loading_prompt_model" if required_memory else ready_state)
         if settings.provider == "local" or required_memory:
             self.images.reserve_memory(required_memory, cancelled)
         self._check_cancelled(cancelled)
@@ -335,8 +360,11 @@ class Application:
                     break
             history = history[-settings.history_turns :]
         context = {
-            "history": tuple(history), "model_id": request.settings.model_id,
-            "on_ready": lambda: self._progress(job_id, "prompting"),
+            "history": tuple(history),
+            "model_id": request.settings.model_id,
+            "on_ready": lambda: self._progress(job_id, ready_state),
+            "on_stage": lambda stage, count: self._prompt_stage(job_id, stage, count),
+            "on_source": on_source,
         }
 
         if request.base_image_id:
@@ -364,9 +392,7 @@ class Application:
 
     def _prompt_progress(self, job_id, prompt):
         with self._lock:
-            self._jobs[job_id] = replace(
-                self._jobs[job_id], prompt_text=prompt[-65536:]
-            )
+            self._jobs[job_id] = replace(self._jobs[job_id], prompt_text=prompt[-65536:])
 
     def _write_image(self, prompt, settings, output_path, progress, cancelled):
         if self.images.needs_prompt_unload(settings, cancelled):

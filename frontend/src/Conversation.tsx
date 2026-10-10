@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import {
+  BookOpen,
   ChevronLeft,
   ChevronRight,
   CircleAlert,
@@ -106,6 +107,7 @@ export default function Conversation({
   onBottomChange,
   onViewImage,
   onShowPrompt,
+  onShowSources,
   onFork,
   onSelectVersion,
   onRegenerate,
@@ -124,6 +126,7 @@ export default function Conversation({
   onBottomChange: (bottom: boolean) => void;
   onViewImage: (turnId: string) => void;
   onShowPrompt: (id: string) => void;
+  onShowSources: (id: string, trigger: HTMLButtonElement) => void;
   onFork: (id: string) => void;
   onSelectVersion: (id: string) => void;
   onRegenerate: (id: string) => void;
@@ -249,6 +252,9 @@ export default function Conversation({
                 />
                 <button disabled={busy} onClick={() => onFork(image.id)}>
                   <GitBranch size={15} aria-hidden="true" /> {t("fork")}
+                </button>
+                <button disabled={busy} onClick={(event) => onShowSources(image.id, event.currentTarget)}>
+                  <BookOpen size={15} aria-hidden="true" /> {t("sources")}
                 </button>
                 <VersionSelector
                   versions={image.versions}

@@ -1,6 +1,7 @@
 """Explicit pywebview bridge. No filesystem paths or tracebacks cross the boundary."""
 
 import base64
+import json
 import logging
 from dataclasses import asdict
 from functools import wraps
@@ -385,6 +386,14 @@ class Api:
             ),
             "settings": settings_to_wire(image.settings),
         }
+
+    @endpoint
+    def get_image_sources(self, image_id):
+        image = self._app.repository.get_image(image_id)
+        return [
+            {"tool": source.tool, "query": source.query, "result": json.loads(source.result_json)}
+            for source in image.sources
+        ]
 
     @endpoint
     def get_image_source(self, image_id):

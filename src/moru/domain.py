@@ -127,6 +127,13 @@ class Request:
 
 
 @dataclass(frozen=True)
+class PromptSource:
+    tool: str
+    query: str
+    result_json: str
+
+
+@dataclass(frozen=True)
 class Image:
     id: str
     project_id: str
@@ -137,3 +144,4 @@ class Image:
     settings: GenerationSettings
     created_at: str
     generation_method: RequestKind
+    sources: tuple[PromptSource, ...] = ()

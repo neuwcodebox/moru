@@ -21,11 +21,13 @@ import type {
   Project,
   ProjectInfo,
   PromptSettings,
+  PromptSource,
   ImageModel,
   Settings,
 } from "./api";
 import Lightbox from "./Lightbox";
 import PromptDialog from "./PromptDialog";
+import SourcesDialog from "./SourcesDialog";
 import SettingsDialog from "./SettingsDialog";
 import ModelsDialog from "./ModelsDialog";
 import Conversation from "./Conversation";
@@ -51,6 +53,8 @@ export default function App() {
   const [modelsKnown, setModelsKnown] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [chatgpt, setChatgpt] = useState<ChatGPTStatus | null>(null);
+  const sourceTrigger = useRef<HTMLElement | null>(null);
+  const [promptSources, setPromptSources] = useState<PromptSource[] | null>(null);
   const [details, setDetails] = useState<ImageDetails | null>(null);
   const [viewer, setViewer] = useState(false);
   const [activeTurn, setActiveTurn] = useState<string | null>(null);
@@ -65,7 +69,7 @@ export default function App() {
   const promptReady = promptSettings?.provider === "chatgpt"
     ? canUseChatGPT(chatgpt, promptSettings.chatgpt_model)
     : !modelsKnown || !!models.find((model) => model.id === "prompt")?.available;
-  const modalOpen = viewer || settingsOpen || modelsOpen || details !== null || !!chatgpt?.welcome_pending;
+  const modalOpen = viewer || settingsOpen || modelsOpen || details !== null || promptSources !== null || !!chatgpt?.welcome_pending;
   const activeImage =
     project?.images.find((image) => image.turn_id === activeTurn) ?? project?.images.at(-1);
   const actingNow = useRef(false);
@@ -86,6 +90,7 @@ export default function App() {
   useEffect(() => {
     setActiveTurn(null);
     setViewer(false);
+    setPromptSources(null);
     setNotice((previous) => previous?.id === project?.id ? previous : null);
   }, [project?.id]);
   useEffect(() => {
@@ -362,6 +367,13 @@ export default function App() {
             setDetails(await call<ImageDetails>("get_image_details", id));
           })
         }
+        onShowSources={(id, trigger) => {
+          // Loading disables menu buttons; remember the opener before native focus is lost.
+          sourceTrigger.current = trigger;
+          void act(async () => {
+            setPromptSources(await call<PromptSource[]>("get_image_sources", id));
+          });
+        }}
         onFork={(id) =>
           void act(async () => {
             if (!project) return;
@@ -546,6 +558,10 @@ export default function App() {
           {t("dialogs:chatgpt.gotIt")}
         </button></div>
       </Modal>}
+      {promptSources !== null && (
+        <SourcesDialog sources={promptSources} onClose={() => setPromptSources(null)}
+          onReturnFocus={() => sourceTrigger.current?.focus({ preventScroll: true })} />
+      )}
       {details && (
         <PromptDialog
           details={details}

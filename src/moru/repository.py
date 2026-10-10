@@ -7,7 +7,7 @@ from dataclasses import asdict, replace
 from pathlib import Path
 from threading import RLock
 
-from moru.domain import GenerationSettings, Image, Project, Request
+from moru.domain import GenerationSettings, Image, Project, PromptSource, Request
 from moru.errors import MoruError
 
 SCHEMA = """
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS images (
     request_id TEXT NOT NULL UNIQUE REFERENCES requests(id),
     parent_image_id TEXT REFERENCES images(id), prompt TEXT NOT NULL,
     image_path TEXT NOT NULL, settings TEXT NOT NULL, created_at TEXT NOT NULL,
-    generation_method TEXT NOT NULL
+    generation_method TEXT NOT NULL, sources TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS images_parent ON images(project_id, parent_image_id);
 CREATE INDEX IF NOT EXISTS requests_project ON requests(project_id);
@@ -55,6 +55,11 @@ class Repository:
             self._db.executescript(SCHEMA)
             self._db.execute("SELECT turn_id FROM requests LIMIT 0")
             with self._db:
+                columns = {row["name"] for row in self._db.execute("PRAGMA table_info(images)")}
+                if "sources" not in columns:
+                    self._db.execute(
+                        "ALTER TABLE images ADD COLUMN sources TEXT NOT NULL DEFAULT '[]'"
+                    )
                 self._db.execute(
                     "UPDATE requests SET status='failed', error_code='GENERATION_INTERRUPTED' "
                     "WHERE status='pending'"
@@ -172,7 +177,9 @@ class Repository:
             ):
                 raise MoruError("DATABASE_FAILED")
             db.execute(
-                "INSERT INTO images VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO images (id, project_id, request_id, parent_image_id, prompt, "
+                "image_path, settings, created_at, generation_method, sources) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     image.id,
                     image.project_id,
@@ -183,6 +190,7 @@ class Repository:
                     json.dumps(asdict(image.settings)),
                     image.created_at,
                     image.generation_method,
+                    json.dumps([asdict(source) for source in image.sources], ensure_ascii=False),
                 ),
             )
             db.execute(
@@ -365,5 +373,8 @@ class Repository:
         values = dict(row)
         values["settings"] = GenerationSettings(
             **json.loads(values["settings"]), allow_retired=True
+        )
+        values["sources"] = tuple(
+            PromptSource(**source) for source in json.loads(values["sources"])
         )
         return Image(**values)

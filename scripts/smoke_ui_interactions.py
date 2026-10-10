@@ -16,7 +16,7 @@ from PIL import Image as PngImage
 from moru.api import Api, endpoint
 from moru.clipboard import copy_image, copy_text
 from moru.config import application_root
-from moru.domain import GenerationSettings, Image, Project, Request
+from moru.domain import GenerationSettings, Image, Project, PromptSource, Request
 from moru.repository import Repository
 from moru.service import Application
 
@@ -74,6 +74,35 @@ def synthetic_history(repository, data_dir, root):
                     settings,
                     timestamp,
                     request.kind,
+                    sources=(
+                        PromptSource("search_tags", "arms crossed", '["crossed_arms"]'),
+                        PromptSource(
+                            "get_tag_info",
+                            "gray_hair",
+                            json.dumps(
+                                {
+                                    "name": "grey_hair",
+                                    "description": f"scene {number}, version {version}: "
+                                    "Grey-colored hair. "
+                                    + (
+                                        "Wiki reference text about grey hair.\n" * 60
+                                        if number == 3
+                                        else ""
+                                    ),
+                                }
+                            ),
+                        ),
+                        PromptSource(
+                            "get_related_tags",
+                            "grey_hair",
+                            json.dumps(
+                                {
+                                    "cooccurring": ["long_hair"],
+                                    "wiki_links": ["white_hair"],
+                                }
+                            ),
+                        ),
+                    ),
                 )
             )
             parent = image_id
@@ -86,6 +115,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--width", type=int, default=1080)
     parser.add_argument("--height", type=int, default=900)
+    parser.add_argument("--sources-only", action="store_true")
     args = parser.parse_args()
     root = application_root()
     review = root / "build" / f"ui-review-{uuid.uuid4().hex[:8]}"
@@ -112,7 +142,11 @@ def main():
             return [
                 {"id": model_id, "available": True, "filename": f"{model_id}.safetensors"}
                 for model_id in (
-                    "prompt", "anima-turbo-v1.1", "anima-aesthetic-v1.1", "text_encoder", "vae"
+                    "prompt",
+                    "anima-turbo-v1.1",
+                    "anima-aesthetic-v1.1",
+                    "text_encoder",
+                    "vae",
                 )
             ]
 
@@ -134,13 +168,19 @@ def main():
 
             task = window.native.Invoke(
                 Func[Object](
-                    lambda: window.native.browser.webview.CoreWebView2
-                    .CallDevToolsProtocolMethodAsync(
-                        "Input.dispatchMouseEvent",
-                        json.dumps({
-                            "type": "mouseWheel", "x": x, "y": y,
-                            "deltaX": 0, "deltaY": delta_y,
-                        }),
+                    lambda: (
+                        window.native.browser.webview.CoreWebView2.CallDevToolsProtocolMethodAsync(
+                            "Input.dispatchMouseEvent",
+                            json.dumps(
+                                {
+                                    "type": "mouseWheel",
+                                    "x": x,
+                                    "y": y,
+                                    "deltaX": 0,
+                                    "deltaY": delta_y,
+                                }
+                            ),
+                        )
                     )
                 )
             )
@@ -188,7 +228,17 @@ def main():
             from System import Func, Object
             from System.IO import FileMode, FileStream
 
-            if name not in ("hover", "copy", "viewer", "fork", "generation", "settings", "models"):
+            if name not in (
+                "hover",
+                "copy",
+                "viewer",
+                "fork",
+                "generation",
+                "settings",
+                "models",
+                "sources",
+                "sources_top",
+            ):
                 raise ValueError("unexpected capture name")
             stream = FileStream(str(review / f"{name}.png"), FileMode.Create)
             try:
@@ -240,7 +290,8 @@ def main():
 
             window.native.Invoke(Action(render_offscreen))
             window.evaluate_js(
-                Path(__file__).with_suffix(".js").read_text(encoding="utf-8"),
+                f"window.moruSourcesSmokeOnly = {str(args.sources_only).lower()};\n"
+                + Path(__file__).with_suffix(".js").read_text(encoding="utf-8"),
                 callback=lambda result: (results.append(result), completed.set()),
             )
             if not completed.wait(60):
@@ -251,38 +302,42 @@ def main():
                 json.dumps(report, ensure_ascii=False, indent=2), "utf-8"
             )
             assert report["ok"], report
-            assert report["imageClipboard"]["size"] == image_size
-            assert (
-                report["imageClipboard"]["png_sha256"]
-                == hashlib.sha256(fixture.read_bytes()).hexdigest()
-            )
-            assert report["imageClipboard"]["icon_size"][0] > 0
-            assert all(
-                report[field]
-                for field in (
-                    "textClipboardMatches",
-                    "stableCopyLayout",
-                    "singleConversationScroll",
-                    "centeredHoverPrompt",
-                    "centeredGenerationPrompt",
-                    "boundedPromptScroll",
-                    "requestedPlaceholderRatio",
-                    "viewerScrollIsolated",
-                    "cursorZoomAnchored",
-                    "viewportZoomAnchored",
-                    "hoverResetAfterViewer",
-                    "settingsScrollIsolated",
-                    "modelsScrollIsolated",
-                    "promptDialogScrollIsolated",
-                    "hoverPrompt",
-                    "keyboardConversation",
-                    "keyboardViewer",
-                    "forkFeedback",
-                    "newSession",
-                    "logo",
+            if args.sources_only:
+                assert report["sourcesDialog"]
+            else:
+                assert report["imageClipboard"]["size"] == image_size
+                assert (
+                    report["imageClipboard"]["png_sha256"]
+                    == hashlib.sha256(fixture.read_bytes()).hexdigest()
                 )
-            )
-            assert report["forkedRows"] == 2 and report["originalRows"] == 3
+                assert report["imageClipboard"]["icon_size"][0] > 0
+                assert all(
+                    report[field]
+                    for field in (
+                        "textClipboardMatches",
+                        "stableCopyLayout",
+                        "singleConversationScroll",
+                        "centeredHoverPrompt",
+                        "centeredGenerationPrompt",
+                        "boundedPromptScroll",
+                        "requestedPlaceholderRatio",
+                        "viewerScrollIsolated",
+                        "cursorZoomAnchored",
+                        "viewportZoomAnchored",
+                        "hoverResetAfterViewer",
+                        "settingsScrollIsolated",
+                        "modelsScrollIsolated",
+                        "promptDialogScrollIsolated",
+                        "sourcesDialog",
+                        "hoverPrompt",
+                        "keyboardConversation",
+                        "keyboardViewer",
+                        "forkFeedback",
+                        "newSession",
+                        "logo",
+                    )
+                )
+                assert report["forkedRows"] == 2 and report["originalRows"] == 3
         except Exception as exc:
             errors.append(exc)
         finally:

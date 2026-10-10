@@ -27,7 +27,9 @@
   "fork": "분기",
   "queued": "생성 대기 중…",
   "thinking": "생각 중…",
-  "writingPrompt": "프롬프트 작성 중…",
+  "searchingTags": "태그 검색 중…",
+  "searchingTagsWithCount": "태그 검색 중… ({{count}}개 찾음)",
+  "writingPrompt": "프롬프트 생성 중…",
   "loadingModel": "이미지 모델을 불러오는 중…",
   "loadingPromptModel": "프롬프트 모델을 불러오는 중…",
   "generating": "이미지 생성 중…",
@@ -45,5 +47,6 @@
   "language": "언어",
   "project": "작업 {{number}}",
   "viewerPosition": "{{image}} / {{images}} · 버전 {{version}} / {{versions}}",
-  "generationPrompt": "생성 프롬프트"
+  "generationPrompt": "생성 프롬프트",
+  "sources": "소스"
 }

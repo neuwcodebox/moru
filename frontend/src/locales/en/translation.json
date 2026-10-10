@@ -27,7 +27,10 @@
   "fork": "Fork",
   "queued": "Waiting to generate…",
   "thinking": "Thinking…",
-  "writingPrompt": "Writing the prompt…",
+  "searchingTags": "Searching tags…",
+  "searchingTagsWithCount_one": "Searching tags… ({{count}} tag found)",
+  "searchingTagsWithCount_other": "Searching tags… ({{count}} tags found)",
+  "writingPrompt": "Generating the prompt…",
   "loadingModel": "Loading the image model…",
   "loadingPromptModel": "Loading the prompt model…",
   "generating": "Generating image…",
@@ -45,5 +48,6 @@
   "language": "Language",
   "project": "Project {{number}}",
   "viewerPosition": "{{image}} / {{images}} · Version {{version}} / {{versions}}",
-  "generationPrompt": "Generation prompt"
+  "generationPrompt": "Generation prompt",
+  "sources": "Sources"
 }

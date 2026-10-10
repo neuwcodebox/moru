@@ -8,6 +8,8 @@ function progressLabel(job: Job): string {
   switch (job.state) {
     case "queued": return "queued";
     case "loading_prompt_model": return "loadingPromptModel";
+    case "thinking": return "thinking";
+    case "searching_tags": return "searchingTags";
     case "prompting": return job.thinking_enabled && !job.prompt_text ? "thinking" : "writingPrompt";
     case "loading_model": return "loadingModel";
     default: return "generating";
@@ -16,8 +18,7 @@ function progressLabel(job: Job): string {
 
 export default function GenerationProgress({ job }: { job: Job }) {
   const { t } = useTranslation();
-  const writing = job.state === "prompting";
-  const preparingPrompt = writing || job.state === "loading_prompt_model";
+  const preparingPrompt = ["prompting", "thinking", "searching_tags", "loading_prompt_model"].includes(job.state);
   return (
     <section
       className="generation-placeholder"
@@ -26,7 +27,11 @@ export default function GenerationProgress({ job }: { job: Job }) {
     >
       <div className="generation-stage" role="status" aria-live="polite">
         <LoaderCircle className="spinner" size={18} aria-hidden="true" />
-        <span>{t(progressLabel(job))}</span>
+        <span>
+          {job.state === "searching_tags" && job.found_tag_count != null
+            ? t("searchingTagsWithCount", { count: job.found_tag_count })
+            : t(progressLabel(job))}
+        </span>
         {job.step != null && job.total != null && (
           <span className="step-count">
             {job.step} / {job.total}

@@ -107,5 +107,19 @@
     "zoomIn": "Zoom in",
     "imageAlt": "Generated image in fullscreen",
     "loading": "Loading image"
+  },
+  "sources": {
+    "title": "Sources",
+    "empty": "No reference information was saved.",
+    "noResults": "No results found.",
+    "unavailable": "Lookup unavailable.",
+    "deprecated": "Deprecated tag",
+    "cooccurring": "Cooccurring tags",
+    "wikiLinks": "Wiki references",
+    "tools": {
+      "search_tags": "Tag search",
+      "get_tag_info": "Tag information",
+      "get_related_tags": "Related tags"
+    }
   }
 }

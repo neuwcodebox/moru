@@ -677,7 +677,7 @@ describe("conversation", () => {
     await screen.findByAltText("생성 이미지");
     await user.click(screen.getByText("수정"));
     await user.click(screen.getByText("이 프롬프트로 생성"));
-    await screen.findByText("프롬프트 작성 중…");
+    await screen.findByText("프롬프트 생성 중…");
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(api.generate_from_prompt).toHaveBeenCalledOnce();
     expect(screen.getByRole("alert").textContent).toContain(
@@ -710,7 +710,7 @@ describe("conversation", () => {
     expect(failure.style.aspectRatio).toBe("832 / 1216");
     expect(within(failure).getByRole("alert").textContent).toBe("이미지 생성에 실패했습니다. 다시 시도해 주세요.");
     await user.click(within(failure).getByRole("button", { name: "재시도" }));
-    await screen.findByText("프롬프트 작성 중…");
+    await screen.findByText("프롬프트 생성 중…");
     expect(screen.queryByText("이미지 생성에 실패했습니다. 다시 시도해 주세요.")).toBeNull();
     expect(api.retry_request).toHaveBeenCalledWith("r1");
   });
@@ -1678,4 +1678,54 @@ it("restores FLUX with its own files and saves family changes only in generation
   expect((screen.getByLabelText("시드") as HTMLInputElement).value).toBe("42");
   await user.click(screen.getByText("닫기", { selector: "button" }));
   expect(api.update_settings).not.toHaveBeenCalled();
+});
+
+
+it("opens saved references for the selected image version from its source menu", async () => {
+  const user = userEvent.setup();
+  current = { ...withImage, images: [{ ...image, id: "i2", versions: ["i1", "i2"] }] };
+  api.get_image_sources = vi.fn(async () => ({ ok: true, value: [
+    { tool: "search_tags", query: "arms crossed", result: ["crossed_arms"] },
+  ] }));
+  render(<App />);
+  const button = await screen.findByRole("button", { name: "소스" });
+  await user.click(button);
+  expect(api.get_image_sources).toHaveBeenCalledWith("i2");
+  const dialog = await screen.findByRole("dialog", { name: "소스" });
+  expect(within(dialog).getByText("arms crossed")).toBeTruthy();
+  expect(within(dialog).getByRole("link", { name: "crossed_arms" })).toBeTruthy();
+  expect(screen.getByRole("main", { hidden: true }).hasAttribute("inert")).toBe(true);
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.activeElement).toBe(button);
+});
+
+it("a failed source lookup keeps the conversation visible and reports the error", async () => {
+  current = structuredClone(withImage);
+  api.get_image_sources = vi.fn(async () => ({ ok: false, error: {
+    code: "DATABASE_FAILED", message: "private backend detail",
+  } }));
+  render(<App />);
+  await userEvent.click(await screen.findByRole("button", { name: "소스" }));
+  await screen.findByRole("alert");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.getByRole("button", { name: "소스" })).toBeTruthy();
+  expect(document.body.textContent).not.toContain("private backend detail");
+});
+
+
+it("restores the source opener even when native focus moves during the bridge request", async () => {
+  const user = userEvent.setup();
+  current = structuredClone(withImage);
+  let resolve!: (result: unknown) => void;
+  api.get_image_sources = vi.fn(() => new Promise(done => { resolve = done; }));
+  render(<App />);
+  const button = await screen.findByRole("button", { name: "소스" });
+  await user.click(button);
+  await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(true));
+  button.blur();
+  await act(async () => resolve({ ok: true, value: [] }));
+  await screen.findByRole("dialog", { name: "소스" });
+  await user.keyboard("{Escape}");
+  expect(document.activeElement).toBe(button);
 });

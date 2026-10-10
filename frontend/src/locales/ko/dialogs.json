@@ -107,5 +107,19 @@
     "zoomIn": "확대",
     "imageAlt": "생성 이미지 전체 화면",
     "loading": "이미지를 불러오는 중"
+  },
+  "sources": {
+    "title": "소스",
+    "empty": "저장된 참고 정보가 없습니다.",
+    "noResults": "검색 결과가 없습니다.",
+    "unavailable": "조회하지 못했습니다.",
+    "deprecated": "사용 중단된 태그",
+    "cooccurring": "공출현 태그",
+    "wikiLinks": "Wiki 참조 태그",
+    "tools": {
+      "search_tags": "태그 검색",
+      "get_tag_info": "태그 정보",
+      "get_related_tags": "관련 태그"
+    }
   }
 }
