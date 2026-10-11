@@ -41,7 +41,6 @@ def release_paths(tmp_path, monkeypatch):
     (application / "Moru.exe").write_bytes(b"application")
     (application / "licenses").mkdir()
     (application / "licenses/Moru-LICENSE.txt").write_text("GPL v3", encoding="utf-8")
-    (application / "Moru-source.zip").write_bytes(b"sources")
     (application / "SOURCE.txt").write_text("source notice", encoding="utf-8")
     release = tmp_path / "release"
     release.mkdir()
@@ -81,6 +80,7 @@ def test_release_is_published_only_after_its_7z_integrity_check(
     assert len(commands) == 2
     assert (release / "Moru.7z").read_bytes() == b"new release"
     assert not temporary.exists()
+    assert (release / "SOURCE.txt").read_text(encoding="utf-8") == "source notice"
     assert json.loads((release / "last-build.json").read_text(encoding="utf-8")) == {
         "application": str(application), "archive": str(release / "Moru.7z"),
     }
@@ -117,7 +117,7 @@ def test_missing_application_fails_before_starting_the_archiver(builder, tmp_pat
         builder["archive_release"](tmp_path / "missing", tmp_path / "release")
 
 
-@pytest.mark.parametrize("required", ["licenses/Moru-LICENSE.txt", "Moru-source.zip", "SOURCE.txt"])
+@pytest.mark.parametrize("required", ["licenses/Moru-LICENSE.txt", "SOURCE.txt"])
 def test_release_without_license_or_sources_is_rejected_before_archiving(
     builder, release_paths, monkeypatch, required,
 ):

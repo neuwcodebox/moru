@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import sys
 import uuid
-import zipfile
 from pathlib import Path
 
 from moru.config import application_root
@@ -43,44 +42,27 @@ def copy_licenses(destination: Path, root: Path):
         shutil.copy2(python_license, destination / "Python-LICENSE.txt")
 
 
-def copy_source_archive(application: Path, root: Path):
-    """Include the working sources used for this build, not a link to a moving branch."""
-    source_paths = (
-        "LICENSE", "README.md", "README.ko.md", "AGENTS.md", ".gitignore", ".python-version",
-        "app.py", "pyproject.toml", "uv.lock", "src", "frontend", "scripts", "tests", "docs",
-        "vendor/licenses", "vendor/comfyui-revision.txt",
-    )
-    temporary = application / "Moru-source.zip.part"
-    try:
-        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for repository, prefix, options in (
-                (root, "moru", ["--others", "--exclude-standard", "--", *source_paths]),
-                (root / "vendor/comfyui", "moru/vendor/comfyui", []),
-            ):
-                names = subprocess.check_output([
-                    "git", "-c", f"safe.directory={repository.as_posix()}",
-                    "-C", str(repository), "ls-files", "--cached", "-z", *options,
-                ]).decode("utf-8").split("\0")
-                included = 0
-                for name in sorted(set(names) - {""}):
-                    source = repository / name
-                    if not source.exists():
-                        continue  # Tracked files deleted in the working tree are not build inputs.
-                    if not source.resolve().is_relative_to(repository.resolve()):
-                        raise ValueError(f"Source file is outside its repository: {name}")
-                    archive.write(source, f"{prefix}/{name}")
-                    included += 1
-                if not included:
-                    raise RuntimeError(f"No source files found in {repository}")
-        os.replace(temporary, application / "Moru-source.zip")
-    finally:
-        temporary.unlink(missing_ok=True)
+def write_source_notice(application: Path, root: Path):
+    """Point to the exact public sources rather than bundling a source archive."""
+    git = ["git", "-c", f"safe.directory={root.as_posix()}", "-C", str(root)]
+    modified = subprocess.check_output(
+        [*git, "status", "--porcelain"], text=True,
+    ).strip()
+    if modified:
+        raise RuntimeError("Commit build inputs before generating their public source links")
+    revision = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+    comfy_revision = (root / "vendor/comfyui-revision.txt").read_text().strip()
     (application / "SOURCE.txt").write_text(
         "Moru - Copyright (C) 2026 Neuwcodebox\n"
         "Licensed under GNU GPL version 3 or later; distributed WITHOUT ANY WARRANTY.\n"
         "You may modify and redistribute Moru under the terms in licenses/Moru-LICENSE.txt.\n\n"
-        "Moru-source.zip contains the Moru and pinned ComfyUI sources for this build,\n"
-        "including build scripts and lockfiles. Setup instructions: README.md and docs/TECH.md.\n"
+        "Source code for this build, including build scripts and lockfiles:\n"
+        f"Moru: https://github.com/neuwcodebox/moru/tree/{revision}\n"
+        f"Download: https://github.com/neuwcodebox/moru/archive/{revision}.zip\n"
+        f"ComfyUI: https://github.com/Comfy-Org/ComfyUI/tree/{comfy_revision}\n"
+        f"Download: https://github.com/Comfy-Org/ComfyUI/archive/{comfy_revision}.zip\n"
+        "To rebuild, clone the Moru repository and checkout the Moru revision above.\n"
+        "Setup instructions: README.md and docs/TECH.md in the Moru sources.\n"
         "Other dependencies retain their licenses in licenses/dependencies and licenses/frontend.\n"
         "Dependency versions and upstream download locations are recorded in uv.lock and\n"
         "frontend/package-lock.json. Models are downloaded separately under their own licenses.\n\n"
@@ -104,7 +86,7 @@ def archive_release(application: Path, release: Path):
     application, release = application.resolve(), release.resolve()
     if not (application / "Moru.exe").is_file():
         raise FileNotFoundError("Build Moru.exe before creating its 7z archive")
-    for required in ("licenses/Moru-LICENSE.txt", "Moru-source.zip", "SOURCE.txt"):
+    for required in ("licenses/Moru-LICENSE.txt", "SOURCE.txt"):
         if not (application / required).is_file():
             raise FileNotFoundError(f"Rebuild the portable application to include {required}")
     executable = seven_zip()
@@ -125,6 +107,7 @@ def archive_release(application: Path, release: Path):
         json.dumps({"application": str(application), "archive": str(archive)}),
         encoding="utf-8",
     )
+    shutil.copy2(application / "SOURCE.txt", release / "SOURCE.txt")
     print(f"Portable 7z: {archive}")
 
 
@@ -227,7 +210,7 @@ def main():
     for directory in ("models", "data"):
         (application / directory).mkdir(exist_ok=True)
     copy_licenses(application / "licenses", root)
-    copy_source_archive(application, root)
+    write_source_notice(application, root)
     (application / "README.txt").write_text(
         "Moru\n\n7z 전체를 압축 해제한 뒤 Moru.exe를 실행하세요.\n"
         "모델 준비 창에서 모델을 다운로드하거나 로컬 파일을 선택합니다.\n"
@@ -237,7 +220,7 @@ def main():
         "FLUX.2 klein 4B: Steps 4, CFG 1. Seed Auto.\n\n"
         "라이선스: GNU GPL v3 이상 (GPL-3.0-or-later). 저작권 (C) 2026 Neuwcodebox.\n"
         "보증 없이 제공되며 GPL 조건에 따라 수정·재배포할 수 있습니다.\n"
-        "전문: licenses/Moru-LICENSE.txt. 소스: Moru-source.zip 및 SOURCE.txt.\n"
+        "전문: licenses/Moru-LICENSE.txt. 소스 다운로드: SOURCE.txt.\n"
         "의존성과 모델은 각각의 라이선스를 따릅니다.\n",
         encoding="utf-8",
     )
