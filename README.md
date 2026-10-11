@@ -120,3 +120,8 @@ The same setup and workflow apply, with `data/` and `models/` stored in that fol
 
 See [TECH.md](docs/TECH.md#개발-및-검증) for development setup, tests, and portable builds,
 and [SPEC.md](docs/SPEC.md) for detailed product behavior.
+
+## License
+
+Moru is licensed under [GPL-3.0-or-later](LICENSE).
+Third-party libraries and models are covered by their own licenses.

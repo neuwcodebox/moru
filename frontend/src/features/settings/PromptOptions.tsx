@@ -14,7 +14,7 @@ export default function PromptOptions({ settings, local, onChange }: {
   return <>
     <label>
       {t("settings.historyTurns")}
-      <input type="number" min={0} max={20} required
+      <input name="history_turns" type="number" min={0} max={20} required
         value={Number.isNaN(settings.history_turns) ? "" : settings.history_turns}
         onChange={(event) => number("history_turns", event.target.value)} />
     </label>
@@ -23,25 +23,25 @@ export default function PromptOptions({ settings, local, onChange }: {
       <div className="field-grid">
         <label>
           {t("settings.contextSize")}
-          <input type="number" min={1024} max={32768} required
+          <input name="context_size" type="number" min={1024} max={32768} required
             value={Number.isNaN(settings.context_size) ? "" : settings.context_size}
             onChange={(event) => number("context_size", event.target.value)} />
         </label>
         <label>
           {t("settings.maxTokens")}
-          <input type="number" min={1} max={32767} required
+          <input name="max_tokens" type="number" min={1} max={32767} required
             value={Number.isNaN(settings.max_tokens) ? "" : settings.max_tokens}
             onChange={(event) => number("max_tokens", event.target.value)} />
         </label>
       </div>
       <label className="checkbox-field">
-        <input type="checkbox" checked={settings.thinking}
+        <input name="thinking" type="checkbox" checked={settings.thinking}
           onChange={(event) => onChange({ ...settings, thinking: event.target.checked })} />
         {t("settings.thinking")}
       </label>
       <label>
         {t("settings.reasoningLevel")}
-        <select value={settings.reasoning_level} disabled={!settings.thinking}
+        <select name="reasoning_level" value={settings.reasoning_level} disabled={!settings.thinking}
           onChange={(event) => onChange({ ...settings,
             reasoning_level: event.target.value as PromptSettings["reasoning_level"] })}>
           <option value="low">{t("settings.reasoningLow")}</option>

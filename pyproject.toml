@@ -3,6 +3,8 @@ name = "moru"
 version = "0.1.0"
 description = "Moru is a local, conversational image-generation desktop app."
 readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [
     { name = "Neuwcodebox", email = "neuwgmbox@gmail.com" }
 ]

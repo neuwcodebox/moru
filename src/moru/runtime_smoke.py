@@ -68,18 +68,18 @@ def verify_window(window, report_path: Path, ui_only=False):
                     document.querySelector('.settings-button').click();
                     await waitFor(() => document.querySelector('.advanced-settings'));
                     document.querySelector('.advanced-settings summary').click();
-                    const controls = document.querySelectorAll('.advanced-settings input');
-                    if (controls[0].value !== String(promptSettings.context_size)
-                        || controls[1].value !== String(promptSettings.max_tokens)
-                        || controls[2].value !== '4' || !controls[3].checked
-                        || document.querySelector('.advanced-settings select').value
-                            !== promptSettings.reasoning_level)
+                    const form = document.querySelector('.advanced-settings').closest('form');
+                    const control = name => form.elements.namedItem(name);
+                    if (control('context_size').value !== String(promptSettings.context_size)
+                        || control('max_tokens').value !== String(promptSettings.max_tokens)
+                        || control('history_turns').value !== String(promptSettings.history_turns)
+                        || control('thinking').checked !== promptSettings.thinking
+                        || control('reasoning_level').value !== promptSettings.reasoning_level)
                         throw new Error('Incorrect prompt defaults');
-                    await setValue(controls[0], '8192');
-                    await setValue(controls[1], '4096');
-                    await setValue(document.querySelector('.advanced-settings select'), 'high');
-                    await new Promise(resolve => setTimeout(resolve, 0));
-                    document.querySelector('.advanced-settings').closest('form').requestSubmit();
+                    await setValue(control('context_size'), '8192');
+                    await setValue(control('max_tokens'), '4096');
+                    await setValue(control('reasoning_level'), 'high');
+                    form.querySelector('.modal-actions button').click();
                     await waitFor(() => !document.querySelector('.advanced-settings'));
                     const saved = await call('get_prompt_settings');
                     if (saved.context_size !== 8192 || saved.max_tokens !== 4096

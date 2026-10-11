@@ -1399,6 +1399,36 @@ uv run --extra inference python scripts/smoke_portable.py <빌드된-Moru-폴더
 `--skip-archive`는 폴더만 빌드하며, `--archive-only --reuse-staging <빌드-폴더>`는
 기존 `dist/Moru`를 다시 압축한다.
 
+### 라이선스와 배포 소스
+
+루트 `LICENSE`는 제공된 GPL v3 템플릿의 placeholder만 프로젝트 정보로 채우며 별도 문구를 추가하지 않는다.
+템플릿의 버전 3 또는 이후 버전 허용 문구에 맞춰 Python의 `license`·`license-files`와
+프론트엔드 패키지·잠금 파일은 `GPL-3.0-or-later`를 명시한다.
+라이선스 메타데이터 추가는 의존성 해석을 바꾸지 않으며 `uv lock --check`로 동기화를 검증한다.
+
+`build_portable.py`는 `licenses/Moru-LICENSE.txt`와 `SOURCE.txt`, `Moru-source.zip`을
+배포 폴더에 포함한다. 소스 압축은 Git의 추적 파일과 무시되지 않은 프로젝트 소스·설정·문서
+경로를 사용해 커밋되지 않은 수정도 빌드 시점 내용으로 담는다. 고정 ComfyUI의 추적 파일을
+`moru/vendor/comfyui/`에 포함하며, 모델·사용자 데이터·Git 메타데이터·무시된 생성물은 제외한다.
+소스 생성 실패는 빌드를 중단하고, 라이선스·소스 안내·압축본이 없는 기존 staging은
+`--archive-only`로 배포할 수 없다. 예전 배포본에 적용하려면 현재 스크립트로 다시 빌드해야 한다.
+
+다른 의존성의 라이선스는 기존 `licenses/dependencies`와 `licenses/frontend`에 유지한다.
+의존성 버전·다운로드 출처는 `uv.lock`과 `frontend/package-lock.json`, 모델 라이선스는
+[모델 출처](../vendor/licenses/SOURCES.md)에 둔다. 실행 파일을 배포할 때 소스 압축과 안내를
+함께 제공한다. GPU 실행과 전체 포터블 재빌드는 별도 검증이다.
+
+소스 압축본에는 Git 메타데이터가 없다. 이를 이용해 포터블을 다시 빌드하려면 압축을 푼
+`moru` 폴더에서 아래처럼 소스 저장소를 초기화하고, 포함된 ComfyUI 소스를 보존한 채
+기존 준비 명령으로 고정 revision의 Git checkout을 다시 받는다. 이후 위의 개발 환경 준비와
+`build_portable.py` 명령을 따른다. 의존성과 checkout 준비에는 인터넷 연결이 필요하다.
+
+```powershell
+Rename-Item -LiteralPath vendor/comfyui -NewName comfyui-source
+git init
+git add .
+```
+
 ### 표시 언어
 
 React UI는 i18next와 react-i18next를 사용한다. 한국어/영어 텍스트는

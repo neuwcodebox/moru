@@ -64,14 +64,16 @@ def main():
             "thinking": True,
             "history_turns": 4,
             "reasoning_level": "medium",
+            "provider": "local",
+            "chatgpt_model": "",
+            "chatgpt_reasoning_effort": "default",
+            "tag_search_enabled": True,
         }
         if options.ui_only:
             assert report["clipboard_copied"]
-            assert report["saved_prompt_settings"] == {
+            assert report["saved_prompt_settings"] == report["prompt_defaults"] | {
                 "context_size": 8192,
                 "max_tokens": 4096,
-                "thinking": True,
-                "history_turns": 4,
                 "reasoning_level": "high",
             }
             print(f"portable_ui_and_clipboard_ok report={report_path}", flush=True)

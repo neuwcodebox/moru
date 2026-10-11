@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+import zipfile
 from pathlib import Path
 
 from moru.config import application_root
@@ -15,6 +16,7 @@ from moru.config import application_root
 
 def copy_licenses(destination: Path, root: Path):
     destination.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(root / "LICENSE", destination / "Moru-LICENSE.txt")
     shutil.copy2(root / "vendor/comfyui/LICENSE", destination / "ComfyUI-LICENSE.txt")
     shutil.copytree(root / "vendor/licenses", destination / "models", dirs_exist_ok=True)
     for package in (
@@ -41,6 +43,53 @@ def copy_licenses(destination: Path, root: Path):
         shutil.copy2(python_license, destination / "Python-LICENSE.txt")
 
 
+def copy_source_archive(application: Path, root: Path):
+    """Include the working sources used for this build, not a link to a moving branch."""
+    source_paths = (
+        "LICENSE", "README.md", "README.ko.md", "AGENTS.md", ".gitignore", ".python-version",
+        "app.py", "pyproject.toml", "uv.lock", "src", "frontend", "scripts", "tests", "docs",
+        "vendor/licenses", "vendor/comfyui-revision.txt",
+    )
+    temporary = application / "Moru-source.zip.part"
+    try:
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for repository, prefix, options in (
+                (root, "moru", ["--others", "--exclude-standard", "--", *source_paths]),
+                (root / "vendor/comfyui", "moru/vendor/comfyui", []),
+            ):
+                names = subprocess.check_output([
+                    "git", "-c", f"safe.directory={repository.as_posix()}",
+                    "-C", str(repository), "ls-files", "--cached", "-z", *options,
+                ]).decode("utf-8").split("\0")
+                included = 0
+                for name in sorted(set(names) - {""}):
+                    source = repository / name
+                    if not source.exists():
+                        continue  # Tracked files deleted in the working tree are not build inputs.
+                    if not source.resolve().is_relative_to(repository.resolve()):
+                        raise ValueError(f"Source file is outside its repository: {name}")
+                    archive.write(source, f"{prefix}/{name}")
+                    included += 1
+                if not included:
+                    raise RuntimeError(f"No source files found in {repository}")
+        os.replace(temporary, application / "Moru-source.zip")
+    finally:
+        temporary.unlink(missing_ok=True)
+    (application / "SOURCE.txt").write_text(
+        "Moru - Copyright (C) 2026 Neuwcodebox\n"
+        "Licensed under GNU GPL version 3 or later; distributed WITHOUT ANY WARRANTY.\n"
+        "You may modify and redistribute Moru under the terms in licenses/Moru-LICENSE.txt.\n\n"
+        "Moru-source.zip contains the Moru and pinned ComfyUI sources for this build,\n"
+        "including build scripts and lockfiles. Setup instructions: README.md and docs/TECH.md.\n"
+        "Other dependencies retain their licenses in licenses/dependencies and licenses/frontend.\n"
+        "Dependency versions and upstream download locations are recorded in uv.lock and\n"
+        "frontend/package-lock.json. Models are downloaded separately under their own licenses.\n\n"
+        "Project: https://github.com/neuwcodebox/moru\n"
+        "Contact: neuwgmbox@gmail.com\n",
+        encoding="utf-8",
+    )
+
+
 def seven_zip() -> str:
     executable = shutil.which("7z")
     if executable:
@@ -55,6 +104,9 @@ def archive_release(application: Path, release: Path):
     application, release = application.resolve(), release.resolve()
     if not (application / "Moru.exe").is_file():
         raise FileNotFoundError("Build Moru.exe before creating its 7z archive")
+    for required in ("licenses/Moru-LICENSE.txt", "Moru-source.zip", "SOURCE.txt"):
+        if not (application / required).is_file():
+            raise FileNotFoundError(f"Rebuild the portable application to include {required}")
     executable = seven_zip()
     release.mkdir(exist_ok=True)
     temporary = release / "Moru.7z.part"
@@ -175,13 +227,18 @@ def main():
     for directory in ("models", "data"):
         (application / directory).mkdir(exist_ok=True)
     copy_licenses(application / "licenses", root)
+    copy_source_archive(application, root)
     (application / "README.txt").write_text(
         "Moru\n\n7z 전체를 압축 해제한 뒤 Moru.exe를 실행하세요.\n"
         "모델 준비 창에서 모델을 다운로드하거나 로컬 파일을 선택합니다.\n"
         "모델 준비 후에는 오프라인으로 사용할 수 있습니다.\n"
         "작업은 data 폴더에 저장됩니다. 앱을 이동할 때 data와 models도 함께 옮기세요.\n"
         "Turbo: Steps 10, CFG 1. Aesthetic: Steps 40, CFG 4.5. "
-        "FLUX.2 klein 4B: Steps 4, CFG 1. Seed Auto.\n",
+        "FLUX.2 klein 4B: Steps 4, CFG 1. Seed Auto.\n\n"
+        "라이선스: GNU GPL v3 이상 (GPL-3.0-or-later). 저작권 (C) 2026 Neuwcodebox.\n"
+        "보증 없이 제공되며 GPL 조건에 따라 수정·재배포할 수 있습니다.\n"
+        "전문: licenses/Moru-LICENSE.txt. 소스: Moru-source.zip 및 SOURCE.txt.\n"
+        "의존성과 모델은 각각의 라이선스를 따릅니다.\n",
         encoding="utf-8",
     )
     release = root / "release"

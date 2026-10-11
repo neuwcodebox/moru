@@ -118,3 +118,8 @@ uv run --extra inference python -m moru
 
 개발 환경·테스트·포터블 빌드는 [TECH.md](docs/TECH.md#개발-및-검증),
 상세 제품 동작은 [SPEC.md](docs/SPEC.md)를 참고하세요.
+
+## 라이선스
+
+Moru는 [GPL-3.0-or-later](LICENSE)로 배포됩니다.
+외부 라이브러리와 모델에는 각각의 라이선스가 적용됩니다.

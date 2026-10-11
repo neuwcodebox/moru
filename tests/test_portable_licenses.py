@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 def test_portable_distribution_includes_i18n_and_runtime_dependency_licenses(tmp_path, monkeypatch):
+    (tmp_path / "LICENSE").write_text("Moru GPL license", encoding="utf-8")
     packages = (
         "react", "react-dom", "lucide-react", "i18next", "react-i18next",
         "@babel/runtime", "html-parse-stringify", "use-sync-external-store",
@@ -26,3 +27,6 @@ def test_portable_distribution_includes_i18n_and_runtime_dependency_licenses(tmp
         assert (destination / "frontend" / package / "LICENSE").read_text(encoding="utf-8") == (
             f"{package} license"
         )
+    assert (destination / "Moru-LICENSE.txt").read_text(encoding="utf-8") == "Moru GPL license"
+    assert (destination / "ComfyUI-LICENSE.txt").read_text(encoding="utf-8") == "ComfyUI license"
+    assert (destination / "models/model.txt").read_text(encoding="utf-8") == "Model license"
