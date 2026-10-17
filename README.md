@@ -12,7 +12,7 @@ produces the image on your computer.
 
 You need Windows, an NVIDIA GPU with its drivers, and the Windows WebView2 Runtime.
 
-[Download portable build (Google Drive)](https://drive.google.com/file/d/1Y_aYECQ6VqFdV51_GoDl_Uy2-r51NWwW/view?usp=sharing)
+[Download portable build (Proton Drive)](https://drive.proton.me/urls/56QJXGPJCM#BdLbYEhULmxQ)
 
 Extract the entire `Moru.7z` archive and run `Moru.exe`. Python, Node.js, and ComfyUI are
 included. Download model files through the app or select your own; their use is governed

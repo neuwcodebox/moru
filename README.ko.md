@@ -12,7 +12,7 @@ Moru는 대화로 이미지를 만들고 수정하는 Windows 데스크톱 앱�
 
 Windows, NVIDIA GPU와 드라이버, Windows WebView2 Runtime이 필요합니다.
 
-[포터블 배포본 다운로드 (Google Drive)](https://drive.google.com/file/d/1Y_aYECQ6VqFdV51_GoDl_Uy2-r51NWwW/view?usp=sharing)
+[포터블 배포본 다운로드 (Proton Drive)](https://drive.proton.me/urls/56QJXGPJCM#BdLbYEhULmxQ)
 
 `Moru.7z` 전체를 압축 해제하고 `Moru.exe`를 실행하세요. Python, Node.js, ComfyUI는
 배포본에 포함되어 있습니다. 모델 파일은 앱에서 별도로 다운로드하거나 직접 지정하며,
