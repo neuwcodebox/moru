@@ -58,7 +58,7 @@ prompt and recent conversation to create a new image.
 >
 > Give her a neutral expression.
 
-![Inpainting demo](docs/demo-inpainting.png)
+![Inpainting demo](docs/demo-inpainting-en.png)
 
 Open **Edit** below an image to edit its full scene prompt or paint a **Region** and describe
 what to change and how, such as “Change this cup to blue.” Anima edits the painted region locally.
