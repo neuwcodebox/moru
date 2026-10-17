@@ -5,14 +5,14 @@ from moru.prompts.text import conversation_messages
 
 TAG_GUIDANCE = (
     " Use the danbooru tools to verify canonical tag names and meanings for the "
-    "core visual concepts in the user request when useful. "
+    "core visual concepts in the assigned writing task when useful. "
     "Verify relevant tags even when their names are familiar. "
     "Search one visual concept at a time; you do not need to check every tag. "
     "Search results identify candidates, not how to use them. Use get_tag_info when "
     "selection depends on a tag's meaning, usage conditions or combinations. "
     "Read returned descriptions for usage conditions, recommended combinations, examples "
-    "and exclusions, and apply the relevant guidance to the complete prompt. "
-    "The user's request determines the scene: select tags and descriptions that express "
+    "and exclusions, and apply the relevant guidance within the task's output scope. "
+    "The user's request determines the intended content: select tags and descriptions that express "
     "the requested subjects and relationships. "
     "Cooccurrence or a wiki link alone does not establish a synonym or a required combination; "
     "use the described relationship to decide whether accompanying tags are appropriate. "

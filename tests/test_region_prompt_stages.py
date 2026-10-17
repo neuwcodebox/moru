@@ -62,8 +62,10 @@ def test_examples_end_before_the_output_contract_for_the_current_input():
         scene_messages("A woman holds a white cup.", "Make the cup blue", "blue cup"),
     ]
     for messages in tasks:
+        assert messages[0]["content"].count("<example>") == 1
+        assert messages[0]["content"].count("</example>") == 1
         instructions, example_start, remainder = messages[0]["content"].partition("<example>")
-        example, example_end, contract = remainder.partition("</example>")
+        example, example_end, contract = remainder.rpartition("</example>")
         assert instructions and example_start and example_end and example
         assert "current user input" in contract
         assert "plain English text" in contract
@@ -83,7 +85,22 @@ def test_region_task_prioritizes_visual_tags_and_limits_supplemental_prose():
         "cannot express."
     ) in instructions
     example = instructions.split("<example>\n", 1)[1].split("</example>", 1)[0]
-    assert "Output: scarf, blue scarf, striped scarf\n" in example
+    assert "Requested local change: Make the bow blue.\n" in example
+    assert "Output: blue bow, polka dot\n" in example
+
+
+def test_region_scope_is_the_requested_part_and_only_necessary_immediate_context():
+    instructions = region_messages(
+        "A woman in a white coat holds a leather bag by a station window.",
+        "Make the buckle gold",
+    )[0]["content"]
+    assert "smallest subject or part identified by Requested local change" in instructions
+    assert "Scene context resolves that target and its existing local properties" in instructions
+    assert (
+        "Each output detail must describe the target itself or an immediate physical connection "
+        "needed to place or join it to its surroundings. Keep that connection minimal."
+    ) in instructions
+    assert "a single tag is sufficient when complete" in instructions
 
 
 def test_cloud_region_writer_streams_two_text_tasks_without_images_or_tools():
@@ -318,6 +335,9 @@ def test_region_writer_searches_tags_before_local_writing_and_reuses_the_result(
         assert queries == ["cup", "blue"]
         assert calls[0]["messages"][1:] == calls[1]["messages"][1:]
         assert "blue_cup" in calls[1]["messages"][0]["content"]
+        assert calls[1]["messages"][0]["content"].startswith(
+            region_messages("A woman holds a red cup.", "Make the cup blue")[0]["content"],
+        )
         assert "blue_cup" not in calls[2]["messages"][0]["content"]
         assert [json.loads(s.result_json) for s in sources] == [["blue_cup"], ["blue_cup"]]
         assert stages[0] == ("searching_tags", 0)
@@ -334,6 +354,7 @@ def test_region_cloud_writer_uses_the_existing_tool_loop_only_for_the_local_prom
 
     from support.chatgpt import SETTINGS, Auth, Responses, Tools, call, completed, delta
 
+    from moru.chatgpt.instructions import TAG_GUIDANCE
     from moru.chatgpt.prompts import ChatGPTPrompts
 
     function = call(arguments={"query": "blue cup", "limit": 20})
@@ -353,6 +374,11 @@ def test_region_cloud_writer_uses_the_existing_tool_loop_only_for_the_local_prom
     assert len(http.calls) == 3
     assert tools.calls == [("search_tags", {"query": "blue cup", "limit": 20})]
     first, tool_reply, scene = [payload for _, payload in http.calls]
+    assert first["instructions"] == (
+        region_messages("A woman holds a red cup.", "Make the cup blue")[0]["content"]
+        + TAG_GUIDANCE
+    )
+    assert tool_reply["instructions"].startswith(first["instructions"])
     assert first["tools"] == tools.definitions()
     assert tool_reply["input"][-1]["type"] == "function_call_output"
     assert json.loads(tool_reply["input"][-1]["output"]) == tools.result

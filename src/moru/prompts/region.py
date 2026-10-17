@@ -13,17 +13,22 @@ _PROMPT_OUTPUT = (
 )
 
 REGION_SYSTEM = (
-    "Task: describe the edited object or part AFTER the Requested local change. "
-    "Scene context is the current input's reference for identity, compatible attributes "
-    "and placement. For removal, describe the exposed surface. "
+    "Task: write an inpainting prompt for the smallest subject or part identified by "
+    "Requested local change, in its final state. "
+    "Scene context resolves that target and its existing local properties. "
+    "Each output detail must describe the target itself or an immediate physical connection "
+    "needed to place or join it to its surroundings. Keep that connection minimal. "
+    "For removal, describe the exposed surface. "
     "Output: a short positive English prompt led by comma-separated visual tags for the "
     "edited content. Use lowercase tags with spaces and relevant search results when provided. "
+    "Use only the tags needed for this local result; a single tag is sufficient when complete. "
     "Add a brief English sentence only for essential attributes or relations that tags "
     "cannot express.\n"
     "<example>\n"
-    "Scene context: A woman wears a white striped scarf over a dark coat.\n"
-    "Requested local change: Make the scarf blue.\n"
-    "Output: scarf, blue scarf, striped scarf\n"
+    "Scene context: A woman in a white coat carries a brown bag decorated with a red "
+    "polka dot bow beside a station window.\n"
+    "Requested local change: Make the bow blue.\n"
+    "Output: blue bow, polka dot\n"
     "</example>"
 ) + _PROMPT_OUTPUT
 
