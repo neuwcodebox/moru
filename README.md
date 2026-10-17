@@ -47,6 +47,8 @@ If both prompt writers are ready, switch between them directly beside the input 
 
 ### 3. Create and refine an image
 
+![Inpainting demo](docs/demo-inpainting.png)
+
 Describe a scene to have a prompt written and an image generated.
 When tag search is enabled for Anima, Moru looks up matching Danbooru tags online to inform
 prompt writing. After seeing the result, send a change request. Moru uses the current image's
