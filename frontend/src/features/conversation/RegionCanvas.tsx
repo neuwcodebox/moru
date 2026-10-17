@@ -2,19 +2,13 @@ import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, us
 import type { CSSProperties, PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Eraser, Expand, Paintbrush, Undo2 } from "lucide-react";
-import { zoomAt } from "./imageViewport";
+import { imagePoint, zoomAt } from "./imageViewport";
 import type { ImageView } from "./imageViewport";
+import { drawSelection, selectionPng } from "./regionMask";
+import type { Stroke } from "./regionMask";
 
-export type Stroke = { points: { x: number; y: number }[]; sizePx: number; erase: boolean };
 export type MaskCanvas = { mask: () => string | null };
 type Point = { x: number; y: number };
-
-export function imagePoint(x: number, y: number, box: { left: number; top: number; width: number; height: number }) {
-  return {
-    x: Math.max(0, Math.min(1, (x - box.left) / box.width)),
-    y: Math.max(0, Math.min(1, (y - box.top) / box.height)),
-  };
-}
 
 const RegionCanvas = forwardRef<MaskCanvas, {
   source: string; width: number; height: number; strokes: Stroke[];
@@ -73,50 +67,13 @@ const RegionCanvas = forwardRef<MaskCanvas, {
   }, [disabled]);
 
   function render(items: Stroke[]) {
-    const context = canvas.current?.getContext("2d");
-    if (!context) return;
-    context.clearRect(0, 0, width, height);
-    for (const stroke of items) {
-      context.globalCompositeOperation = stroke.erase ? "destination-out" : "source-over";
-      context.strokeStyle = "#83b4f2";
-      context.lineCap = "round";
-      context.lineJoin = "round";
-      context.lineWidth = stroke.sizePx;
-      context.beginPath();
-      stroke.points.forEach((p, index) => {
-        if (index) context.lineTo(p.x * width, p.y * height);
-        else context.moveTo(p.x * width, p.y * height);
-      });
-      if (stroke.points.length === 1) {
-        const p = stroke.points[0];
-        context.lineTo(p.x * width + .01, p.y * height + .01);
-      }
-      context.stroke();
-    }
-    context.globalCompositeOperation = "source-over";
+    if (canvas.current) drawSelection(canvas.current, items);
   }
 
   useEffect(() => { render(strokes); }, [strokes, width, height]);
-  useImperativeHandle(ref, () => ({ mask: () => {
-    const element = canvas.current;
-    const context = element?.getContext("2d");
-    if (!element || !context) return null;
-    const mask = context.getImageData(0, 0, width, height);
-    let selected = false;
-    for (let i = 0; i < mask.data.length; i += 4) {
-      const value = mask.data[i + 3] >= 128 ? 255 : 0;
-      selected ||= value === 255;
-      mask.data[i] = mask.data[i + 1] = mask.data[i + 2] = value;
-      mask.data[i + 3] = 255;
-    }
-    if (!selected) return null;
-    const output = document.createElement("canvas");
-    output.width = width; output.height = height;
-    const outputContext = output.getContext("2d");
-    if (!outputContext) return null;
-    outputContext.putImageData(mask, 0, 0);
-    return output.toDataURL("image/png");
-  } }), [width, height]);
+  useImperativeHandle(ref, () => ({
+    mask: () => canvas.current ? selectionPng(canvas.current) : null,
+  }), []);
 
   function point(event: PointerEvent<HTMLDivElement>) {
     return imagePoint(event.clientX, event.clientY, image.current!.getBoundingClientRect());

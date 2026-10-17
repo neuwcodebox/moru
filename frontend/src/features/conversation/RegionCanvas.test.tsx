@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { useState } from "react";
 import RegionCanvas from "./RegionCanvas";
-import type { Stroke } from "./RegionCanvas";
+import type { Stroke } from "./regionMask";
 
 let context: Partial<CanvasRenderingContext2D>;
 

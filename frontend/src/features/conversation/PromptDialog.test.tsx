@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { BridgeError } from "../../api";
 import PromptDialog from "./PromptDialog";
-import { imagePoint } from "./RegionCanvas";
+import { imagePoint } from "./imageViewport";
 import type { EditDraft } from "./editDraft";
 
 const details = { id: "one", prompt: "A woman holds a white cup.", model_name: "Anima Turbo",

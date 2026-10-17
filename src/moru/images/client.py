@@ -156,6 +156,20 @@ class ImageWorker:
         progress: Progress,
         cancelled: Event,
     ):
+        self._write_image(prompt, settings, output_path, progress, cancelled)
+
+    def inpaint(
+        self, prompt: str, settings: GenerationSettings, output_path: Path,
+        progress: Progress, cancelled: Event, original_path: Path, mask_path: Path,
+    ):
+        self._write_image(
+            prompt, settings, output_path, progress, cancelled, region=(original_path, mask_path),
+        )
+
+    def _write_image(
+        self, prompt: str, settings: GenerationSettings, output_path: Path,
+        progress: Progress, cancelled: Event, *, region: tuple[Path, Path] | None = None,
+    ):
         if output_path.exists():
             raise MoruError("IMAGE_SAVE_FAILED")
         paths = self._paths.image_payload(settings.model_id)
@@ -165,33 +179,19 @@ class ImageWorker:
             "output_path": str(output_path.resolve()),
             "paths": paths,
         }
+        if region is not None:
+            original_path, mask_path = region
+            payload.update(
+                original_path=str(original_path.resolve()), mask_path=str(mask_path.resolve()),
+            )
         try:
-            details = self._request("generate", payload, cancelled, progress)
+            details = self._request(
+                "inpaint" if region is not None else "generate", payload, cancelled, progress,
+            )
             if (
                 details.get("image_path") != str(output_path.resolve())
                 or details.get("seed") != settings.seed
             ):
-                self._stop()
-                raise MoruError("GENERATION_FAILED")
-        except MoruError as exc:
-            if exc.code == "GENERATION_CANCELLED":
-                output_path.unlink(missing_ok=True)
-            raise
-        finally:
-            output_path.with_suffix(".png.part").unlink(missing_ok=True)
-
-    def inpaint(self, prompt, settings, output_path, progress, cancelled, original_path, mask_path):
-        if output_path.exists():
-            raise MoruError("IMAGE_SAVE_FAILED")
-        payload = {
-            **asdict(settings), "prompt": prompt, "output_path": str(output_path.resolve()),
-            "paths": self._paths.image_payload(settings.model_id),
-            "original_path": str(original_path.resolve()), "mask_path": str(mask_path.resolve()),
-        }
-        try:
-            details = self._request("inpaint", payload, cancelled, progress)
-            if (details.get("image_path") != str(output_path.resolve())
-                    or details.get("seed") != settings.seed):
                 self._stop()
                 raise MoruError("GENERATION_FAILED")
         except MoruError as exc:

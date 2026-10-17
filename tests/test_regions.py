@@ -269,6 +269,36 @@ def test_oom_retry_keeps_the_region_and_scene_prompt_pair(app):
     assert len(app.images.inputs) == 3  # initial image, failed region sample, successful retry
 
 
+@pytest.mark.parametrize("failures", [("CUDA_OOM", "CUDA_OOM"), ("GENERATION_FAILED",)])
+def test_region_sampling_failure_retries_only_one_oom_and_preserves_the_selected_version(
+    app, failures,
+):
+    project, base = prepare_region(app)
+    app.images.failures.extend(failures)
+    job = app.edit_region(base.id, "Make the cup blue", mask_url())
+    app.scheduler.run_next()
+    assert app.get_job(job.id).error_code == failures[-1]
+    assert len(app.images.inputs) == 1 + len(failures)
+    assert app.prompts.unloads == len(failures) - 1
+    assert app.repository.get_project(project.id).active_leaf_id == base.id
+    assert len(app.repository.conversation(project.id)[0][2]) == 1
+
+
+def test_cancellation_during_region_preflight_stops_before_sampling(app):
+    project, base = prepare_region(app)
+
+    def cancel(settings, cancelled):
+        cancelled.set()
+        return False
+
+    app.images.needs_prompt_unload = cancel
+    job = app.edit_region(base.id, "Make the cup blue", mask_url())
+    app.scheduler.run_next()
+    assert app.get_job(job.id).state == "cancelled"
+    assert len(app.images.inputs) == 1
+    assert app.repository.get_project(project.id).active_leaf_id == base.id
+
+
 def test_region_storage_failure_removes_output_without_changing_the_dialogue(app, monkeypatch):
     project, base = prepare_region(app)
 

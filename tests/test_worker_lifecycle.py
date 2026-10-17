@@ -10,6 +10,53 @@ from moru.errors import MoruError
 from moru.images.client import ImageWorker
 
 
+@pytest.mark.parametrize("operation", ["generate", "inpaint"])
+def test_generation_command_sends_original_paths_only_for_inpainting(
+    tmp_path, monkeypatch, operation,
+):
+    output = tmp_path / "new.png"
+    worker, processes, _ = install_workers(tmp_path, monkeypatch, [result(output)])
+    region = (tmp_path / "source.png", tmp_path / "mask.png") if operation == "inpaint" else ()
+    try:
+        getattr(worker, operation)("blue cup", GenerationSettings(seed=1), output, Mock(), Event(),
+                                   *region)
+        sent = json.loads(processes[0].stdin.getvalue())
+        assert sent["type"] == operation
+        assert sent["payload"]["prompt"] == "blue cup"
+        assert sent["payload"]["output_path"] == str(output.resolve())
+        if region:
+            assert sent["payload"]["original_path"] == str(region[0].resolve())
+            assert sent["payload"]["mask_path"] == str(region[1].resolve())
+        else:
+            assert "original_path" not in sent["payload"]
+            assert "mask_path" not in sent["payload"]
+    finally:
+        worker.close()
+
+
+@pytest.mark.parametrize("operation", ["generate", "inpaint"])
+@pytest.mark.parametrize("mismatch", [{"seed": 2}, {"image_path": "wrong.png"}])
+def test_generation_rejects_mismatched_results_and_removes_temporary_output(
+    tmp_path, monkeypatch, operation, mismatch,
+):
+    output = tmp_path / "new.png"
+    temporary = output.with_suffix(".png.part")
+    temporary.write_bytes(b"partial")
+    reply = result(output)
+    reply["payload"].update(mismatch)
+    worker, processes, _ = install_workers(tmp_path, monkeypatch, [reply])
+    region = (tmp_path / "source.png", tmp_path / "mask.png") if operation == "inpaint" else ()
+    try:
+        with pytest.raises(MoruError) as error:
+            getattr(worker, operation)("cup", GenerationSettings(seed=1), output, Mock(), Event(),
+                                       *region)
+        assert error.value.code == "GENERATION_FAILED"
+        assert processes[0].stdin.closed
+        assert not temporary.exists()
+    finally:
+        worker.close()
+
+
 def test_restarting_an_exited_worker_releases_its_pipes_and_windows_job(tmp_path, monkeypatch):
     first_path, second_path = tmp_path / "first.png", tmp_path / "second.png"
     worker, processes, jobs = install_workers(

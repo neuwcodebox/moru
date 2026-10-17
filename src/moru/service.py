@@ -332,12 +332,7 @@ class Application:
             def progress(state, step=None, total=None):
                 self._progress(job_id, state, step, total)
 
-            if request.kind == "region":
-                self._write_region(
-                    prompt, request, settings, output_path, progress, cancelled,
-                )
-            else:
-                self._write_image(prompt, settings, output_path, progress, cancelled)
+            self._write_image(prompt, request, settings, output_path, progress, cancelled)
             check_cancelled(cancelled)
             image = Image(
                 image_id,
@@ -393,11 +388,7 @@ class Application:
 
     def _prepare_region(self, job_id, request, settings, cancelled, on_source):
         base = self.repository.get_image(request.base_image_id)
-        required = self.prompts.memory_required(settings)
-        self._progress(job_id, "loading_prompt_model" if required else "prompting")
-        if settings.provider == "local" or required:
-            self.images.reserve_memory(required, cancelled)
-        check_cancelled(cancelled)
+        self._reserve_prompt_memory(job_id, settings, cancelled, "prompting")
         prepared = self.prompts.edit_region(
             base.full_prompt, request.text, settings, cancelled,
             on_ready=lambda: self._progress(job_id, "writing_region_prompt"),
@@ -421,24 +412,6 @@ class Application:
                 prompt_text=region[-65536:], scene_prompt_text=scene[-65536:],
             )
 
-    def _write_region(self, prompt, request, settings, output_path, progress, cancelled):
-        if self.images.needs_prompt_unload(settings, cancelled):
-            self.prompts.unload()
-        for attempt in range(2):
-            try:
-                self.images.inpaint(
-                    prompt, settings, output_path, progress, cancelled,
-                    self.data_dir / request.source_image_path, self.data_dir / request.mask_path,
-                )
-                break
-            except MoruError as exc:
-                if exc.code != "CUDA_OOM" or attempt:
-                    raise
-                check_cancelled(cancelled)
-                self.prompts.unload()
-        check_cancelled(cancelled)
-        verify_png(output_path, settings.width, settings.height)
-
     def _prepare_prompt(self, job_id, request, settings, cancelled, on_source) -> str:
         if request.kind == "manual":
             base = self.repository.get_image(request.base_image_id)
@@ -447,12 +420,8 @@ class Application:
                     on_source(source)
             self._prompt_progress(job_id, request.text)
             return request.text
-        required_memory = self.prompts.memory_required(settings)
         ready_state = "thinking" if settings.provider == "chatgpt" else "prompting"
-        self._progress(job_id, "loading_prompt_model" if required_memory else ready_state)
-        if settings.provider == "local" or required_memory:
-            self.images.reserve_memory(required_memory, cancelled)
-        check_cancelled(cancelled)
+        self._reserve_prompt_memory(job_id, settings, cancelled, ready_state)
 
         def progress(_thinking, prompt):
             self._prompt_progress(job_id, prompt)
@@ -488,6 +457,13 @@ class Application:
         self._prompt_progress(job_id, prompt)
         return prompt
 
+    def _reserve_prompt_memory(self, job_id, settings, cancelled, ready_state):
+        required = self.prompts.memory_required(settings)
+        self._progress(job_id, "loading_prompt_model" if required else ready_state)
+        if settings.provider == "local" or required:
+            self.images.reserve_memory(required, cancelled)
+        check_cancelled(cancelled)
+
     def _prompt_history(self, request: Request, limit: int) -> tuple[PromptTurn, ...]:
         if not limit or request.base_image_id is None:
             return ()
@@ -507,20 +483,29 @@ class Application:
         with self._lock:
             self._jobs[job_id] = replace(self._jobs[job_id], prompt_text=prompt[-65536:])
 
-    def _write_image(self, prompt, settings, output_path, progress, cancelled):
+    def _write_image(self, prompt, request, settings, output_path, progress, cancelled):
+        def generate():
+            if request.kind == "region":
+                self.images.inpaint(
+                    prompt, settings, output_path, progress, cancelled,
+                    self.data_dir / request.source_image_path, self.data_dir / request.mask_path,
+                )
+            else:
+                self.images.generate(prompt, settings, output_path, progress, cancelled)
+
         if self.images.needs_prompt_unload(settings, cancelled):
             log.info("releasing prompt model before image loading: VRAM budget exceeded")
             self.prompts.unload()
         check_cancelled(cancelled)
         try:
-            self.images.generate(prompt, settings, output_path, progress, cancelled)
+            generate()
         except MoruError as exc:
             if exc.code != "CUDA_OOM":
                 raise
             check_cancelled(cancelled)
             log.info("releasing prompt model for image generation")
             self.prompts.unload()
-            self.images.generate(prompt, settings, output_path, progress, cancelled)
+            generate()
         check_cancelled(cancelled)
         verify_png(output_path, settings.width, settings.height)
 

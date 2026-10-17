@@ -9,7 +9,10 @@ from moru.errors import MoruError
 from moru.images.client import ImageWorker
 
 
-def test_cancellation_wins_when_worker_pipe_closes_during_observation(tmp_path, monkeypatch):
+@pytest.mark.parametrize("operation", ["generate", "inpaint"])
+def test_cancellation_wins_when_worker_pipe_closes_during_observation(
+    tmp_path, monkeypatch, operation,
+):
     worker, processes, jobs = install_workers(tmp_path, monkeypatch, [{}])
     cancelled = Event()
     messages = Mock()
@@ -23,8 +26,10 @@ def test_cancellation_wins_when_worker_pipe_closes_during_observation(tmp_path, 
     messages.get.side_effect = closed_pipe
     monkeypatch.setattr("moru.images.client.Queue", lambda: messages)
 
+    region = (tmp_path / "source.png", tmp_path / "mask.png") if operation == "inpaint" else ()
     with pytest.raises(MoruError) as error:
-        worker.generate("girl", GenerationSettings(seed=1), output, Mock(), cancelled)
+        getattr(worker, operation)("girl", GenerationSettings(seed=1), output, Mock(), cancelled,
+                                   *region)
 
     assert error.value.code == "GENERATION_CANCELLED"
     assert not output.exists()
@@ -33,14 +38,17 @@ def test_cancellation_wins_when_worker_pipe_closes_during_observation(tmp_path, 
     jobs[0].close.assert_called_once()
 
 
-def test_existing_image_is_preserved_without_starting_worker(tmp_path):
+@pytest.mark.parametrize("operation", ["generate", "inpaint"])
+def test_existing_image_is_preserved_without_starting_worker(tmp_path, operation):
     output = tmp_path / "old.png"
     output.write_bytes(b"original")
     paths = Mock(root=tmp_path)
     worker = ImageWorker(paths, tmp_path)
 
+    region = (tmp_path / "source.png", tmp_path / "mask.png") if operation == "inpaint" else ()
     with pytest.raises(MoruError) as error:
-        worker.generate("girl", GenerationSettings(seed=1), output, Mock(), Event())
+        getattr(worker, operation)("girl", GenerationSettings(seed=1), output, Mock(), Event(),
+                                   *region)
 
     assert error.value.code == "IMAGE_SAVE_FAILED"
     assert output.read_bytes() == b"original"
