@@ -47,8 +47,6 @@ If both prompt writers are ready, switch between them directly beside the input 
 
 ### 3. Create and refine an image
 
-![Inpainting demo](docs/demo-inpainting.png)
-
 Describe a scene to have a prompt written and an image generated.
 When tag search is enabled for Anima, Moru looks up matching Danbooru tags online to inform
 prompt writing. After seeing the result, send a change request. Moru uses the current image's
@@ -59,6 +57,8 @@ prompt and recent conversation to create a new image.
 > Make it a rainy evening.
 >
 > Give her a neutral expression.
+
+![Inpainting demo](docs/demo-inpainting.png)
 
 Open **Edit** below an image to edit its full scene prompt or paint a **Region** and describe
 what to change and how, such as “Change this cup to blue.” Anima edits the painted region locally.
