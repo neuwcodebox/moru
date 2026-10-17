@@ -10,7 +10,10 @@ function progressLabel(job: Job): string {
     case "loading_prompt_model": return "loadingPromptModel";
     case "thinking": return "thinking";
     case "searching_tags": return "searchingTags";
-    case "prompting": return job.thinking_enabled && !job.prompt_text ? "thinking" : "writingPrompt";
+    case "prompting": return job.region_edit ? "writingRegionPrompt" :
+      job.thinking_enabled && !job.prompt_text ? "thinking" : "writingPrompt";
+    case "writing_region_prompt": return "writingRegionPrompt";
+    case "writing_scene_prompt": return "writingScenePrompt";
     case "loading_model": return "loadingModel";
     default: return "generating";
   }
@@ -18,7 +21,8 @@ function progressLabel(job: Job): string {
 
 export default function GenerationProgress({ job }: { job: Job }) {
   const { t } = useTranslation();
-  const preparingPrompt = ["prompting", "thinking", "searching_tags", "loading_prompt_model"].includes(job.state);
+  const preparingPrompt = ["prompting", "thinking", "searching_tags", "loading_prompt_model",
+    "writing_region_prompt", "writing_scene_prompt"].includes(job.state);
   return (
     <section
       className="generation-placeholder"
@@ -39,7 +43,19 @@ export default function GenerationProgress({ job }: { job: Job }) {
         )}
       </div>
       <div className="generation-canvas">
-        {!job.prompt_text && (
+        {job.region_edit && job.prompt_text ? (
+          <div className="region-prompt-progress">
+            <div role="group" aria-label={t("regionPrompt")}>
+              <PromptText follow label={t("regionPrompt")}>{job.prompt_text}</PromptText>
+            </div>
+            {(job.state === "writing_scene_prompt" || job.scene_prompt_text) &&
+              <div role="group" aria-label={t("scenePrompt")}>
+                <PromptText follow label={t("scenePrompt")}>
+                  {job.scene_prompt_text || t("writingScenePrompt")}
+                </PromptText>
+              </div>}
+          </div>
+        ) : !job.prompt_text ? (
           <>
             {preparingPrompt ? (
               <WandSparkles size={32} aria-hidden="true" />
@@ -52,8 +68,7 @@ export default function GenerationProgress({ job }: { job: Job }) {
                 : t("imageComing")}
             </span>
           </>
-        )}
-        {job.prompt_text && (
+        ) : (
           <PromptText follow>{job.prompt_text}</PromptText>
         )}
       </div>

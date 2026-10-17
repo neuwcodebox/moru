@@ -1,6 +1,10 @@
 """Stable boundary errors; engine details belong in logs, never the UI."""
 
 MESSAGES = {
+    "REGION_INVALID_MASK": "The selection mask is invalid.",
+    "REGION_EMPTY_MASK": "Select an area to edit.",
+    "REGION_INVALID_RESPONSE": "The region prompt response was invalid.",
+    "REGION_UNSUPPORTED": "Region editing requires an Anima image model.",
     "CHATGPT_AUTH_FAILED": "ChatGPT 로그인에 실패했습니다. 다시 로그인해 주세요.",
     "CHATGPT_SIGN_IN_REQUIRED": "ChatGPT에 다시 로그인해 주세요.",
     "CHATGPT_NOT_ELIGIBLE": (

@@ -49,5 +49,9 @@
   "project": "Project {{number}}",
   "viewerPosition": "{{image}} / {{images}} · Version {{version}} / {{versions}}",
   "generationPrompt": "Generation prompt",
+  "regionPrompt": "Region prompt",
+  "scenePrompt": "Full prompt",
+  "writingRegionPrompt": "Writing region prompt…",
+  "writingScenePrompt": "Writing full prompt…",
   "sources": "Sources"
 }

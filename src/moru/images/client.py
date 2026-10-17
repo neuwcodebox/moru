@@ -180,6 +180,27 @@ class ImageWorker:
         finally:
             output_path.with_suffix(".png.part").unlink(missing_ok=True)
 
+    def inpaint(self, prompt, settings, output_path, progress, cancelled, original_path, mask_path):
+        if output_path.exists():
+            raise MoruError("IMAGE_SAVE_FAILED")
+        payload = {
+            **asdict(settings), "prompt": prompt, "output_path": str(output_path.resolve()),
+            "paths": self._paths.image_payload(settings.model_id),
+            "original_path": str(original_path.resolve()), "mask_path": str(mask_path.resolve()),
+        }
+        try:
+            details = self._request("inpaint", payload, cancelled, progress)
+            if (details.get("image_path") != str(output_path.resolve())
+                    or details.get("seed") != settings.seed):
+                self._stop()
+                raise MoruError("GENERATION_FAILED")
+        except MoruError as exc:
+            if exc.code == "GENERATION_CANCELLED":
+                output_path.unlink(missing_ok=True)
+            raise
+        finally:
+            output_path.with_suffix(".png.part").unlink(missing_ok=True)
+
     def _request(self, message_type, payload, cancelled, progress=None):
         if cancelled.is_set():
             raise MoruError("GENERATION_CANCELLED")

@@ -128,3 +128,23 @@ it("updates the found tag count inside the existing search status and hides it a
   expect(within(status).getByText("프롬프트 생성 중…")).toBeTruthy();
   expect(screen.queryByText(/개 찾음/)).toBeNull();
 });
+
+it("shows the region prompt first, then streams the full prompt through image generation", () => {
+  const region = { ...job, state: "writing_region_prompt", thinking_enabled: false, region_edit: true };
+  const { rerender } = render(<GenerationProgress job={region} />);
+  expect(screen.getByText("영역 프롬프트 작성 중…")).toBeTruthy();
+  rerender(<GenerationProgress job={{ ...region, prompt_text: "blue cup" }} />);
+  expect(within(screen.getByRole("group", { name: "영역 프롬프트" })).getByText("blue cup")).toBeTruthy();
+  expect(screen.queryByRole("group", { name: "전체 프롬프트" })).toBeNull();
+  rerender(<GenerationProgress job={{ ...region, state: "writing_scene_prompt",
+    prompt_text: "blue cup", scene_prompt_text: "A woman holds" }} />);
+  expect(screen.getByRole("status").textContent).toContain("전체 프롬프트 작성 중…");
+  const scene = screen.getByRole("group", { name: "전체 프롬프트" });
+  expect(within(scene).getByText("A woman holds")).toBeTruthy();
+  rerender(<GenerationProgress job={{ ...region, state: "generating",
+    prompt_text: "blue cup", scene_prompt_text: "A woman holds a blue cup.", step: 2, total: 10 }} />);
+  expect(screen.getByRole("group", { name: "전체 프롬프트" })).toBe(scene);
+  expect(within(scene).getByText("A woman holds a blue cup.")).toBeTruthy();
+  expect(screen.getByText("blue cup")).toBeTruthy();
+  expect(screen.getByRole("progressbar", { name: "이미지 생성 단계" }).getAttribute("value")).toBe("2");
+});

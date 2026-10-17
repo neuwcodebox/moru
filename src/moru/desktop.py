@@ -112,10 +112,11 @@ def _run_desktop(root, comfy_root, arguments):
             chatgpt_http,
             tag_tools=DanbooruTools(tag_catalog),
         )
+        local_prompts = LlamaPrompts(paths, tag_search=TagSearch(tag_catalog))
         application = Application(
             Repository(root / "data/anima.db"),
             PromptProviders(
-                LlamaPrompts(paths, tag_search=TagSearch(tag_catalog)), chatgpt_prompts
+                local_prompts, chatgpt_prompts
             ),
             ImageWorker(paths, comfy_root),
             root / "data",

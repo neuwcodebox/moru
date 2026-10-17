@@ -43,5 +43,13 @@ def answer_text(content: str) -> str:
         if prefix.startswith(content):
             return ""
         if content.startswith(prefix):
-            return content.removeprefix(prefix).strip()
-    return content
+            content = content.removeprefix(prefix).strip()
+            break
+    if content.startswith("```"):
+        if "\n" in content:
+            _, _, content = content.partition("\n")
+        elif content.endswith("```") and len(content) > 6:
+            content = content[3:-3]
+        else:
+            return ""
+    return content.strip().strip("`").strip()

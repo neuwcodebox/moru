@@ -507,3 +507,24 @@ def test_final_answer_cues_are_removed_from_streamed_and_completed_text(prefix):
     content = f"notes</think>\n\n{prefix}\nnight, sky"
     assert read_completion(completion(content), Event(), True) == "night, sky"
     assert stream_text(content, True) == ("notes", "night, sky")
+
+@pytest.mark.parametrize("content", [
+    "`blue cup`", "blue cup`", "```blue cup```",
+    "```text\nblue cup\n```", "Final answer: `blue cup`",
+])
+def test_markdown_wrappers_do_not_reach_the_prompt_or_its_streamed_preview(content):
+    previews = []
+    result = read_completion(
+        completion(list(content)), Event(), False,
+        lambda _, prompt: previews.append(prompt),
+    )
+    assert result == "blue cup"
+    assert previews[-1] == result
+    assert all("`" not in preview for preview in previews)
+
+
+def test_backticks_inside_visible_lettering_are_preserved():
+    from moru.prompts.text import final_prompt
+
+    prompt = 'A sign reads "use `code`".'
+    assert final_prompt(prompt) == prompt

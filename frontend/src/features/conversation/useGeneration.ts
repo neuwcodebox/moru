@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { call } from "../../api";
 import type { Job, Project } from "../../api";
 
-type GenerationMethod = "submit_request" | "regenerate" | "retry_request" | "generate_from_prompt";
+type GenerationMethod = "submit_request" | "regenerate" | "retry_request" | "generate_from_prompt" | "edit_region";
 
-export function useGeneration({ onProject, onError, onComplete }: {
+export function useGeneration({ onProject, onError, onComplete, onFinished, onStarted }: {
   onProject: (project: Project) => void;
   onError: (error: unknown) => void;
   onComplete: () => void;
+  onFinished?: (job: Job) => void;
+  onStarted?: (job: Job) => void;
 }) {
   const [job, setJob] = useState<Job | null>(null);
   const [stopping, setStopping] = useState(false);
@@ -25,6 +27,7 @@ export function useGeneration({ onProject, onError, onComplete }: {
           const refreshed = await call<Project>("get_project", result.project_id);
           if (disposed) return;
           onProject(refreshed);
+          onFinished?.(result);
           setJob(null);
           setStopping(false);
           onComplete();
@@ -41,10 +44,11 @@ export function useGeneration({ onProject, onError, onComplete }: {
       disposed = true;
       clearTimeout(timer);
     };
-  }, [job?.id, onProject, onError, onComplete]);
+  }, [job?.id, onProject, onError, onComplete, onFinished]);
 
   async function startGeneration(method: GenerationMethod, ...args: unknown[]) {
     const next = await call<Job>(method, ...args);
+    onStarted?.(next);
     setJob(next);
     try {
       onProject(await call<Project>("get_project", next.project_id));
@@ -52,6 +56,7 @@ export function useGeneration({ onProject, onError, onComplete }: {
       // Admission succeeded: keep observing the job even if its conversation cannot refresh.
       onError(error ?? { code: "CONVERSATION_LOAD_FAILED" });
     }
+    return next;
   }
 
   function cancelGeneration() {

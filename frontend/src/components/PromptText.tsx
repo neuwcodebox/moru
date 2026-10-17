@@ -6,9 +6,11 @@ import { WandSparkles } from "lucide-react";
 export default function PromptText({
   children,
   follow = false,
+  label,
 }: {
   children: ReactNode;
   follow?: boolean;
+  label?: string;
 }) {
   const { t } = useTranslation();
   const panel = useRef<HTMLSpanElement>(null);
@@ -20,7 +22,7 @@ export default function PromptText({
   return (
     <span className="prompt-text">
       <span className="stream-label">
-        <WandSparkles size={14} aria-hidden="true" /> {t("generationPrompt")}
+        <WandSparkles size={14} aria-hidden="true" /> {label ?? t("generationPrompt")}
       </span>
       <span
         className="prompt-content"

@@ -52,5 +52,9 @@
   "IMAGE_LOAD_FAILED": "Could not load the image.",
   "REQUEST_FAILED": "The request failed. Please try again.",
   "CONVERSATION_LOAD_FAILED": "Could not load the conversation.",
-  "COPY_FAILED": "Could not copy. Please try again."
+  "COPY_FAILED": "Could not copy. Please try again.",
+  "REGION_INVALID_MASK": "The selection does not match the original image. Select the area again.",
+  "REGION_EMPTY_MASK": "Paint an area to edit.",
+  "REGION_INVALID_RESPONSE": "The edit prompts were invalid. Please try again.",
+  "REGION_UNSUPPORTED": "Select an Anima image model for region editing."
 }

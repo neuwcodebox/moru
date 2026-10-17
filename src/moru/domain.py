@@ -11,7 +11,7 @@ MODEL_IDS = tuple(IMAGE_MODELS)
 # This is an LLM output reserve, not a hard input limit of the image model.
 FINAL_PROMPT_TOKEN_RESERVE = 512 + 128
 REASONING_SHARES = {"low": 0.5, "medium": 0.75, "high": 1.0}
-RequestKind = Literal["create", "refine", "manual"]
+RequestKind = Literal["create", "refine", "manual", "region"]
 RequestStatus = Literal["pending", "completed", "failed", "cancelled"]
 
 
@@ -125,6 +125,8 @@ class Request:
     status: RequestStatus = "pending"
     error_code: str | None = None
     turn_id: str | None = None
+    mask_path: str | None = None
+    source_image_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -146,3 +148,8 @@ class Image:
     created_at: str
     generation_method: RequestKind
     sources: tuple[PromptSource, ...] = ()
+    scene_prompt: str | None = None
+
+    @property
+    def full_prompt(self) -> str:
+        return self.scene_prompt if self.scene_prompt is not None else self.prompt

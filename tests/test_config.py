@@ -113,12 +113,14 @@ def test_retired_sdxl_cannot_be_prepared_or_used_for_generation(tmp_path):
         assert error.value.code == "INVALID_SETTINGS"
 
 
-def test_old_sdxl_path_overrides_do_not_break_supported_model_preparation(tmp_path):
+@pytest.mark.parametrize("retired", ["sdxl-base-1.0", "prompt_vision"])
+def test_retired_path_overrides_do_not_break_supported_model_preparation(tmp_path, retired):
     paths = ModelPaths(tmp_path)
     paths.config_path.parent.mkdir(parents=True)
-    paths.config_path.write_text('{"sdxl-base-1.0": "old/checkpoint.safetensors"}')
+    paths.config_path.write_text(json.dumps({retired: "old/model"}))
     assert {item["id"] for item in paths.status()} == {
-        "prompt", "anima-turbo-v1.1", "anima-aesthetic-v1.1", "text_encoder", "vae",
+        "prompt", "anima-turbo-v1.1", "anima-aesthetic-v1.1",
+        "text_encoder", "vae",
         "flux2-klein-4b", "flux2_text_encoder", "flux2_vae",
     }
 

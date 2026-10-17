@@ -6,6 +6,7 @@ from threading import Event
 from typing import Literal, Protocol
 
 from moru.domain import GenerationSettings, PromptSettings, PromptSource, PromptTurn
+from moru.prompts.region import RegionPromptProgress, RegionPrompts
 
 Progress = Callable[[str, int | None, int | None], None]
 PromptProgress = Callable[[str, str], None]
@@ -48,6 +49,14 @@ class PromptGenerator(Protocol):
         on_source: SourceProgress | None = None,
         on_stage: PromptStageProgress | None = None,
     ) -> str: ...
+    def edit_region(
+        self, prompt: str, change_request: str, settings: PromptSettings, cancelled: Event,
+        *, on_ready: Callable[[], None] | None = None,
+        on_progress: RegionPromptProgress | None = None,
+        on_source: SourceProgress | None = None,
+        on_stage: PromptStageProgress | None = None,
+    ) -> RegionPrompts: ...
+
     def unload(self) -> None: ...
     def memory_required(self, settings: PromptSettings) -> int:
         """Additional VRAM budget for loading; zero when the requested model is resident."""
@@ -77,5 +86,10 @@ class ImageGenerator(Protocol):
     ) -> None:
         """Write a complete PNG to output_path, or raise a MoruError."""
         ...
+
+    def inpaint(
+        self, prompt: str, settings: GenerationSettings, output_path: Path,
+        progress: Progress, cancelled: Event, original_path: Path, mask_path: Path,
+    ) -> None: ...
 
     def close(self) -> None: ...

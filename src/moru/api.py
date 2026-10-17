@@ -314,6 +314,17 @@ class Api:
         return self._app.run_when_idle(submit)
 
     @endpoint
+    def edit_region(self, image_id, content, mask):
+        def submit():
+            self._check_chatgpt_login()
+            return asdict(self._app.edit_region(image_id, content, mask))
+        return self._app.run_when_idle(submit)
+
+    @endpoint
+    def set_edit_tab(self, tab):
+        self._app.set_edit_tab(tab)
+
+    @endpoint
     def generate_from_prompt(self, image_id, prompt):
         return asdict(self._app.generate_from_prompt(image_id, prompt))
 
@@ -379,7 +390,10 @@ class Api:
         image = self._app.repository.get_image(image_id)
         return {
             "id": image.id,
-            "prompt": image.prompt,
+            "prompt": image.full_prompt,
+            "execution_prompt": image.prompt,
+            "generation_method": image.generation_method,
+            "edit_tab": self._app.get_edit_tab(),
             "model_name": (
                 RETIRED_MODELS[image.settings.model_id]["name"]
                 if image.settings.model_id in RETIRED_MODELS

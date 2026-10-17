@@ -90,11 +90,22 @@ class ChatGPTPrompts:
         on_source,
         on_stage,
     ):
+        instructions, messages = prompt_messages(text, base, history, model_id)
+        return self._complete(
+            instructions, messages, settings, cancelled, progress,
+            search_tags=not image_model(model_id).natural_prompt,
+            on_ready=on_ready, on_source=on_source, on_stage=on_stage,
+            operation="refine" if base is not None else "create",
+        )
+
+    def _complete(
+        self, instructions, messages, settings, cancelled, progress, *,
+        search_tags=False, on_ready=None, on_source=None, on_stage=None, operation="create",
+    ):
         check_cancelled(cancelled)
         if not settings.chatgpt_model:
             raise MoruError("INVALID_SETTINGS")
         validate_chatgpt_options(settings)
-        instructions, messages = prompt_messages(text, base, history, model_id)
         payload = {
             "model": settings.chatgpt_model,
             "instructions": instructions,
@@ -107,7 +118,7 @@ class ChatGPTPrompts:
         use_tools = (
             settings.tag_search_enabled
             and self.tag_tools is not None
-            and not image_model(model_id).natural_prompt
+            and search_tags
         )
         if use_tools:
             payload["tools"] = self.tag_tools.definitions()
@@ -117,7 +128,7 @@ class ChatGPTPrompts:
         logger.info(
             "ChatGPT prompt request=%s operation=%s model=%s reasoning=%s tools=%s input_items=%d",
             request_id,
-            "refine" if base is not None else "create",
+            operation,
             label(settings.chatgpt_model, REASONING_EFFORTS),
             settings.chatgpt_reasoning_effort,
             use_tools,
@@ -232,6 +243,24 @@ class ChatGPTPrompts:
                 check_cancelled(cancelled)
                 token = self.auth.access_token(rejected_token=token)
         raise MoruError("CHATGPT_UNAVAILABLE")
+
+    def edit_region(
+        self, prompt, change_request, settings, cancelled, *, on_ready=None, on_progress=None,
+        on_source=None, on_stage=None,
+    ):
+        from moru.prompts.region import write_region_prompts
+
+        def write(stage, messages, progress):
+            return self._complete(
+                messages[0]["content"], messages[1:], settings, cancelled,
+                lambda _, text: progress(text), search_tags=stage == "region",
+                on_ready=on_ready if stage == "region" else None,
+                on_source=on_source if stage == "region" else None,
+                on_stage=on_stage if stage == "region" else None,
+                operation=f"region_{stage}",
+            )
+
+        return write_region_prompts(prompt, change_request, write, on_progress)
 
     def models(self):
         token = self.auth.access_token()

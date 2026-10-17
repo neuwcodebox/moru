@@ -16,6 +16,17 @@ from moru.ports import Progress
 log = logging.getLogger(__name__)
 
 
+def _boundary_denoise_mask(sigma, mask, extra_options):
+    # Differential Diffusion: low-strength boundary pixels enter only late sampling steps.
+    # Use Comfy's sampler hook without importing its UI nodes and their extra dependencies.
+    sampling = extra_options["model"].inner_model.model_sampling
+    sigmas = extra_options["sigmas"]
+    start = sampling.timestep(sigmas[0])
+    end = sampling.timestep(max(sampling.sigma_min, sigmas[-1]))
+    threshold = (sampling.timestep(sigma[0]) - end) / (start - end)
+    return ((mask > 0) & (mask >= threshold)).to(mask.dtype)
+
+
 def image_frame(decoded):
     # Qwen's Wan VAE returns [batch, time, height, width, channels] even for still images.
     if decoded.ndim == 5 and decoded.shape[0:2] == (1, 1):
@@ -42,7 +53,7 @@ def _save_png(pixels, output_path: Path, temporary: Path):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with temporary.open("wb") as image_file:
-            Image.fromarray(np.clip(pixels * 255, 0, 255).astype(np.uint8)).save(
+            Image.fromarray(np.rint(np.clip(pixels * 255, 0, 255)).astype(np.uint8)).save(
                 image_file, format="PNG",
             )
             image_file.flush()
@@ -161,6 +172,7 @@ class ComfyEngine:
         progress: Progress,
         cancelled: Event,
         paths: dict[str, str],
+        *, original_path: Path | None = None, mask_path: Path | None = None,
     ):
         temporary = output_path.with_suffix(".png.part")
         try:
@@ -183,10 +195,32 @@ class ComfyEngine:
                     )
                     channels, downscale = 4, 8
                     sampling_options = {}
-                latent = torch.zeros(
-                    (1, channels, settings.height // downscale, settings.width // downscale),
-                    device=management.intermediate_device(),
-                )
+                if original_path is not None:
+                    if model.family != "anima" or mask_path is None:
+                        raise MoruError("REGION_UNSUPPORTED")
+                    import numpy as np
+
+                    from moru.regions import prepare_inpaint_crop
+
+                    region = prepare_inpaint_crop(
+                        original_path, mask_path, (settings.width, settings.height),
+                    )
+                    image_tensor = torch.from_numpy(
+                        np.asarray(region.image, dtype=np.float32).copy() / 255
+                    ).unsqueeze(0)
+                    mask_tensor = torch.from_numpy(
+                        np.asarray(region.noise_mask, dtype=np.float32).copy() / 255
+                    ).unsqueeze(0)
+                    latent = self._vae.encode(image_tensor)
+                    sampling_options.update(noise_mask=mask_tensor, denoise=0.85)
+                    sampling_model = self._model.clone()
+                    sampling_model.set_model_denoise_mask_function(_boundary_denoise_mask)
+                else:
+                    sampling_model = self._model
+                    latent = torch.zeros(
+                        (1, channels, settings.height // downscale, settings.width // downscale),
+                        device=management.intermediate_device(),
+                    )
                 latent = sample.fix_empty_latent_channels(self._model, latent, downscale)
                 noise = sample.prepare_noise(latent, settings.seed)
 
@@ -197,7 +231,7 @@ class ComfyEngine:
 
                 progress("generating", 0, settings.steps)
                 samples = sample.sample(
-                    self._model,
+                    sampling_model,
                     noise,
                     settings.steps,
                     settings.cfg,
@@ -214,6 +248,14 @@ class ComfyEngine:
                 if cancelled.is_set():
                     raise MoruError("GENERATION_CANCELLED")
                 pixels = image_frame(self._vae.decode(samples)).detach().cpu().numpy()
+            if original_path is not None:
+                from PIL import Image
+
+                from moru.regions import composite_region
+
+                patch = Image.fromarray(np.rint(np.clip(pixels, 0, 1) * 255).astype(np.uint8))
+                restored = composite_region(original_path, patch, mask_path, region.bounds)
+                pixels = np.asarray(restored, dtype=np.float32) / 255
             _save_png(pixels, output_path, temporary)
             # Return unused generation buffers while keeping reusable model weights resident.
             management.soft_empty_cache()

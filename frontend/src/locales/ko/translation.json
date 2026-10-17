@@ -48,5 +48,9 @@
   "project": "작업 {{number}}",
   "viewerPosition": "{{image}} / {{images}} · 버전 {{version}} / {{versions}}",
   "generationPrompt": "생성 프롬프트",
+  "regionPrompt": "영역 프롬프트",
+  "scenePrompt": "전체 프롬프트",
+  "writingRegionPrompt": "영역 프롬프트 작성 중…",
+  "writingScenePrompt": "전체 프롬프트 작성 중…",
   "sources": "소스"
 }

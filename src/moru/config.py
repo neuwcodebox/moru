@@ -25,8 +25,10 @@ class ModelPaths:
             return {}
         try:
             overrides = json.loads(self.config_path.read_text(encoding="utf-8"))
+            # Validate supported and compatibility keys before selecting active model paths.
             if not isinstance(overrides, dict) or any(
-                (key not in DEFAULT_MODEL_FILES and key not in RETIRED_MODELS)
+                (key not in DEFAULT_MODEL_FILES and key not in RETIRED_MODELS
+                 and key != "prompt_vision")
                 or not isinstance(value, str)
                 for key, value in overrides.items()
             ):

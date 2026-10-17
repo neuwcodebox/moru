@@ -2,20 +2,8 @@ import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 import Modal from "../../components/Modal";
 import { Expand, LoaderCircle, ZoomIn, ZoomOut } from "lucide-react";
-
-type ViewerTransform = { zoom: number; x: number; y: number };
-
-function zoomAt(view: ViewerTransform, factor: number, anchor = { x: 0, y: 0 }): ViewerTransform {
-  const zoom = Math.max(0.25, Math.min(8, view.zoom * factor));
-  if (zoom === view.zoom) return view;
-  const ratio = zoom / view.zoom;
-  // Keep the same image point beneath the anchor, measured from the viewport center.
-  return {
-    zoom,
-    x: anchor.x + (view.x - anchor.x) * ratio,
-    y: anchor.y + (view.y - anchor.y) * ratio,
-  };
-}
+import { zoomAt } from "./imageViewport";
+import type { ImageView } from "./imageViewport";
 
 export default function Lightbox({
   source,
@@ -31,7 +19,7 @@ export default function Lightbox({
   onReturnFocus?: () => void;
 }) {
   const { t } = useTranslation("dialogs");
-  const [view, setView] = useState<ViewerTransform>({ zoom: 1, x: 0, y: 0 });
+  const [view, setView] = useState<ImageView>({ zoom: 1, x: 0, y: 0 });
   const drag = useRef<{
     x: number;
     y: number;

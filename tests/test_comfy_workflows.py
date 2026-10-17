@@ -72,7 +72,9 @@ def workflow(tmp_path, monkeypatch):
         model_base=SimpleNamespace(Anima=Anima, Flux2=Flux2),
     )
     monkeypatch.setitem(
-        sys.modules, "numpy", SimpleNamespace(clip=Mock(return_value=pixels), uint8="uint8")
+        sys.modules, "numpy", SimpleNamespace(
+            clip=Mock(return_value=pixels), rint=Mock(return_value=pixels), uint8="uint8",
+        )
     )
     monkeypatch.setattr(Image, "fromarray", lambda _: Image.new("RGB", (832, 1216)))
     paths = ModelPaths(tmp_path)
@@ -281,3 +283,92 @@ def test_flux_cancellation_stops_sampling_without_saving_an_image(workflow):
         generate(workflow, "flux2-klein-4b", cancelled=cancelled)
     assert error.value.code == "GENERATION_CANCELLED"
     assert not (workflow.root / "result.png").exists()
+
+
+def test_region_sampling_uses_the_encoded_context_crop_and_its_mask(workflow, monkeypatch):
+    from moru.regions import InpaintCrop
+
+    class Array:
+        def copy(self):
+            return self
+
+        def __truediv__(self, _):
+            return self
+
+        def __mul__(self, _):
+            return self
+
+        def astype(self, _):
+            return self
+
+    array = Array()
+    arrays = SimpleNamespace(
+        asarray=Mock(return_value=array), clip=Mock(return_value=array),
+        rint=Mock(return_value=array), float32="float32", uint8="uint8",
+    )
+    monkeypatch.setitem(sys.modules, "numpy", arrays)
+    tensors = [SimpleNamespace(unsqueeze=Mock(return_value=name)) for name in ("crop", "mask")]
+    workflow.torch.from_numpy = Mock(side_effect=tensors)
+    workflow.vae.encode = Mock(return_value="encoded crop")
+    patched_model = SimpleNamespace(set_model_denoise_mask_function=Mock())
+    source_model = workflow.sd.load_diffusion_model.return_value
+    source_model.clone = Mock(return_value=patched_model)
+    region = InpaintCrop(
+        (100, 200, 500, 700), Image.new("RGB", (800, 992)), Image.new("L", (800, 992)),
+    )
+    prepare = Mock(return_value=region)
+    compose = Mock(return_value=Image.new("RGB", (832, 1216)))
+    monkeypatch.setattr("moru.regions.prepare_inpaint_crop", prepare)
+    monkeypatch.setattr("moru.regions.composite_region", compose)
+    save = Mock()
+    monkeypatch.setattr("moru.images.engine._save_png", save)
+    original, mask = workflow.root / "original.png", workflow.root / "mask.png"
+    output = workflow.root / "result.png"
+    settings = GenerationSettings(width=832, height=1216, seed=123)
+
+    workflow.engine.generate(
+        "a girl holding a handheld game console", settings, output, Mock(), Event(),
+        workflow.paths.image_payload(settings.model_id), original_path=original, mask_path=mask,
+    )
+
+    prepare.assert_called_once_with(original, mask, (832, 1216))
+    assert arrays.asarray.call_args_list[0].args[0] is region.image
+    assert arrays.asarray.call_args_list[1].args[0] is region.noise_mask
+    workflow.vae.encode.assert_called_once_with("crop")
+    call = workflow.sample.sample.call_args
+    assert call.args[0] is patched_model
+    assert patched_model.set_model_denoise_mask_function.call_count == 1
+    assert call.kwargs["noise_mask"] == "mask"
+    assert call.kwargs["denoise"] == 0.85
+    assert call.args[2:6] == (10, 1.0, "euler", "simple")
+    assert compose.call_args.args[0] == original
+    assert compose.call_args.args[2:] == (mask, region.bounds)
+    save.assert_called_once()
+
+    class Mask:
+        dtype = "float32"
+
+        def __init__(self, values):
+            self.values = values
+
+        def __gt__(self, threshold):
+            return Mask([value > threshold for value in self.values])
+
+        def __ge__(self, threshold):
+            return Mask([value >= threshold for value in self.values])
+
+        def __and__(self, other):
+            return Mask([a and b for a, b in zip(self.values, other.values, strict=True)])
+
+        def to(self, dtype):
+            assert dtype == self.dtype
+            return self.values
+
+    sampling = SimpleNamespace(sigma_min=0, timestep=lambda sigma: sigma)
+    options = {"model": SimpleNamespace(inner_model=SimpleNamespace(model_sampling=sampling)),
+               "sigmas": [10, 5, 0]}
+    boundary_mask = patched_model.set_model_denoise_mask_function.call_args.args[0]
+    # The interior is editable first; border pixels enter later; the outside stays fixed.
+    for sigma, expected in [(10, [0, 0, 0, 1]), (5, [0, 0, 1, 1]),
+                            (1, [0, 1, 1, 1]), (0, [0, 1, 1, 1])]:
+        assert boundary_mask([sigma], Mask([0, 0.25, 0.5, 1]), options) == expected

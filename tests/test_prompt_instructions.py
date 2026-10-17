@@ -29,8 +29,8 @@ def test_create_examples_teach_animal_counts_and_binding_each_persons_attributes
 
 def test_refine_example_replaces_time_and_retains_subject_clothing_and_setting():
     system = prompt_messages("make it night", "dog, daytime")[0]["content"]
-    assert "Return the entire revised prompt, never a patch" in system
-    assert "Replace conflicting old details rather than appending opposites" in system
+    assert "Return the complete revised image prompt" in system
+    assert "Integrate the changed details consistently across tags and sentences" in system
     assert "A brown dog wearing a red scarf stands in the snow at night" in system
     assert "Two black cats" not in system  # Creation-only examples spend no edit context.
 
@@ -69,7 +69,7 @@ def test_create_and_refine_receive_the_same_optional_reference_in_system_only(ba
         "Adult objects:", "Fluids:", "Adult state:", "Adult context:", "Visibility:",
     ],
 )
-def test_reference_covers_previously_missing_subject_and_adult_categories(section):
+def test_reference_covers_subject_and_adult_categories(section):
     assert section in prompt_messages("request")[0]["content"]
 
 
@@ -80,7 +80,7 @@ def test_body_and_clothing_reference_does_not_prescribe_adult_content():
     assert "do not infer it from clothing or anatomy" in system
 
 
-def test_medium_reference_uses_plain_names_instead_of_engine_weighting_parentheses():
+def test_medium_reference_uses_engine_compatible_names():
     assert "Medium: watercolor, oil painting, pixel art, sketch." in TAG_REFERENCE
     assert "(medium)" not in TAG_REFERENCE
 
@@ -92,14 +92,14 @@ def test_writer_can_enhance_presentation_while_preserving_requested_scene(base):
     assert "lighting, texture, composition and a fitting visual style" in system
     assert "Preserve explicit counts, colors, clothing, actions, relationships" in system
     assert "enhance only the requested change unless broader enhancement is requested" in system
-    assert "Leave unspecified style" not in system
+    assert "Choose a few compatible details" in system
 
 
 @pytest.mark.parametrize("base", [None, "1girl, red hair, book"])
 def test_flux_writer_uses_visual_sentences_and_preserves_tagged_edit_context(base):
     messages = prompt_messages("make it night", base, model_id="flux2-klein-4b")
     system = messages[0]["content"]
-    assert "natural English rather than booru tags" in system
+    assert "Use concrete English sentences to describe visual concepts" in system
     assert TAG_REFERENCE not in system
     assert "TAG OPTIONS" not in system
     assert "FLUX" not in system
@@ -107,7 +107,7 @@ def test_flux_writer_uses_visual_sentences_and_preserves_tagged_edit_context(bas
     assert "attach" in system.lower()
     if base:
         assert "retain its visual meaning in natural English" in system
-        assert "Return the entire revised prompt, never a patch" in system
+        assert "Return the complete revised image prompt" in system
         assert base in messages[-1]["content"]
         assert "Two black cats" not in system
 

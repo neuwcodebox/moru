@@ -100,7 +100,7 @@
   "prompt": {
     "title": "프롬프트",
     "actualPrompt": "실제 생성 프롬프트",
-    "generate": "이 프롬프트로 생성"
+    "generate": "생성"
   },
   "lightbox": {
     "title": "이미지 보기",
@@ -124,5 +124,26 @@
       "get_tag_info": "태그 정보",
       "get_related_tags": "관련 태그"
     }
+  },
+  "region": {
+    "title": "수정",
+    "mode": "수정 방식",
+    "promptTab": "프롬프트",
+    "regionTab": "영역",
+    "original": "원본 이미지",
+    "selection": "수정할 영역 칠하기",
+    "brush": "붓",
+    "eraser": "지우개",
+    "undo": "되돌리기",
+    "clear": "초기화",
+    "brushSize": "붓 크기",
+    "showMask": "선택 표시",
+    "content": "수정 요청",
+    "placeholder": "무엇을 어떻게 바꿀지 설명하세요",
+    "generationInfo": "원본 생성 정보",
+    "notReady": "프롬프트 제공자를 준비하고 Anima 모델을 선택해 주세요.",
+    "generate": "생성",
+    "executionPrompt": "영역 생성 프롬프트",
+    "scenePrompt": "전체 장면 프롬프트"
   }
 }

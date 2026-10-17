@@ -1,6 +1,7 @@
 """Application use cases and a single cancellable background generation slot."""
 
 import logging
+import os
 import secrets
 import uuid
 from collections.abc import Callable
@@ -17,6 +18,7 @@ from moru.images.files import verify_png
 from moru.language import SUPPORTED_LANGUAGES, saved_language
 from moru.models import image_model
 from moru.ports import ImageGenerator, PromptGenerator
+from moru.regions import decode_mask
 from moru.repository import Repository
 
 log = logging.getLogger(__name__)
@@ -36,6 +38,8 @@ class Job:
     error_code: str | None = None
     thinking_enabled: bool = False
     prompt_text: str = ""
+    scene_prompt_text: str = ""
+    region_edit: bool = False
     turn_id: str | None = None
     found_tag_count: int = 0
 
@@ -176,9 +180,54 @@ class Application:
             self.repository.add_request(request)
             return self._enqueue(request)
 
+    def edit_region(self, image_id: str, content: str, mask: str) -> Job:
+        with self._lock:
+            self._available()
+            if not isinstance(content, str) or not content.strip() or len(content) > 8000:
+                raise MoruError("INVALID_REQUEST")
+            image = self.repository.get_image(image_id)
+            settings = self.get_settings()
+            if image_model(settings.model_id).family != "anima":
+                raise MoruError("REGION_UNSUPPORTED")
+            pixels = decode_mask(mask, (image.settings.width, image.settings.height))
+            settings = replace(settings, width=image.settings.width, height=image.settings.height)
+            request_id = self._new_id()
+            relative = Path("masks") / f"{request_id}.png"
+            target = self.data_dir / relative
+            created = False
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with target.open("xb") as output:
+                    created = True
+                    output.write(pixels)
+                    output.flush()
+                    os.fsync(output.fileno())
+                request = Request(
+                    request_id, image.project_id, content.strip(), self._now(), image.id,
+                    "region", settings, turn_id=self.repository.image_turn(image.id),
+                    mask_path=relative.as_posix(), source_image_path=image.image_path,
+                )
+                self.repository.add_request(request)
+            except Exception as exc:
+                if created:
+                    target.unlink(missing_ok=True)
+                if isinstance(exc, OSError):
+                    raise MoruError("IMAGE_SAVE_FAILED") from exc
+                raise
+            return self._enqueue(request)
+
+    def get_edit_tab(self) -> str:
+        tab = self.repository.get_preference("edit_tab", "prompt")
+        return tab if tab in ("prompt", "region") else "prompt"
+
+    def set_edit_tab(self, tab: str):
+        if tab not in ("prompt", "region"):
+            raise MoruError("INVALID_SETTINGS")
+        self.repository.set_preference("edit_tab", tab)
+
     def regenerate(self, image_id: str) -> Job:
         image = self.repository.get_image(image_id)
-        return self.generate_from_prompt(image_id, image.prompt)
+        return self.generate_from_prompt(image_id, image.full_prompt)
 
     def retry_request(self, request_id: str) -> Job:
         with self._lock:
@@ -198,6 +247,7 @@ class Application:
             width=request.settings.width,
             height=request.settings.height,
             turn_id=request.turn_id,
+            region_edit=request.kind == "region",
         )
         self._jobs[job.id] = job
         self._active_job = job.id
@@ -206,7 +256,8 @@ class Application:
             prompt_settings = self.get_prompt_settings()
             job = replace(
                 job,
-                thinking_enabled=(prompt_settings.provider == "local" and prompt_settings.thinking),
+                thinking_enabled=(request.kind != "region" and prompt_settings.provider == "local"
+                                  and prompt_settings.thinking),
             )
             self._jobs[job.id] = job
             self._executor.submit(self._generate, job.id, request, self._cancelled, prompt_settings)
@@ -252,13 +303,20 @@ class Application:
             log.info("generation started id=%s", job_id)
             check_cancelled(cancelled)
             sources = []
-            prompt = self._prepare_prompt(
-                job_id,
-                request,
-                prompt_settings,
-                cancelled,
-                sources.append,
-            )
+            scene_prompt = None
+            if request.kind == "region":
+                prepared = self._prepare_region(
+                    job_id, request, prompt_settings, cancelled, sources.append,
+                )
+                prompt, scene_prompt = prepared.region_prompt, prepared.scene_prompt
+            else:
+                prompt = self._prepare_prompt(
+                    job_id,
+                    request,
+                    prompt_settings,
+                    cancelled,
+                    sources.append,
+                )
             check_cancelled(cancelled)
             settings = request.settings
             if settings.seed is None:
@@ -274,7 +332,12 @@ class Application:
             def progress(state, step=None, total=None):
                 self._progress(job_id, state, step, total)
 
-            self._write_image(prompt, settings, output_path, progress, cancelled)
+            if request.kind == "region":
+                self._write_region(
+                    prompt, request, settings, output_path, progress, cancelled,
+                )
+            else:
+                self._write_image(prompt, settings, output_path, progress, cancelled)
             check_cancelled(cancelled)
             image = Image(
                 image_id,
@@ -287,6 +350,7 @@ class Application:
                 self._now(),
                 request.kind,
                 sources=tuple(sources),
+                scene_prompt=scene_prompt,
             )
             # Cancellation and persistence share a lock: committed success stays successful.
             with self._lock:
@@ -297,6 +361,7 @@ class Application:
                     state="completed",
                     image_id=image.id,
                     prompt_text="",
+                    scene_prompt_text="",
                 )
             output_path = None
             log.info("generation completed id=%s", job_id)
@@ -315,6 +380,7 @@ class Application:
                     state=state,
                     error_code=code,
                     prompt_text="",
+                    scene_prompt_text="",
                 )
         finally:
             if output_path is not None:
@@ -325,10 +391,58 @@ class Application:
             with self._lock:
                 self._active_job = None
 
+    def _prepare_region(self, job_id, request, settings, cancelled, on_source):
+        base = self.repository.get_image(request.base_image_id)
+        required = self.prompts.memory_required(settings)
+        self._progress(job_id, "loading_prompt_model" if required else "prompting")
+        if settings.provider == "local" or required:
+            self.images.reserve_memory(required, cancelled)
+        check_cancelled(cancelled)
+        prepared = self.prompts.edit_region(
+            base.full_prompt, request.text, settings, cancelled,
+            on_ready=lambda: self._progress(job_id, "writing_region_prompt"),
+            on_progress=lambda stage, region, scene: self._region_progress(
+                job_id, stage, region, scene,
+            ),
+            on_source=on_source,
+            on_stage=lambda stage, count: self._prompt_stage(
+                job_id, "searching_tags" if stage == "searching_tags" else "writing_region_prompt",
+                count,
+            ),
+        )
+        self._region_progress(job_id, "scene", prepared.region_prompt, prepared.scene_prompt)
+        return prepared
+
+    def _region_progress(self, job_id, stage, region, scene):
+        with self._lock:
+            self._jobs[job_id] = replace(
+                self._jobs[job_id],
+                state="writing_region_prompt" if stage == "region" else "writing_scene_prompt",
+                prompt_text=region[-65536:], scene_prompt_text=scene[-65536:],
+            )
+
+    def _write_region(self, prompt, request, settings, output_path, progress, cancelled):
+        if self.images.needs_prompt_unload(settings, cancelled):
+            self.prompts.unload()
+        for attempt in range(2):
+            try:
+                self.images.inpaint(
+                    prompt, settings, output_path, progress, cancelled,
+                    self.data_dir / request.source_image_path, self.data_dir / request.mask_path,
+                )
+                break
+            except MoruError as exc:
+                if exc.code != "CUDA_OOM" or attempt:
+                    raise
+                check_cancelled(cancelled)
+                self.prompts.unload()
+        check_cancelled(cancelled)
+        verify_png(output_path, settings.width, settings.height)
+
     def _prepare_prompt(self, job_id, request, settings, cancelled, on_source) -> str:
         if request.kind == "manual":
             base = self.repository.get_image(request.base_image_id)
-            if request.text == base.prompt:
+            if request.text == base.full_prompt:
                 for source in base.sources:
                     on_source(source)
             self._prompt_progress(job_id, request.text)
@@ -354,7 +468,7 @@ class Application:
         if request.base_image_id:
             base = self.repository.get_image(request.base_image_id)
             prompt = self.prompts.refine(
-                base.prompt,
+                base.full_prompt,
                 request.text,
                 settings,
                 cancelled,
@@ -384,7 +498,7 @@ class Application:
             # A retry keeps its original base even if the selected version has since changed.
             if original.id == base_turn:
                 selected = base
-            history.append(PromptTurn(original.text, selected.prompt))
+            history.append(PromptTurn(original.text, selected.full_prompt))
             if original.id == base_turn:
                 break
         return tuple(history[-limit:])

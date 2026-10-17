@@ -345,6 +345,23 @@ class LlamaPrompts:
             on_stage=on_stage,
         )
 
+    def edit_region(
+        self, prompt, change_request, settings, cancelled, *, on_ready=None, on_progress=None,
+        on_source=None, on_stage=None,
+    ):
+        from moru.prompts.region import write_region_prompts
+
+        def write(stage, messages, progress):
+            return self._complete(
+                messages, settings, cancelled, lambda _, text: progress(text),
+                on_ready=on_ready if stage == "region" else None,
+                search_tags=stage == "region",
+                on_source=on_source if stage == "region" else None,
+                on_stage=on_stage if stage == "region" else None,
+            )
+
+        return write_region_prompts(prompt, change_request, write, on_progress)
+
     def unload(self):
         with self._lock:
             if self._llm is None:

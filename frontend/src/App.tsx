@@ -26,6 +26,7 @@ import type {
 } from "./api";
 import Lightbox from "./features/conversation/Lightbox";
 import PromptDialog from "./features/conversation/PromptDialog";
+import type { EditDraft } from "./features/conversation/editDraft";
 import SourcesDialog from "./features/conversation/SourcesDialog";
 import SettingsDialog from "./features/settings/SettingsDialog";
 import ModelsDialog from "./features/models/ModelsDialog";
@@ -52,8 +53,20 @@ export default function App() {
   const [modelsOpen, setModelsOpen] = useState(false);
   const [chatgpt, setChatgpt] = useState<ChatGPTStatus | null>(null);
   const sourceTrigger = useRef<HTMLElement | null>(null);
+  const editTrigger = useRef<HTMLElement | null>(null);
   const [promptSources, setPromptSources] = useState<PromptSource[] | null>(null);
   const [details, setDetails] = useState<ImageDetails | null>(null);
+  const editDrafts = useRef(new Map<string, EditDraft>());
+  const admittedEdits = useRef(new Map<string, string>());
+  const pendingEditOrigin = useRef<string | null>(null);
+  const startEdit = useCallback((job: import("./api").Job) => {
+    if (pendingEditOrigin.current) admittedEdits.current.set(job.id, pendingEditOrigin.current);
+  }, []);
+  const finishEdit = useCallback((result: import("./api").Job) => {
+    const id = admittedEdits.current.get(result.id);
+    if (id && result.state === "completed") editDrafts.current.delete(id);
+    admittedEdits.current.delete(result.id);
+  }, []);
   const [viewer, setViewer] = useState(false);
   const [activeTurn, setActiveTurn] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ id: string; text: string } | null>(null);
@@ -61,7 +74,7 @@ export default function App() {
   const input = useRef<HTMLTextAreaElement>(null);
   const focusInput = useCallback(() => { input.current?.focus(); }, []);
   const { job, stopping, startGeneration, cancelGeneration } = useGeneration({
-    onProject: setProject, onError: setError, onComplete: focusInput,
+    onProject: setProject, onError: setError, onComplete: focusInput, onFinished: finishEdit, onStarted: startEdit,
   });
   const conversation = useRef<HTMLElement>(null);
   const composerArea = useRef<HTMLElement>(null);
@@ -306,11 +319,12 @@ export default function App() {
           setActiveTurn(turnId);
           setViewer(true);
         }}
-        onShowPrompt={(id) =>
+        onShowPrompt={(id) => {
+          editTrigger.current = document.activeElement as HTMLElement | null;
           void act(async () => {
             setDetails(await call<ImageDetails>("get_image_details", id));
-          })
-        }
+          });
+        }}
         onShowSources={(id, trigger) => {
           // Loading disables menu buttons; remember the opener before native focus is lost.
           sourceTrigger.current = trigger;
@@ -507,11 +521,30 @@ export default function App() {
           onReturnFocus={() => sourceTrigger.current?.focus({ preventScroll: true })} />
       )}
       {details && (
-        <PromptDialog
+        <PromptDialog key={details.id}
           details={details}
+          source={sources[details.id]}
+          draft={editDrafts.current.get(details.id)}
+          onReturnFocus={() => editTrigger.current?.focus({ preventScroll: true })}
+          onDraft={(draft) => editDrafts.current.set(details.id, draft)}
+          regionReady={promptReady &&
+            !!settings && settings.model_id.startsWith("anima-")}
+          onPrepare={() => {
+            setDetails(null);
+            if (!settings?.model_id.startsWith("anima-")) setSettingsOpen(true);
+            else setModelsOpen(true);
+          }}
+          regionSupported={!!settings?.model_id.startsWith("anima-")}
           onClose={() => setDetails(null)}
           onGenerate={async (prompt) => {
-            await startGeneration("generate_from_prompt", details.id, prompt);
+            pendingEditOrigin.current = details.id;
+            try { await startGeneration("generate_from_prompt", details.id, prompt); }
+            finally { pendingEditOrigin.current = null; }
+          }}
+          onRegionGenerate={async (content, mask) => {
+            pendingEditOrigin.current = details.id;
+            try { await startGeneration("edit_region", details.id, content, mask); }
+            finally { pendingEditOrigin.current = null; }
           }}
         />
       )}

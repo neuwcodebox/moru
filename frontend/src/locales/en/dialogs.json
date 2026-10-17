@@ -100,7 +100,7 @@
   "prompt": {
     "title": "Prompt",
     "actualPrompt": "Generation prompt",
-    "generate": "Generate with this prompt"
+    "generate": "Generate"
   },
   "lightbox": {
     "title": "Image viewer",
@@ -124,5 +124,26 @@
       "get_tag_info": "Tag information",
       "get_related_tags": "Related tags"
     }
+  },
+  "region": {
+    "title": "Edit",
+    "mode": "Edit mode",
+    "promptTab": "Prompt",
+    "regionTab": "Region",
+    "original": "Original image",
+    "selection": "Paint the area to edit",
+    "brush": "Brush",
+    "eraser": "Eraser",
+    "undo": "Undo",
+    "clear": "Clear",
+    "brushSize": "Brush size",
+    "showMask": "Show selection",
+    "content": "Modification request",
+    "placeholder": "Describe what to change and how",
+    "generationInfo": "Source generation details",
+    "notReady": "Prepare your prompt provider and select an Anima model.",
+    "generate": "Generate",
+    "executionPrompt": "Region generation prompt",
+    "scenePrompt": "Full scene prompt"
   }
 }

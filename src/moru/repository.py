@@ -19,14 +19,15 @@ CREATE TABLE IF NOT EXISTS requests (
     id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
     text TEXT NOT NULL, created_at TEXT NOT NULL,
     base_image_id TEXT REFERENCES images(id), kind TEXT NOT NULL,
-    settings TEXT NOT NULL, status TEXT NOT NULL, error_code TEXT, turn_id TEXT
+    settings TEXT NOT NULL, status TEXT NOT NULL, error_code TEXT, turn_id TEXT,
+    mask_path TEXT, source_image_path TEXT
 );
 CREATE TABLE IF NOT EXISTS images (
     id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
     request_id TEXT NOT NULL UNIQUE REFERENCES requests(id),
     parent_image_id TEXT REFERENCES images(id), prompt TEXT NOT NULL,
     image_path TEXT NOT NULL, settings TEXT NOT NULL, created_at TEXT NOT NULL,
-    generation_method TEXT NOT NULL, sources TEXT NOT NULL DEFAULT '[]'
+    generation_method TEXT NOT NULL, sources TEXT NOT NULL DEFAULT '[]', scene_prompt TEXT
 );
 CREATE INDEX IF NOT EXISTS images_parent ON images(project_id, parent_image_id);
 CREATE INDEX IF NOT EXISTS requests_project ON requests(project_id);
@@ -60,6 +61,15 @@ class Repository:
                     self._db.execute(
                         "ALTER TABLE images ADD COLUMN sources TEXT NOT NULL DEFAULT '[]'"
                     )
+                for table, column in (
+                    ("requests", "mask_path"), ("requests", "source_image_path"),
+                    ("images", "scene_prompt"),
+                ):
+                    existing = {
+                        row["name"] for row in self._db.execute(f"PRAGMA table_info({table})")
+                    }
+                    if column not in existing:
+                        self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
                 self._db.execute(
                     "UPDATE requests SET status='failed', error_code='GENERATION_INTERRUPTED' "
                     "WHERE status='pending'"
@@ -122,7 +132,9 @@ class Repository:
             if request.base_image_id is not None:
                 self.require_image(request.project_id, request.base_image_id)
             db.execute(
-                "INSERT INTO requests VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO requests (id, project_id, text, created_at, base_image_id, kind, "
+                "settings, status, error_code, turn_id, mask_path, source_image_path) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     request.id,
                     request.project_id,
@@ -134,6 +146,8 @@ class Repository:
                     request.status,
                     request.error_code,
                     request.turn_id,
+                    request.mask_path,
+                    request.source_image_path,
                 ),
             )
 
@@ -178,8 +192,8 @@ class Repository:
                 raise MoruError("DATABASE_FAILED")
             db.execute(
                 "INSERT INTO images (id, project_id, request_id, parent_image_id, prompt, "
-                "image_path, settings, created_at, generation_method, sources) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "image_path, settings, created_at, generation_method, sources, scene_prompt) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     image.id,
                     image.project_id,
@@ -191,6 +205,7 @@ class Repository:
                     image.created_at,
                     image.generation_method,
                     json.dumps([asdict(source) for source in image.sources], ensure_ascii=False),
+                    image.scene_prompt,
                 ),
             )
             db.execute(

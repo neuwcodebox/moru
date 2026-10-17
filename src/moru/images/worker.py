@@ -85,7 +85,7 @@ def serve(input_stream: TextIO, output_stream: TextIO, engine, data_dir: Path):
                 release = engine.needs_prompt_unload(settings, payload["paths"])
                 send(request_id, "result", {"release_prompt": release})
                 continue
-            if message["type"] != "generate" or not isinstance(request_id, str):
+            if message["type"] not in ("generate", "inpaint") or not isinstance(request_id, str):
                 raise MoruError("INVALID_REQUEST")
             payload = message["payload"]
             settings = GenerationSettings(
@@ -114,6 +114,14 @@ def serve(input_stream: TextIO, output_stream: TextIO, engine, data_dir: Path):
             def progress(state, step=None, total=None, current_request_id=request_id):
                 send(current_request_id, "progress", {"state": state, "step": step, "total": total})
 
+            region_paths = {}
+            if message["type"] == "inpaint":
+                for key, folder in (("original_path", "images"), ("mask_path", "masks")):
+                    path = Path(payload[key]).resolve()
+                    if (path.parent != (data_dir / folder).resolve()
+                            or path.suffix != ".png" or not path.is_file()):
+                        raise MoruError("INVALID_REQUEST")
+                    region_paths[key] = path
             engine.generate(
                 payload["prompt"],
                 settings,
@@ -121,6 +129,7 @@ def serve(input_stream: TextIO, output_stream: TextIO, engine, data_dir: Path):
                 progress,
                 Event(),
                 payload["paths"],
+                **region_paths,
             )
             send(request_id, "result", {"image_path": str(output_path), "seed": settings.seed})
         except Exception as exc:

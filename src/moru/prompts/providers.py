@@ -75,6 +75,16 @@ class PromptProviders:
             self.local.unload()
         return self._engine(settings).memory_required(settings)
 
+    def edit_region(
+        self, prompt, change_request, settings, cancelled, *, on_ready=None, on_progress=None,
+        on_source=None, on_stage=None,
+    ):
+        return self._engine(settings).edit_region(
+            prompt, change_request, settings, cancelled,
+            on_ready=on_ready, on_progress=on_progress,
+            on_source=on_source, on_stage=on_stage,
+        )
+
     def unload(self) -> None:
         self.local.unload()
         self.chatgpt.unload()

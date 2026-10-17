@@ -268,7 +268,7 @@ describe("conversation", () => {
   it.each([
     ["생성 설정", "생성 설정"],
     ["모델 준비", "모델 준비"],
-    ["수정", "프롬프트"],
+    ["수정", "수정"],
     ["이미지 전체 화면 보기", "이미지 보기"],
   ])("isolates all background controls while the %s dialog is open", async (button, title) => {
     current = withImage;
@@ -654,7 +654,7 @@ describe("conversation", () => {
     render(<App />);
     await screen.findByAltText("생성 이미지");
     await user.click(screen.getByText("수정"));
-    await user.click(screen.getByText("이 프롬프트로 생성"));
+    await user.click(screen.getByRole("button", { name: "생성" }));
     await screen.findByText("프롬프트 생성 중…");
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(api.generate_from_prompt).toHaveBeenCalledOnce();
@@ -774,7 +774,7 @@ describe("conversation", () => {
       await screen.findByAltText("생성 이미지");
       if (method === "generate_from_prompt") {
         await user.click(screen.getByRole("button", { name: "수정" }));
-        await user.click(await screen.findByRole("button", { name: "이 프롬프트로 생성" }));
+        await user.click(await screen.findByRole("button", { name: "생성" }));
       } else {
         await user.click(screen.getByRole("button", { name: "다시" }));
       }
@@ -893,11 +893,11 @@ describe("conversation", () => {
     render(<App />);
     await screen.findByAltText("생성 이미지");
     await user.click(screen.getByText("수정"));
-    const dialog = await screen.findByRole("dialog", { name: "프롬프트" });
+    const dialog = await screen.findByRole("dialog", { name: "수정" });
     const prompt = within(dialog).getByLabelText("실제 생성 프롬프트");
     await user.clear(prompt);
     await user.type(prompt, "manually changed");
-    await user.click(within(dialog).getByText("이 프롬프트로 생성"));
+    await user.click(within(dialog).getByRole("button", { name: "생성" }));
     expect(api.generate_from_prompt).toHaveBeenCalledWith(
       "i1",
       "manually changed",
@@ -1570,8 +1570,8 @@ describe("display language", () => {
     expect(screen.queryByLabelText("Context size")).toBeNull();
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "Edit" }));
-    expect(await screen.findByRole("dialog", { name: "Prompt" })).toBeTruthy();
-    expect((within(screen.getByRole("dialog", { name: "Prompt" })).getByRole("textbox") as HTMLTextAreaElement).value).toBe("private actual prompt");
+    expect(await screen.findByRole("dialog", { name: "Edit" })).toBeTruthy();
+    expect((within(screen.getByRole("dialog", { name: "Edit" })).getByRole("textbox") as HTMLTextAreaElement).value).toBe("private actual prompt");
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "View image full screen" }));
     expect(screen.getByRole("dialog", { name: "Image viewer" })).toBeTruthy();

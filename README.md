@@ -58,13 +58,16 @@ prompt and recent conversation to create a new image.
 >
 > Give her a neutral expression.
 
-Open the image's **Prompt** menu to inspect, copy, or edit the actual prompt and generate another result.
+Open **Edit** below an image to edit its full scene prompt or paint a **Region** and describe
+what to change and how, such as “Change this cup to blue.” Anima edits the painted region locally.
+Your selected prompt writer uses the text descriptions to prepare the edit and update the scene
+prompt for subsequent conversation. Images stay on your computer.
 The **Sources** menu shows information consulted during tag searches.
 
 ### 4. Compare results and explore another direction
 
 - **Regenerate:** Create another result with the same prompt and your current generation settings.
-  Results from manual prompt edits also stay together as versions of the same conversation entry.
+  Results from prompt and region edits also stay together as versions of the same conversation entry.
   Select the version you like to continue the conversation from it.
 - **Fork:** Copy the conversation up to the selected image into a new project.
   Try another style or scene while keeping the original project.
@@ -81,7 +84,7 @@ use **Select file** to locate the file. You can keep its existing name and locat
 <summary>Files for each model</summary>
 
 Anima needs either the Turbo or Aesthetic weights and the shared text-understanding and image-decoding models.
-FLUX.2 klein 4B needs its three dedicated files. Prepare the prompt-writing GGUF only when using a local LLM.
+FLUX.2 klein 4B needs its three dedicated files. Prepare the prompt-writing GGUF when using a local LLM.
 
 | Model | File to download |
 | --- | --- |

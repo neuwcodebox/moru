@@ -79,7 +79,8 @@ export type PromptSource = {
     | { cooccurring: string[]; wiki_links: string[] }
     | { error: string };
 };
-export type ImageDetails = { id: string; prompt: string; settings: Settings; model_name: string };
+export type ImageDetails = { id: string; prompt: string; settings: Settings; model_name: string;
+  execution_prompt?: string; generation_method?: string; edit_tab?: "prompt" | "region" };
 export type Job = {
   id: string;
   width: number;
@@ -95,6 +96,8 @@ export type Job = {
   thinking_enabled?: boolean;
   found_tag_count?: number;
   prompt_text?: string;
+  scene_prompt_text?: string;
+  region_edit?: boolean;
   turn_id?: string | null;
 };
 export type ModelStatus = {
