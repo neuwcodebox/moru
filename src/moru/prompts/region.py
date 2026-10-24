@@ -5,11 +5,11 @@ from dataclasses import dataclass
 from typing import Literal
 
 from moru.errors import MoruError
-from moru.prompts.text import answer_text, final_prompt
+from moru.prompts.text import final_prompt
 
 _PROMPT_OUTPUT = (
     "\nReturn only the image prompt for the current user input "
-    "as one paragraph of plain English text."
+    "as plain English text. Do not include headings, explanations or Markdown fences."
 )
 
 REGION_SYSTEM = (
@@ -86,11 +86,9 @@ def validate_edit_prompt(content: str) -> str:
         if not isinstance(content, str):
             raise ValueError("expected text")
         prompt = content.strip()
-        if "\n" in prompt or "\r" in prompt or prompt.startswith(("{", "[", "```")):
-            raise ValueError("expected one prompt paragraph")
-        if final_prompt(prompt) != prompt:
-            raise ValueError("unexpected answer wrapper")
-        return prompt
+        if prompt.startswith(("{", "[")):
+            raise ValueError("expected plain prompt text")
+        return final_prompt(prompt)
     except (ValueError, MoruError) as exc:
         raise MoruError("REGION_INVALID_RESPONSE") from exc
 
@@ -99,7 +97,7 @@ def write_region_prompts(scene_prompt, change_request, write, on_progress=None) 
     """Share stage sequencing across local and cloud writers; each reply is plain text."""
     def region_progress(text):
         if on_progress is not None:
-            on_progress("region", answer_text(text), "")
+            on_progress("region", text.strip(), "")
 
     region = validate_edit_prompt(
         write("region", region_messages(scene_prompt, change_request), region_progress)
@@ -109,7 +107,7 @@ def write_region_prompts(scene_prompt, change_request, write, on_progress=None) 
 
     def scene_progress(text):
         if on_progress is not None:
-            on_progress("scene", region, answer_text(text))
+            on_progress("scene", region, text.strip())
 
     scene = validate_edit_prompt(
         write("scene", scene_messages(scene_prompt, change_request, region), scene_progress)

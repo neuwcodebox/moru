@@ -69,7 +69,8 @@ def test_examples_end_before_the_output_contract_for_the_current_input():
         assert instructions and example_start and example_end and example
         assert "current user input" in contract
         assert "plain English text" in contract
-        assert "only the image prompt" in contract and "one paragraph" in contract
+        assert "only the image prompt" in contract
+        assert "Do not include headings, explanations or Markdown fences" in contract
         assert len(messages) == 2
 
 
@@ -199,14 +200,40 @@ def test_each_stage_receives_its_context_and_returns_the_complete_prompt(
 
 
 @pytest.mark.parametrize("reply", [
-    "", " ", None, {}, "blue\ncup", "blue\rcup", '{"region_prompt":"blue cup"}',
-    chr(96) * 3 + "blue cup" + chr(96) * 3, "Final answer: blue cup",
+    "", " ", None, {}, '{"region_prompt":"blue cup"}',
     "\uD30C\uB780 \uCEF5", "<think>blue cup",
 ])
 def test_invalid_text_replies_fail_instead_of_using_the_original_prompt(reply):
     with pytest.raises(MoruError) as failure:
         validate_edit_prompt(reply)
     assert failure.value.code == "REGION_INVALID_RESPONSE"
+
+
+@pytest.mark.parametrize("provider", ["local", "chatgpt"])
+def test_both_edit_stages_preserve_multiline_text_and_only_trim_edges(
+    tmp_path, monkeypatch, provider,
+):
+    from support.chatgpt import SETTINGS, Auth, Responses, completed, delta
+
+    from moru.chatgpt.prompts import ChatGPTPrompts
+    from moru.domain import PromptSettings
+
+    region = "cup,  blue cup,\r\n\tgold rim"
+    scene = "A woman holds a blue cup.\n\nThe cup has a gold rim."
+    replies = [f" \n{region}\t ", f" \n{scene}\t "]
+    if provider == "local":
+        writer, _ = local_region_writer(tmp_path, monkeypatch, replies)
+        settings = PromptSettings()
+    else:
+        http = Responses(*([delta(reply), completed()] for reply in replies))
+        writer, settings = ChatGPTPrompts(Auth(), http), SETTINGS
+    previews = []
+    result = writer.edit_region(
+        "A woman holds a red cup.", "Make it blue", settings, Event(),
+        on_progress=lambda *p: previews.append(p),
+    )
+    assert result == RegionPrompts(region, scene)
+    assert previews[-1] == ("scene", region, scene)
 
 
 @pytest.mark.parametrize("stage", ["region", "scene"])
@@ -360,8 +387,8 @@ def test_region_cloud_writer_uses_the_existing_tool_loop_only_for_the_local_prom
     function = call(arguments={"query": "blue cup", "limit": 20})
     http = Responses(
         [delta("I'll look up the tag."), completed(function)],
-        [delta("blue cup" + chr(96)), completed()],
-        [delta("A woman holds a blue cup." + chr(96)), completed()],
+        [delta("blue cup"), completed()],
+        [delta("A woman holds a blue cup."), completed()],
     )
     tools = Tools({"error": "lookup_unavailable"} if unavailable else ["blue_cup"])
     sources, stages, previews = [], [], []

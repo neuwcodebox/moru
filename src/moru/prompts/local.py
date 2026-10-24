@@ -16,7 +16,7 @@ from moru.errors import MoruError
 from moru.memory_budget import prompt_memory_required
 from moru.models import image_model
 from moru.ports import PromptProgress
-from moru.prompts.completion import PromptParagraph, ThinkingBudget, read_completion
+from moru.prompts.completion import ThinkingBudget, read_completion
 from moru.prompts.instructions import (
     CREATE_SYSTEM,
     NATURAL_CREATE_SYSTEM,
@@ -30,10 +30,7 @@ from moru.prompts.tag_search import (
     add_tag_references,
     parse_queries,
 )
-from moru.prompts.text import (
-    ANSWER_PREFIX,
-    conversation_messages,
-)
+from moru.prompts.text import conversation_messages
 
 log = logging.getLogger(__name__)
 
@@ -270,8 +267,7 @@ class LlamaPrompts:
         processors = []
         if settings.thinking:
             end_tokens = llm.tokenize(b"</think>", add_bos=False, special=True)
-            suffix = f"\n\n{ANSWER_PREFIX}\n".encode()
-            suffix_tokens = llm.tokenize(suffix, add_bos=False)
+            suffix_tokens = llm.tokenize(b"\n\n", add_bos=False)
             processors.append(
                 ThinkingBudget(
                     end_tokens,
@@ -279,9 +275,6 @@ class LlamaPrompts:
                     suffix_tokens,
                 )
             )
-        eos = llm.token_eos()
-        if isinstance(eos, int) and eos >= 0:
-            processors.append(PromptParagraph(llm.detokenize, eos, settings.thinking))
         check_cancelled(cancelled)
         response = llm.create_chat_completion(
             messages=messages,

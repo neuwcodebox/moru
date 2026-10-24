@@ -8,7 +8,6 @@ from moru.config import ModelPaths
 from moru.domain import PromptSettings, PromptTurn
 from moru.errors import MoruError
 from moru.prompts.completion import (
-    PromptParagraph,
     ThinkingBudget,
     read_completion,
     stream_text,
@@ -340,7 +339,7 @@ def test_non_english_script_is_not_forwarded_to_the_image_model(content):
 
 
 @pytest.mark.parametrize(
-    "content", ["", "   ", "notes</think>", "Final image prompt:", "Final answer:"]
+    "content", ["", "   ", "notes</think>"]
 )
 def test_missing_final_prompt_reports_an_empty_response(content):
     with pytest.raises(MoruError) as error:
@@ -379,7 +378,7 @@ def test_a_multi_token_thinking_marker_is_completed_in_order():
     assert processor([9, 1, 3, 4], Scores([1.0] * 5)) == [1.0] * 5
 
 
-def test_forced_reasoning_end_completes_the_final_answer_cue_before_releasing_sampling():
+def test_forced_reasoning_end_completes_spacing_before_releasing_sampling():
     processor = ThinkingBudget([3], 1, [4])
     processor([9], Scores([1.0] * 5))
     assert processor([9, 1], Scores([1.0] * 5))[3] == 0.0
@@ -387,7 +386,7 @@ def test_forced_reasoning_end_completes_the_final_answer_cue_before_releasing_sa
     assert processor([9, 1, 3, 4], Scores([1.0] * 5)) == [1.0] * 5
 
 
-def test_final_answer_cue_is_removed_from_both_live_text_and_the_image_prompt():
+def test_answer_text_after_reasoning_is_only_trimmed():
     snapshots = []
 
     def chunks():
@@ -396,41 +395,46 @@ def test_final_answer_cue_is_removed_from_both_live_text_and_the_image_prompt():
         yield {"choices": [{"delta": {}, "finish_reason": "stop"}]}
 
     result = read_completion(chunks(), Event(), True, lambda *text: snapshots.append(text))
-    assert result == "black cat, moonlight"
+    assert result == "Final image prompt:\nblack cat, moonlight"
     assert snapshots
-    assert all("Final" not in prompt and "<" not in prompt for _, prompt in snapshots)
+    assert all("<" not in prompt for _, prompt in snapshots)
     assert snapshots[-1] == ("reasoning", result)
 
 
-def test_paragraph_boundary_does_not_end_thinking_or_the_prefilled_final_answer_cue():
-    tokens = {1: b"<think>notes\n\n", 2: b"</think>", 3: b"Final image prompt:\n", 4: b"\n"}
-
-    def decoder(ids, **kwargs):
-        return b"".join(tokens.get(token, b"") for token in ids)
-
-    processor = PromptParagraph(decoder, 0, True)
-    scores = Scores([0.0, 0.0, 0.0, 0.0, 1.0])
-    processor([9], scores)
-    assert processor([9, 1], scores) == [0.0, 0.0, 0.0, 0.0, 1.0]
-    assert processor([9, 1, 2, 3], scores) == [0.0, 0.0, 0.0, 0.0, 1.0]
-
-
 @pytest.mark.parametrize("thinking", [True, False])
-def test_a_complete_answer_ends_at_its_paragraph_boundary(thinking):
-    tokens = {1: b"notes</think>", 2: b"black cat, moonlight", 3: b"\n\nWait"}
+def test_newline_tokens_and_following_text_are_sampled_without_forcing_eos(
+    tmp_path, monkeypatch, thinking,
+):
+    paths = ModelPaths(tmp_path)
+    paths.get("prompt").parent.mkdir(parents=True)
+    paths.get("prompt").write_bytes(b"fake gguf")
+    tokens = {1: b"black cat,", 2: b"\nblue eyes.\n\nA cat sits beside a window.",
+              3: b"</think>"}
+    llm = Mock(metadata={}, tokenize=lambda text, **_: [3] if text == b"</think>" else [4])
+    llm.token_eos.return_value = 0
+    llm.detokenize.side_effect = lambda ids, **_: b"".join(tokens.get(i, b"") for i in ids)
 
-    def decoder(ids, **kwargs):
-        return b"".join(tokens.get(token, b"") for token in ids)
+    def sample(**options):
+        generated = [9]
+        for token in ([3] if thinking else []) + [1, 2]:
+            scores = Scores([0.0] * 5)
+            scores[token] = 1.0
+            for processor in options["logits_processor"] or []:
+                scores = processor(generated, scores)
+            selected = scores.argmax()
+            if selected == 0:
+                break
+            generated.append(selected)
+            yield {"choices": [{"delta": {"content": tokens[selected].decode()},
+                                "finish_reason": None}]}
+        yield {"choices": [{"delta": {}, "finish_reason": "stop"}]}
 
-    processor = PromptParagraph(decoder, 0, thinking)
-    processor([9], Scores([0.0, 0.0, 0.0, 1.0]))
-    generated = [9, 1, 2] if thinking else [9, 2]
-    assert processor(generated, Scores([0.0, 0.0, 0.0, 1.0])) == [
-        0.0,
-        float("-inf"),
-        float("-inf"),
-        float("-inf"),
-    ]
+    llm.create_chat_completion.side_effect = sample
+    prompts = LlamaPrompts(paths, load_llama=Mock(return_value=llm))
+    monkeypatch.setattr(prompts, "_configure_thinking", lambda *_: None)
+    assert prompts.create("cat", PromptSettings(thinking=thinking)) == (
+        "black cat,\nblue eyes.\n\nA cat sits beside a window."
+    )
 
 
 def test_resident_prompt_needs_no_loading_budget_until_context_or_path_changes(tmp_path):
@@ -457,10 +461,10 @@ def test_resident_prompt_needs_no_loading_budget_until_context_or_path_changes(t
 
 
 @pytest.mark.parametrize("thinking", [True, False])
-def test_analysis_after_a_completed_prompt_is_not_displayed_or_forwarded(thinking):
+def test_all_answer_paragraphs_are_displayed_and_forwarded(thinking):
     snapshots = []
     content = ("notes</think>" if thinking else "") + (
-        "Final image prompt:\nblack cat, moonlight\n\nWait"
+        "black cat, moonlight\n\nA cat sits beside a window."
     )
     prompt = read_completion(
         completion(content),
@@ -468,8 +472,8 @@ def test_analysis_after_a_completed_prompt_is_not_displayed_or_forwarded(thinkin
         thinking,
         lambda *text: snapshots.append(text),
     )
-    assert prompt == "black cat, moonlight"
-    assert snapshots[-1] == ("notes" if thinking else "", "black cat, moonlight")
+    assert prompt == "black cat, moonlight\n\nA cat sits beside a window."
+    assert snapshots[-1] == ("notes" if thinking else "", prompt)
 
 
 def test_reasoning_level_changes_the_completion_budget_without_reloading_the_model(tmp_path):
@@ -503,24 +507,23 @@ def test_reasoning_level_changes_the_completion_budget_without_reloading_the_mod
 
 
 @pytest.mark.parametrize("prefix", ["Final answer:", "Final image prompt:"])
-def test_final_answer_cues_are_removed_from_streamed_and_completed_text(prefix):
+def test_answer_prefixes_are_preserved_in_streamed_and_completed_text(prefix):
     content = f"notes</think>\n\n{prefix}\nnight, sky"
-    assert read_completion(completion(content), Event(), True) == "night, sky"
-    assert stream_text(content, True) == ("notes", "night, sky")
+    assert read_completion(completion(content), Event(), True) == f"{prefix}\nnight, sky"
+    assert stream_text(content, True) == ("notes", f"{prefix}\nnight, sky")
 
 @pytest.mark.parametrize("content", [
     "`blue cup`", "blue cup`", "```blue cup```",
     "```text\nblue cup\n```", "Final answer: `blue cup`",
 ])
-def test_markdown_wrappers_do_not_reach_the_prompt_or_its_streamed_preview(content):
+def test_backticks_and_markdown_are_preserved_in_the_prompt_and_preview(content):
     previews = []
     result = read_completion(
         completion(list(content)), Event(), False,
         lambda _, prompt: previews.append(prompt),
     )
-    assert result == "blue cup"
+    assert result == content
     assert previews[-1] == result
-    assert all("`" not in preview for preview in previews)
 
 
 def test_backticks_inside_visible_lettering_are_preserved():
@@ -528,3 +531,22 @@ def test_backticks_inside_visible_lettering_are_preserved():
 
     prompt = 'A sign reads "use `code`".'
     assert final_prompt(prompt) == prompt
+
+
+@pytest.mark.parametrize("thinking", [False, True])
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_only_outer_whitespace_is_trimmed_from_the_prompt_and_preview(thinking, newline):
+    prompt = f"black cat,  moonlight,{newline}\tblue eyes.{newline}{newline}A cat by a window."
+    content = ("<think>notes</think>" if thinking else "") + f" \n{prompt}\t\n "
+    snapshots = []
+    result = read_completion(
+        completion(list(content)), Event(), thinking, lambda *text: snapshots.append(text),
+    )
+    assert result == prompt
+    assert snapshots[-1] == ("notes" if thinking else "", prompt)
+
+
+def test_non_english_text_on_later_lines_is_validated_instead_of_discarded():
+    with pytest.raises(MoruError) as failure:
+        read_completion(completion("black cat,\n\n파란 눈"), Event())
+    assert failure.value.code == "PROMPT_NON_ENGLISH_RESPONSE"

@@ -33,7 +33,8 @@ def prompt_messages(text, base_prompt=None, history=(), model_id="anima-turbo-v1
         "and concise visual descriptions."
     )
     instructions = (
-        style + " Return the complete image prompt as one paragraph of plain English text. "
+        style + " Return only the complete image prompt as plain English text. "
+        "Do not include headings, explanations or Markdown fences. "
         "Preserve the user's subjects, composition and requested style. "
         "For revisions, use the existing prompt as the current state, apply the latest "
         "change, replace conflicting details and preserve unrelated details. "

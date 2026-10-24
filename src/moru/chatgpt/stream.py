@@ -60,11 +60,12 @@ def read_prompt_reply(
                     if delta and answer_message and on_stage is not None:
                         on_stage("prompting")
                     delta_chars += len(delta)
-                    text += delta
+                    if answer_message:
+                        text += delta
                     if len(text) > 65536:
                         raise MoruError("PROMPT_OUTPUT_TOO_LONG")
-                    if not buffered:
-                        progress("", text)
+                    if not buffered and answer_message:
+                        progress("", text.strip())
                 elif kind == "response.output_item.done":
                     output.append(event.get("item"))
                     done_items.append(event.get("item"))
@@ -109,13 +110,14 @@ def read_prompt_reply(
                     if part.get("type") == "output_text":
                         if not isinstance(part.get("text"), str):
                             raise MoruError("PROMPT_INVALID_RESPONSE")
-                        answer.append(part["text"])
+                        if item.get("phase") != "commentary":
+                            answer.append(part["text"])
         if answer:
             final_text = "".join(answer)
             if len(final_text) > 65536:
                 raise MoruError("PROMPT_OUTPUT_TOO_LONG")
             if final_text != text and not buffered:
-                progress("", final_text)
+                progress("", final_text.strip())
             text = final_text
         outcome = "completed"
         return PromptReply(text, tuple(output))

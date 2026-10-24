@@ -5,8 +5,6 @@ import unicodedata
 from moru.domain import PromptTurn
 from moru.errors import MoruError
 
-ANSWER_PREFIX = "Final answer:"
-
 
 def conversation_messages(
     text: str, base_prompt: str | None = None, history: tuple[PromptTurn, ...] = ()
@@ -26,8 +24,7 @@ def conversation_messages(
 
 
 def final_prompt(content: str) -> str:
-    # Templates may prefill the opening tag outside the generated content.
-    prompt = answer_text(content.rsplit("</think>", 1)[-1]).partition("\n")[0]
+    prompt = content.strip()
     if not prompt:
         raise MoruError("PROMPT_EMPTY_RESPONSE")
     if "<think>" in prompt or prompt.startswith("Thinking Process:"):
@@ -35,21 +32,3 @@ def final_prompt(content: str) -> str:
     if any(char.isalpha() and "LATIN" not in unicodedata.name(char, "") for char in prompt):
         raise MoruError("PROMPT_NON_ENGLISH_RESPONSE")
     return prompt
-
-
-def answer_text(content: str) -> str:
-    content = content.strip()
-    for prefix in (ANSWER_PREFIX, "Final image prompt:"):
-        if prefix.startswith(content):
-            return ""
-        if content.startswith(prefix):
-            content = content.removeprefix(prefix).strip()
-            break
-    if content.startswith("```"):
-        if "\n" in content:
-            _, _, content = content.partition("\n")
-        elif content.endswith("```") and len(content) > 6:
-            content = content[3:-3]
-        else:
-            return ""
-    return content.strip().strip("`").strip()

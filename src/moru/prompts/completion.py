@@ -6,7 +6,7 @@ from threading import Event
 from moru.cancellation import check_cancelled
 from moru.errors import MoruError
 from moru.ports import PromptProgress
-from moru.prompts.text import answer_text, final_prompt
+from moru.prompts.text import final_prompt
 
 
 class ThinkingBudget:
@@ -39,36 +39,12 @@ class ThinkingBudget:
         return scores
 
 
-class PromptParagraph:
-    """Finish at the answer's paragraph boundary before the model resumes explaining."""
-
-    def __init__(self, detokenize, eos: int, thinking: bool):
-        self._detokenize = detokenize
-        self._eos = eos
-        self._thinking = thinking
-        self._input_length: int | None = None
-
-    def __call__(self, input_ids, scores):
-        if self._input_length is None:
-            self._input_length = len(input_ids)
-        generated = list(input_ids[self._input_length :])
-        content = self._detokenize(generated, special=True).decode("utf-8", errors="ignore")
-        _, marker, answer = content.partition("</think>")
-        prompt = answer_text(answer if marker else content) if marker or not self._thinking else ""
-        if prompt and (
-            "\n" in prompt or b"\n" in self._detokenize([int(scores.argmax())], special=True)
-        ):
-            scores[:] = float("-inf")
-            scores[self._eos] = 0.0
-        return scores
-
-
 def stream_text(content: str, thinking: bool) -> tuple[str, str]:
     reasoning, marker, prompt = content.partition("</think>")
     if marker:
         return (
             reasoning.removeprefix("<think>").strip(),
-            answer_text(prompt).partition("\n")[0],
+            prompt.strip(),
         )
     # Keep incomplete control tags out of the live text when a tag spans tokens.
     for tag in ("<think>", "</think>"):
@@ -78,7 +54,7 @@ def stream_text(content: str, thinking: bool) -> tuple[str, str]:
                 break
     if thinking or content.startswith("<think>"):
         return content.removeprefix("<think>").strip(), ""
-    return "", answer_text(content).partition("\n")[0]
+    return "", content.strip()
 
 
 def read_completion(
@@ -99,4 +75,6 @@ def read_completion(
         check_cancelled(cancelled)
     if not finished:
         raise MoruError("PROMPT_RESPONSE_INTERRUPTED")
-    return final_prompt(content)
+    # Templates may prefill the opening tag outside the generated content.
+    _, marker, answer = content.partition("</think>")
+    return final_prompt(answer if marker else content)

@@ -75,6 +75,60 @@ def test_cloud_refinement_preserves_canonical_prompt_and_selected_history():
     )
 
 
+@pytest.mark.parametrize("completed_text", [False, True])
+def test_multiline_cloud_prompt_reaches_images_history_and_next_request_in_full(
+    app, completed_text,
+):
+    from support.application import generate
+    from support.chatgpt import Responses
+
+    prompt = "black cat,  moonlight,\r\n\tblue eyes.\r\n\r\nA cat by a window."
+    raw = f" \n{prompt}\t\n "
+    message = {"type": "message", "content": [{"type": "output_text", "text": raw}]}
+    response = {"output": [message]} if completed_text else {}
+    http = Responses(
+        [delta(raw), {"type": "response.completed", "response": response}],
+        [delta("cat at sunrise"), {"type": "response.completed"}],
+    )
+    app.prompts = PromptProviders(app.prompts, ChatGPTPrompts(Auth(), http))
+    app.update_settings(app.get_settings(), SETTINGS)
+    project = app.create_project()
+    image = generate(app, project.id)
+    assert app.images.inputs[0][0] == prompt
+    assert image.prompt == prompt
+    assert image.full_prompt == prompt
+    generate(app, project.id, "make it sunrise")
+    assert http.calls[1][1]["input"][-1]["content"] == (
+        f"Existing image prompt:\n{prompt}\n\nChange request:\nmake it sunrise"
+    )
+
+
+@pytest.mark.parametrize("completed_text", [False, True])
+def test_commentary_is_excluded_from_the_final_cloud_prompt_and_preview(completed_text):
+    commentary = {
+        "type": "message", "phase": "commentary",
+        "content": [{"type": "output_text", "text": "I will write the prompt.\n\n"}],
+    }
+    prompt = "black cat,\n\nblue eyes"
+    answer = {
+        "type": "message", "phase": "final_answer",
+        "content": [{"type": "output_text", "text": prompt}],
+    }
+    response = {"output": [commentary, answer]} if completed_text else {}
+    http = StreamHttp([
+        {"type": "response.output_item.added", "item": commentary},
+        delta("I will write the prompt.\n\n"),
+        {"type": "response.output_item.added", "item": answer}, delta(prompt),
+        {"type": "response.completed", "response": response},
+    ])
+    previews = []
+    result = ChatGPTPrompts(Auth(), http).create(
+        "cat", SETTINGS, Event(), lambda *p: previews.append(p),
+    )
+    assert result == prompt
+    assert previews == [("", prompt)]
+
+
 def test_flux_cloud_guidance_uses_sentences_without_tag_reference():
     instructions, _ = prompt_messages("scene", model_id="flux2-klein-4b")
     assert "natural language" in instructions

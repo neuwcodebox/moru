@@ -359,12 +359,15 @@ def test_query_inference_failure_remains_a_generation_failure(tmp_path, failure_
     assert len(llm.calls) == 1 and not tags.calls
 
 
-def test_query_answer_uses_the_same_single_line_output_as_image_prompts(tmp_path):
+def test_invalid_query_plan_is_rejected_in_full_and_final_prompt_writing_continues(
+    tmp_path, caplog,
+):
     llm = Llama("night, sky\n\nExplanation follows.", "night, sky")
     tags = Tags(["night"], ["sky"])
     prompts, _ = writer(tmp_path, llm, tags)
     assert prompts.create("night sky") == "night, sky"
-    assert [query for query, _limit in tags.calls] == ["night", "sky"]
+    assert tags.calls == []
+    assert "invalid_query_format" in caplog.text
 
 
 def test_tag_counts_reset_for_each_request_and_the_loaded_model_is_reused(tmp_path):

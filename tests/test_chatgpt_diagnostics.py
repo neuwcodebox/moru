@@ -136,9 +136,9 @@ def test_empty_completion_array_and_preserved_streamed_items_remain_distinct_in_
     assert 'done_items={"count": 1,' in caplog.text
 
 
-def test_nonempty_response_that_fails_final_extraction_is_distinguished_from_missing_text(caplog):
+def test_whitespace_only_response_is_reported_as_a_blank_final_prompt(caplog):
     with caplog.at_level(logging.INFO), pytest.raises(MoruError) as error:
-        generate(Responses([delta("Final image prompt:"), completed()]))
+        generate(Responses([delta(" \n\t "), completed()]))
     assert error.value.code == "PROMPT_EMPTY_RESPONSE"
-    assert "blank=False" in caplog.text
-    assert "text_chars=19" in caplog.text
+    assert "blank=True" in caplog.text
+    assert "text_chars=4" in caplog.text

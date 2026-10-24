@@ -7,6 +7,22 @@ from moru.prompts.instructions import TAG_REFERENCE
 from moru.prompts.local import prompt_messages
 
 
+@pytest.mark.parametrize("model_id", ["anima-turbo-v1.1", "flux2-klein-4b"])
+@pytest.mark.parametrize("base", [None, "cat, sleeping"])
+def test_local_and_cloud_instructions_require_only_the_complete_prompt(model_id, base):
+    from moru.chatgpt.instructions import prompt_messages as cloud_messages
+    from moru.prompts.region import REGION_SYSTEM, SCENE_SYSTEM
+
+    instructions = [
+        prompt_messages("a cat", base, model_id=model_id)[0]["content"],
+        cloud_messages("a cat", base, model_id=model_id)[0],
+        REGION_SYSTEM, SCENE_SYSTEM,
+    ]
+    for system in instructions:
+        assert "only the" in system and "image prompt" in system
+        assert "Do not include headings, explanations or Markdown fences" in system
+
+
 @pytest.mark.parametrize("base", [None, "cat, sleeping"])
 def test_writer_receives_a_structured_guide_and_optional_tag_vocabulary(base):
     system = prompt_messages("a cat", base)[0]["content"]

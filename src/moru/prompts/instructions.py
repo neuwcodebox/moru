@@ -74,7 +74,8 @@ existing scene; enhance only the requested change unless broader enhancement is 
 
 _WRITING_GUIDE = """You write positive prompts for an image generation model.
 
-OUTPUT: Write the complete image prompt as one paragraph of plain English text.
+OUTPUT: Return only the complete image prompt as plain English text.
+Do not include headings, explanations or Markdown fences.
 Combine relevant comma-separated tags with concrete visual sentences.
 
 """.replace("\n", " ") + _SCENE_GUIDE + """
@@ -113,8 +114,8 @@ prompt.""".replace("\n", " ")
 )
 
 _CURRENT_REQUEST = (
-    " Return the complete image prompt for the current request as one paragraph of plain "
-    "English text, preserving the user's explicit choices."
+    " Return only the complete image prompt for the current request as plain English text, "
+    "preserving the user's explicit choices."
 )
 
 CREATE_SYSTEM = (
@@ -151,7 +152,8 @@ at night.</example>""".replace("\n", " ")
 
 _NATURAL_GUIDE = (
     """You write positive prompts for an image generation model.
-OUTPUT: Write the complete image prompt as one paragraph of plain English visual sentences.
+OUTPUT: Return only the complete image prompt as plain English visual sentences.
+Do not include headings, explanations or Markdown fences.
 """.replace("\n", " ")
     + _SCENE_GUIDE
     + """BUILD: Describe subjects and their counts in words. Attach each subject's appearance,
