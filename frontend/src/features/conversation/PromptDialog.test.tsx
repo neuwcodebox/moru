@@ -76,7 +76,17 @@ it("does not generate with no selection or with missing prompt preparation", () 
     draft={{ ...draft, strokes: [] }} source="image" regionReady={false}
     onClose={vi.fn()} onGenerate={vi.fn()} onRegionGenerate={vi.fn()} />);
   expect((screen.getByRole("button", { name: "생성" }) as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByText("프롬프트 제공자를 준비하고 Anima 모델을 선택해 주세요.")).toBeTruthy();
+  expect(screen.getByText("준비된 로컬 LLM 또는 ChatGPT와 Anima 모델을 선택해 주세요.")).toBeTruthy();
+});
+
+it("opens generation settings to select a writer when direct input is active", async () => {
+  const prepare = vi.fn();
+  render(<PromptDialog details={{ ...details, edit_tab: "region" }} draft={draft}
+    source="image" regionReady={false} prepareSettings onPrepare={prepare}
+    onClose={vi.fn()} onGenerate={vi.fn()} onRegionGenerate={vi.fn()} />);
+  expect(screen.getByRole("button", { name: "생성" })).toHaveProperty("disabled", true);
+  await userEvent.click(screen.getByRole("button", { name: "생성 설정" }));
+  expect(prepare).toHaveBeenCalledOnce();
 });
 
 it("maps painting coordinates from the displayed image back to normalized original coordinates", () => {

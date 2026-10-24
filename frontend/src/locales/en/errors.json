@@ -1,4 +1,5 @@
 {
+  "REGION_PROMPT_WRITER_REQUIRED": "Select a local LLM or ChatGPT for region editing.",
   "CHATGPT_AUTH_FAILED": "ChatGPT sign-in failed. Please sign in again.",
   "CHATGPT_SIGN_IN_REQUIRED": "Please sign in to ChatGPT again.",
   "CHATGPT_NOT_ELIGIBLE": "ChatGPT plan usage is not allowed for this account. Check your permissions.",

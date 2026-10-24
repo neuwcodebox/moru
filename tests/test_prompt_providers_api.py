@@ -66,6 +66,14 @@ def test_neither_provider_prepared_cannot_save_local_as_ready(app, tmp_path):
     assert result["error"]["code"] == "PROMPT_MODEL_NOT_FOUND"
 
 
+def test_direct_input_can_be_selected_and_saved_without_models_or_account(app, tmp_path):
+    api = Api(app, ModelPaths(tmp_path))
+    assert api.select_prompt_provider("direct")["value"]["provider"] == "direct"
+    assert api.update_settings({"steps": 33}, asdict(PromptSettings(provider="direct")))["ok"]
+    assert app.get_settings().steps == 33
+    assert app.get_prompt_settings().provider == "direct"
+
+
 def test_preparing_chatgpt_model_does_not_activate_it_or_require_local_files(app, tmp_path):
     api = Api(app, ModelPaths(tmp_path), chatgpt_auth=Account())
     before = app.get_settings()

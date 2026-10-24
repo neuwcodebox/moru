@@ -686,6 +686,14 @@ select_version은 그 행의 selected_image_id와 프로젝트의 active_leaf_id
 
 ## 18. 자연어 생성과 세션 분기
 
+`PromptSettings.provider = "direct"`는 프롬프트 작성을 생략한다. Application은 기존 요청 검증과 동일하게
+앞뒤 공백을 제거해 저장하고 `_prepare_prompt`에서 그대로 반환한다. 본문·내부 공백·줄바꿈은 유지한다.
+프롬프트 엔진·검색·이력 구성·메모리 예약을 호출하지 않으며,
+이미지 생성 전에 기존 프롬프트 엔진을 unload한다. 설정 저장 및 접수 시 스냅샷은 다른 방식과 동일하다.
+API와 UI의 준비 검사는 직접 입력에 GGUF·계정을 요구하지 않는다. React의 작성 방식 선택에 항상 노출하며,
+모델 준비에는 설명만 표시한다. 영역 수정은 전체 장면 프롬프트 작성이 필요하므로 직접 입력에서는
+`REGION_PROMPT_WRITER_REQUIRED`로 거절하고 UI에서 로컬 LLM·ChatGPT 선택을 안내한다.
+
 기준 이미지가 없으면 create, 있으면 refine을 호출한다. 최근 요청/선택된 프롬프트의 맥락은 현재 기준 행까지만 포함한다. 작업 도중 설정 변경은 해당 작업에 적용하지 않는다.
 
 Application의 `_prompt_history`가 최근 대화 맥락을 구성한다. 재시도에서는 이후 버전 선택과

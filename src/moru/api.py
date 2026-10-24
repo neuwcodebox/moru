@@ -191,7 +191,7 @@ class Api:
             from moru.chatgpt.options import validate_chatgpt_options
 
             validate_chatgpt_options(settings)
-        elif self._models is not None:
+        elif settings.provider == "local" and self._models is not None:
             path = self._models.get("prompt")
             if not path.is_file() or not path.stat().st_size:
                 raise MoruError("PROMPT_MODEL_NOT_FOUND")

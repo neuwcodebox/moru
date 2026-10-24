@@ -13,6 +13,8 @@
     },
     "provider": "프롬프트 작성 모델",
     "local": "로컬 LLM",
+    "direct": "직접 입력",
+    "directHint": "입력한 내용을 그대로 이미지 프롬프트로 사용합니다. 이어지는 입력도 전체 프롬프트로 사용합니다.",
     "privacy": "ChatGPT 구독 사용량이 적용되며 요청·프롬프트·최근 대화 텍스트가 OpenAI로 전송됩니다. 이미지 생성과 저장은 로컬에서 수행됩니다.",
     "policy": "OpenAI 콘텐츠 정책에 따라 일부 요청이 거절될 수 있습니다.",
     "account": "계정",
@@ -141,7 +143,7 @@
     "content": "수정 요청",
     "placeholder": "무엇을 어떻게 바꿀지 설명하세요",
     "generationInfo": "원본 생성 정보",
-    "notReady": "프롬프트 제공자를 준비하고 Anima 모델을 선택해 주세요.",
+    "notReady": "준비된 로컬 LLM 또는 ChatGPT와 Anima 모델을 선택해 주세요.",
     "generate": "생성",
     "executionPrompt": "영역 생성 프롬프트",
     "scenePrompt": "전체 장면 프롬프트"

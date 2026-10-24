@@ -14,6 +14,19 @@ const chatgpt: ChatGPTStatus = {
   accounts: [], login_state: "idle", error_code: null, welcome_pending: false,
 };
 
+it("offers direct input without a writer and preserves hidden options when saving", async () => {
+  const user = userEvent.setup(), save = vi.fn(async () => {});
+  render(<SettingsDialog settings={generationSettings} imageModels={imageModels}
+    promptSettings={promptSettings} localReady={false} onSave={save} onClose={vi.fn()} />);
+  const selector = screen.getByLabelText("프롬프트 작성 모델");
+  await user.selectOptions(selector, "direct");
+  expect(screen.queryByRole("checkbox", { name: "단보루 태그 검색" })).toBeNull();
+  expect(screen.queryByText("고급 설정")).toBeNull();
+  expect(screen.getByText(/입력한 내용을 그대로 이미지 프롬프트로 사용/)).toBeTruthy();
+  await user.keyboard("{Escape}");
+  expect(save).toHaveBeenCalledWith(generationSettings, { ...promptSettings, provider: "direct" });
+});
+
 it.each(["local", "chatgpt"] as const)(
   "offers tag search above advanced options for %s and saves on close",
   async (provider) => {
@@ -46,6 +59,10 @@ it("retains the tag search choice while switching prompt writers", async () => {
   expect(search).toHaveProperty("checked", false);
   await user.selectOptions(screen.getByLabelText("프롬프트 작성 모델"), "local");
   expect(search).toHaveProperty("checked", false);
+  await user.selectOptions(screen.getByLabelText("프롬프트 작성 모델"), "direct");
+  expect(screen.queryByRole("checkbox", { name: "단보루 태그 검색" })).toBeNull();
+  await user.selectOptions(screen.getByLabelText("프롬프트 작성 모델"), "local");
+  expect(screen.getByRole("checkbox", { name: "단보루 태그 검색" })).toHaveProperty("checked", false);
   await user.keyboard("{Escape}");
   expect(save).toHaveBeenCalledWith(generationSettings, { ...promptSettings, tag_search_enabled: false });
 });

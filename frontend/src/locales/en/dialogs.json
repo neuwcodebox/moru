@@ -13,6 +13,8 @@
     },
     "provider": "Prompt writer",
     "local": "Local LLM",
+    "direct": "Direct input",
+    "directHint": "Your input is used unchanged as the image prompt. Each follow-up is also a complete prompt.",
     "privacy": "ChatGPT plan usage applies. Requests, prompts and recent conversation text are sent to OpenAI. Images are generated and saved locally.",
     "policy": "Some requests may be refused under OpenAI content policies.",
     "account": "Account",
@@ -141,7 +143,7 @@
     "content": "Modification request",
     "placeholder": "Describe what to change and how",
     "generationInfo": "Source generation details",
-    "notReady": "Prepare your prompt provider and select an Anima model.",
+    "notReady": "Select a prepared local LLM or ChatGPT and an Anima model.",
     "generate": "Generate",
     "executionPrompt": "Region generation prompt",
     "scenePrompt": "Full scene prompt"

@@ -19,7 +19,7 @@ export default function PromptDialog({
   onDraft,
   onRegionGenerate,
   regionReady = false,
-  regionSupported = true,
+  prepareSettings = false,
   onPrepare,
   onReturnFocus,
 }: {
@@ -31,7 +31,7 @@ export default function PromptDialog({
   onDraft?: (draft: EditDraft) => void;
   onRegionGenerate?: (content: string, mask: string) => Promise<void>;
   regionReady?: boolean;
-  regionSupported?: boolean;
+  prepareSettings?: boolean;
   onPrepare?: () => void;
   onReturnFocus?: () => void;
 }) {
@@ -111,7 +111,7 @@ export default function PromptDialog({
       </div>
       <div className="image-edit-footer">
       {tab === "region" && !regionReady && <p role="status" className="image-edit-notice">{t("region.notReady")} {onPrepare &&
-        <button onClick={onPrepare} disabled={busy}>{t(regionSupported ? "models.title" : "settings.title")}</button>}</p>}
+        <button onClick={onPrepare} disabled={busy}>{t(prepareSettings ? "settings.title" : "models.title")}</button>}</p>}
       {message != null && <p role="alert" className="image-edit-notice">{errorMessage(message, "GENERATION_REQUEST_FAILED")}</p>}
       <div className={`image-edit-submit ${tab === "region" ? "region-submit" : ""}`}>
       {tab === "region" ? <label className="region-content">

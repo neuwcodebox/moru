@@ -81,9 +81,11 @@ export default function App() {
   const followLatest = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
   const busy = acting || job !== null;
-  const promptReady = promptSettings?.provider === "chatgpt"
-    ? canUseChatGPT(chatgpt, promptSettings.chatgpt_model)
-    : !modelsKnown || !!models.find((model) => model.id === "prompt")?.available;
+  const promptReady = promptSettings?.provider === "direct" || (
+    promptSettings?.provider === "chatgpt"
+      ? canUseChatGPT(chatgpt, promptSettings.chatgpt_model)
+      : !modelsKnown || !!models.find((model) => model.id === "prompt")?.available
+  );
   const modalOpen = viewer || settingsOpen || modelsOpen || details !== null || promptSources !== null || !!chatgpt?.welcome_pending;
   const activeImage =
     project?.images.find((image) => image.turn_id === activeTurn) ?? project?.images.at(-1);
@@ -183,9 +185,11 @@ export default function App() {
         setChatgpt(result.chatgpt ?? null);
         const selected = result.image_models.find((model) => model.id === result.settings.model_id);
         const required = [...(selected?.asset_ids ?? [])];
-        const promptReady = result.prompt_settings.provider === "chatgpt"
-          ? canUseChatGPT(result.chatgpt, result.prompt_settings.chatgpt_model)
-          : result.models?.find((model) => model.id === "prompt")?.available;
+        const promptReady = result.prompt_settings.provider === "direct" || (
+          result.prompt_settings.provider === "chatgpt"
+            ? canUseChatGPT(result.chatgpt, result.prompt_settings.chatgpt_model)
+            : result.models?.find((model) => model.id === "prompt")?.available
+        );
         if (
           result.models && (!promptReady || required.some((id) => !result.models?.find((model) => model.id === id)?.available))
         )
@@ -402,6 +406,7 @@ export default function App() {
               <option value="chatgpt" disabled={!canUseChatGPT(chatgpt, promptSettings.chatgpt_model)}>
                 ChatGPT
               </option>
+              <option value="direct">{t("dialogs:chatgpt.direct")}</option>
             </select>
           </label>}
           <button
@@ -527,14 +532,14 @@ export default function App() {
           draft={editDrafts.current.get(details.id)}
           onReturnFocus={() => editTrigger.current?.focus({ preventScroll: true })}
           onDraft={(draft) => editDrafts.current.set(details.id, draft)}
-          regionReady={promptReady &&
+          regionReady={promptReady && promptSettings?.provider !== "direct" &&
             !!settings && settings.model_id.startsWith("anima-")}
           onPrepare={() => {
             setDetails(null);
-            if (!settings?.model_id.startsWith("anima-")) setSettingsOpen(true);
+            if (promptSettings?.provider === "direct" || !settings?.model_id.startsWith("anima-")) setSettingsOpen(true);
             else setModelsOpen(true);
           }}
-          regionSupported={!!settings?.model_id.startsWith("anima-")}
+          prepareSettings={promptSettings?.provider === "direct" || !settings?.model_id.startsWith("anima-")}
           onClose={() => setDetails(null)}
           onGenerate={async (prompt) => {
             pendingEditOrigin.current = details.id;

@@ -12,7 +12,7 @@ export type PromptSettings = {
   thinking: boolean;
   history_turns: number;
   reasoning_level: "low" | "medium" | "high";
-  provider?: "local" | "chatgpt";
+  provider?: "local" | "chatgpt" | "direct";
   chatgpt_model?: string;
   chatgpt_reasoning_effort?: ChatGPTReasoningEffort | "default";
   tag_search_enabled: boolean;

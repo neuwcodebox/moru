@@ -28,7 +28,7 @@ Move both folders with the app. Sign in to ChatGPT again when using a different 
 In **Model setup**, choose an image model and prepare its files.
 Moru supports Anima Turbo, Anima Aesthetic, and FLUX.2 klein 4B.
 
-Next, prepare at least one prompt writer.
+For automatic prompt writing, prepare a prompt writer. You can also use **Direct input** without one.
 
 - **Local LLM:** Prepare its model file to run it on your computer. Requests, prompts, and
   conversation history stay local, and prompt writing works offline.
@@ -43,7 +43,9 @@ image dimensions and generation options. You can enable or disable Danbooru tag 
 with either a local LLM or ChatGPT. Advanced settings control how much recent conversation to use
 and the reasoning options. Changes are saved when you close the settings window.
 
-If both prompt writers are ready, switch between them directly beside the input box.
+Switch between prepared prompt writers and **Direct input** beside the input box.
+Direct input trims surrounding whitespace and uses each message as a complete image prompt,
+without AI rewriting or tag search.
 
 ### 3. Create and refine an image
 
@@ -62,8 +64,9 @@ prompt and recent conversation to create a new image.
 
 Open **Edit** below an image to edit its full scene prompt or paint a **Region** and describe
 what to change and how, such as “Change this cup to blue.” Anima edits the painted region locally.
-Your selected prompt writer uses the text descriptions to prepare the edit and update the scene
-prompt for subsequent conversation. Images stay on your computer.
+Region editing requires a prepared local LLM or ChatGPT. Your selected prompt writer uses the text
+descriptions to prepare the edit and update the scene prompt for subsequent conversation.
+Images stay on your computer.
 The **Sources** menu shows information consulted during tag searches.
 
 ### 4. Compare results and explore another direction

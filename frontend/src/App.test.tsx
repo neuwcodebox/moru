@@ -1134,7 +1134,7 @@ const chatgptStatus = {
   login_state: "idle", error_code: null, welcome_pending: false,
 };
 
-function promptProviderBootstrap(provider: "local" | "chatgpt", localReady: boolean) {
+function promptProviderBootstrap(provider: "local" | "chatgpt" | "direct", localReady: boolean) {
   api.get_model_status.mockResolvedValue({ ok: true, value: [
     { id: "prompt", available: localReady },
     ...imageModels[0].asset_ids.map((id) => ({ id, available: true })),
@@ -1149,6 +1149,42 @@ function promptProviderBootstrap(provider: "local" | "chatgpt", localReady: bool
     chatgpt: chatgptStatus,
   } }));
 }
+
+it("starts with direct input and submits the original text without prompt writer setup", async () => {
+  const user = userEvent.setup();
+  promptProviderBootstrap("direct", false);
+  render(<App />);
+  const selector = await screen.findByRole("combobox", { name: "프롬프트 작성 모델" });
+  expect(selector).toHaveProperty("value", "direct");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  const text = "  1girl, silver_hair\n(daylight:1.2)  ";
+  fireEvent.change(screen.getByRole("textbox", { name: "이미지 요청" }), { target: { value: text } });
+  await user.click(screen.getByRole("button", { name: "전송" }));
+  expect(api.submit_request).toHaveBeenCalledWith(current.id, text);
+});
+
+it("switches to direct input beside the composer and saves the selection", async () => {
+  const user = userEvent.setup();
+  promptProviderBootstrap("local", true);
+  api.select_prompt_provider = vi.fn(async (provider) => ({ ok: true, value: { ...promptSettings, provider } }));
+  render(<App />);
+  const selector = await screen.findByRole("combobox", { name: "프롬프트 작성 모델" });
+  await user.selectOptions(selector, "direct");
+  await waitFor(() => expect(selector).toHaveProperty("value", "direct"));
+  expect(api.select_prompt_provider).toHaveBeenCalledWith("direct");
+});
+
+it("shows only an explanation when viewing direct input in model setup", async () => {
+  const user = userEvent.setup();
+  promptProviderBootstrap("direct", false);
+  render(<App />);
+  await screen.findByRole("combobox", { name: "프롬프트 작성 모델" });
+  await user.click(screen.getByRole("button", { name: "모델 준비" }));
+  const section = within(screen.getByRole("region", { name: "프롬프트 작성 모델" }));
+  expect(section.getByRole("combobox")).toHaveProperty("value", "direct");
+  expect(section.queryByRole("button")).toBeNull();
+  expect(section.getByText(/입력한 내용을 그대로 이미지 프롬프트로 사용/)).toBeTruthy();
+});
 
 it("starts with ChatGPT and no GGUF without opening model setup", async () => {
   promptProviderBootstrap("chatgpt", false);

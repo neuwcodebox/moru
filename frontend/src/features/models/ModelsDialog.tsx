@@ -32,7 +32,7 @@ export default function ModelsDialog({
   const [error, setError] = useState<{ cause: unknown; fallbackCode: string } | null>(null);
   const [acting, setActing] = useState(false);
   const [chatgptModel, setChatgptModel] = useState(promptSettings?.chatgpt_model ?? "");
-  const [provider, setProvider] = useState<"local" | "chatgpt">(promptSettings?.provider ?? "local");
+  const [provider, setProvider] = useState(promptSettings?.provider ?? "local");
   const downloading = models.some(downloadActive);
   const viewedModel = imageModels.find((model) => model.id === viewedModelId);
   const assetIds = viewedModel?.asset_ids ?? [];
@@ -98,12 +98,14 @@ export default function ModelsDialog({
         {promptSettings && onConfigurePrompt && onChatGPTStatus ? <>
           <label>{t("chatgpt.provider")}
             <select value={provider} disabled={acting || chatgpt?.login_state === "waiting"}
-              onChange={(event) => setProvider(event.target.value as "local" | "chatgpt")}>
+              onChange={(event) => setProvider(event.target.value as NonNullable<PromptSettings["provider"]>)}>
               <option value="local">{t("chatgpt.local")}</option>
               <option value="chatgpt">ChatGPT</option>
+              <option value="direct">{t("chatgpt.direct")}</option>
             </select>
           </label>
-          {provider === "local" ? file(asset("prompt")) :
+          {provider === "direct" ? <p className="hint">{t("chatgpt.directHint")}</p> :
+            provider === "local" ? file(asset("prompt")) :
             <ChatGPTAccount status={chatgpt} model={chatgptModel}
               disabled={acting} onStatus={onChatGPTStatus}
               onModel={async (model) => {

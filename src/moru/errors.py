@@ -1,6 +1,9 @@
 """Stable boundary errors; engine details belong in logs, never the UI."""
 
 MESSAGES = {
+    "REGION_PROMPT_WRITER_REQUIRED": (
+        "영역 수정을 사용하려면 로컬 LLM 또는 ChatGPT를 선택해 주세요."
+    ),
     "REGION_INVALID_MASK": "The selection mask is invalid.",
     "REGION_EMPTY_MASK": "Select an area to edit.",
     "REGION_INVALID_RESPONSE": "The region prompt response was invalid.",

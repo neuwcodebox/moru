@@ -185,6 +185,8 @@ class Application:
             self._available()
             if not isinstance(content, str) or not content.strip() or len(content) > 8000:
                 raise MoruError("INVALID_REQUEST")
+            if self.get_prompt_settings().provider == "direct":
+                raise MoruError("REGION_PROMPT_WRITER_REQUIRED")
             image = self.repository.get_image(image_id)
             settings = self.get_settings()
             if image_model(settings.model_id).family != "anima":
@@ -387,6 +389,8 @@ class Application:
                 self._active_job = None
 
     def _prepare_region(self, job_id, request, settings, cancelled, on_source):
+        if settings.provider == "direct":
+            raise MoruError("REGION_PROMPT_WRITER_REQUIRED")
         base = self.repository.get_image(request.base_image_id)
         self._reserve_prompt_memory(job_id, settings, cancelled, "prompting")
         prepared = self.prompts.edit_region(
@@ -418,6 +422,10 @@ class Application:
             if request.text == base.full_prompt:
                 for source in base.sources:
                     on_source(source)
+            self._prompt_progress(job_id, request.text)
+            return request.text
+        if settings.provider == "direct":
+            self.prompts.unload()
             self._prompt_progress(job_id, request.text)
             return request.text
         ready_state = "thinking" if settings.provider == "chatgpt" else "prompting"

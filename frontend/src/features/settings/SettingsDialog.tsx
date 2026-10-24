@@ -175,24 +175,27 @@ export default function SettingsDialog({
                 provider: event.target.value as PromptSettings["provider"] })}>
               <option value="local" disabled={!localReady}>{t("chatgpt.local")}</option>
               <option value="chatgpt" disabled={!canUseChatGPT(chatgpt, promptDraft.chatgpt_model)}>ChatGPT</option>
+              <option value="direct">{t("chatgpt.direct")}</option>
             </select>
           </label>
-          <p className="hint">{t("chatgpt.setupHint")}</p>
-          <label className="checkbox-field">
-            <input type="checkbox" checked={promptDraft.tag_search_enabled}
-              disabled={!supportsTagSearch}
-              onChange={(event) => setPromptDraft({ ...promptDraft,
-                tag_search_enabled: event.target.checked })} />
-            {t("settings.tagSearch")}
-          </label>
-          <p className="hint">{t("settings.tagSearchHint")}</p>
-          <details className="advanced-settings">
-            <summary>{t("settings.advanced")}</summary>
-            <fieldset disabled={saving} className="prompt-options">
-              <PromptOptions settings={promptDraft} local={promptDraft.provider !== "chatgpt"}
-                onChange={setPromptDraft} />
-            </fieldset>
-          </details>
+          <p className="hint">{t(promptDraft.provider === "direct" ? "chatgpt.directHint" : "chatgpt.setupHint")}</p>
+          {promptDraft.provider !== "direct" && <>
+            <label className="checkbox-field">
+              <input type="checkbox" checked={promptDraft.tag_search_enabled}
+                disabled={!supportsTagSearch}
+                onChange={(event) => setPromptDraft({ ...promptDraft,
+                  tag_search_enabled: event.target.checked })} />
+              {t("settings.tagSearch")}
+            </label>
+            <p className="hint">{t("settings.tagSearchHint")}</p>
+            <details className="advanced-settings">
+              <summary>{t("settings.advanced")}</summary>
+              <fieldset disabled={saving} className="prompt-options">
+                <PromptOptions settings={promptDraft} local={promptDraft.provider !== "chatgpt"}
+                  onChange={setPromptDraft} />
+              </fieldset>
+            </details>
+          </>}
           {error != null && <p role="alert">{errorMessage(error, "SAVE_SETTINGS_FAILED")}</p>}
           <div className="modal-actions">
             <button type="button" onClick={close}>
